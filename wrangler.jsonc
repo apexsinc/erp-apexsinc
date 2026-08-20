@@ -16,7 +16,7 @@
   ],
   "routes": [
     {
-      "pattern": "erp.apexsinc.com",
+      "pattern": "app.apexsinc.com",
       "custom_domain": true
     }
   ],
