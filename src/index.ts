@@ -7,11 +7,17 @@ import * as schema from './db/schema';
 import { renderAppHtml } from './ui';
 import { authMiddleware, requireAdmin, requireModule } from './middleware/auth';
 import { hashPassword, verifyPasswordLegacyAware } from './lib/password';
+import { verifyTurnstileToken } from './lib/turnstile';
 import { ALL_MODULES, DEFAULT_PERMISSION_MATRIX, isAdminRole, loadPermissionMatrix, seedDefaultPermissions, type EditableRole, type Module } from './lib/permissions';
 
 // Environment Bindings for Cloudflare Workers
 type Bindings = {
   DB: D1Database;
+  // Public widget id — safe to embed client-side. Unset disables the Turnstile widget entirely.
+  TURNSTILE_SITE_KEY?: string;
+  // Secret used to verify tokens server-side. Unset disables server-side verification
+  // (so login isn't broken before these are provisioned) — set both together.
+  TURNSTILE_SECRET_KEY?: string;
 };
 type Variables = {
   authUser: { id: string; email: string; name: string; role: schema.User['role'] };
@@ -52,7 +58,7 @@ app.use('/api/payroll/*', authMiddleware, requireModule('payroll'));
 async function renderApp(c: { env: Bindings }) {
   const db = createDbClient(c.env.DB);
   const rolePermissions = await loadPermissionMatrix(db);
-  return renderAppHtml(rolePermissions);
+  return renderAppHtml(rolePermissions, { turnstileSiteKey: c.env.TURNSTILE_SITE_KEY });
 }
 app.get('/', async (c) => c.html(await renderApp(c)));
 app.get('/login', async (c) => c.html(await renderApp(c)));
@@ -69,11 +75,21 @@ app.post(
     z.object({
       email: z.string().email(),
       password: z.string().min(6),
+      cfTurnstileToken: z.string().optional(),
     })
   ),
   async (c) => {
     const db = createDbClient(c.env.DB);
     const body = c.req.valid('json');
+
+    if (c.env.TURNSTILE_SECRET_KEY) {
+      const verified =
+        !!body.cfTurnstileToken &&
+        (await verifyTurnstileToken(c.env.TURNSTILE_SECRET_KEY, body.cfTurnstileToken, c.req.header('CF-Connecting-IP')));
+      if (!verified) {
+        return c.json({ success: false, error: 'Verification challenge failed. Please try again.' }, 400);
+      }
+    }
 
     // Check user in database
     let user = await db.query.users.findFirst({

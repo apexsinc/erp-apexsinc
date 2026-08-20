@@ -27,7 +27,7 @@ export * from './app.client';
  * serialized here so the client router can show/hide sidebar items and
  * tabs without re-implementing the rules.
  */
-export function renderAppHtml(rolePermissions: Record<Role, Module[]>): string {
+export function renderAppHtml(rolePermissions: Record<Role, Module[]>, options: { turnstileSiteKey?: string } = {}): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -45,7 +45,7 @@ export function renderAppHtml(rolePermissions: Record<Role, Module[]>): string {
 <body>
 
   <!-- 1. AUTHENTICATION / LOGIN VIEW -->
-  ${renderLoginView()}
+  ${renderLoginView(options.turnstileSiteKey)}
 
   <!-- 2. MAIN APPLICATION SHELL -->
   <div id="app-view" class="app-wrapper" style="display: none;">

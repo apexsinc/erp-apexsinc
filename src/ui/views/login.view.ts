@@ -1,4 +1,24 @@
-export function renderLoginView(): string {
+const EYE_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+const EYE_OFF_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a20.3 20.3 0 0 1 5.06-5.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a20.3 20.3 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+
+/** Password input with a show/hide eye toggle button (see togglePasswordVisibility in app.client.ts). */
+export function renderPasswordField(id: string, labelText: string, opts: { placeholder?: string; autocomplete?: string } = {}): string {
+  return `
+    <div class="form-group">
+      <label class="form-label" for="${id}">${labelText}</label>
+      <div class="password-input-wrapper">
+        <input type="password" id="${id}" class="form-input" placeholder="${opts.placeholder || 'Enter your password'}" required autocomplete="${opts.autocomplete || 'new-password'}" />
+        <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('${id}', this)" tabindex="-1" aria-label="Show password">
+          ${EYE_ICON}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+export function renderLoginView(turnstileSiteKey?: string): string {
   return `
   <div id="login-view" class="login-container" style="display: none;">
     <div class="login-card">
@@ -14,13 +34,18 @@ export function renderLoginView(): string {
       <form id="login-form" onsubmit="handleLogin(event)">
         <div class="form-group">
           <label class="form-label" for="login-email">Email Address</label>
-          <input type="email" id="login-email" class="form-input" value="admin@apexsinc.com" placeholder="name@company.com" required autocomplete="email" />
+          <input type="email" id="login-email" class="form-input" placeholder="name@company.com" required autocomplete="email" />
         </div>
 
-        <div class="form-group">
-          <label class="form-label" for="login-password">Password</label>
-          <input type="password" id="login-password" class="form-input" value="kbs812sls729@admin" placeholder="••••••••••••" required autocomplete="current-password" />
-        </div>
+        ${renderPasswordField('login-password', 'Password', { placeholder: 'Enter your password', autocomplete: 'current-password' })}
+
+        ${
+          turnstileSiteKey
+            ? `<div class="form-group">
+                 <div class="cf-turnstile" data-sitekey="${turnstileSiteKey}" data-theme="light"></div>
+               </div>`
+            : ''
+        }
 
         <button type="submit" id="login-btn" class="btn btn-primary btn-block">
           Sign In
@@ -28,6 +53,7 @@ export function renderLoginView(): string {
       </form>
     </div>
   </div>
+  ${turnstileSiteKey ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' : ''}
   `;
 }
 
@@ -37,6 +63,7 @@ async function handleLogin(e) {
   const email = document.getElementById('login-email').value;
   const password = document.getElementById('login-password').value;
   const submitBtn = document.getElementById('login-btn');
+  const cfTurnstileToken = typeof turnstile !== 'undefined' ? turnstile.getResponse() : undefined;
 
   submitBtn.disabled = true;
   submitBtn.innerText = 'Signing In...';
@@ -45,7 +72,7 @@ async function handleLogin(e) {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, cfTurnstileToken }),
     });
     const json = await res.json();
 
@@ -53,6 +80,7 @@ async function handleLogin(e) {
       showToast(json.error || 'Authentication failed', 'danger');
       submitBtn.disabled = false;
       submitBtn.innerText = 'Sign In';
+      if (typeof turnstile !== 'undefined') turnstile.reset();
       return;
     }
 

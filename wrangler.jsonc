@@ -19,6 +19,11 @@
       "pattern": "erp.apexsinc.com",
       "custom_domain": true
     }
-  ]
+  ],
+  // Public widget id (safe to commit). Matching secret is set separately via:
+  //   wrangler secret put TURNSTILE_SECRET_KEY
+  "vars": {
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAEWXjWO9n9rN0ZIi"
+  }
 }
 
