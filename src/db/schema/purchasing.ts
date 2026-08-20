@@ -37,7 +37,7 @@ export const purchaseOrders = sqliteTable('purchase_orders', {
     .notNull()
     .references(() => vendors.id),
   status: text('status', {
-    enum: ['DRAFT', 'APPROVED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED'],
+    enum: ['DRAFT', 'APPROVED', 'DELIVERED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED'],
   })
     .notNull()
     .default('DRAFT'),
@@ -47,6 +47,8 @@ export const purchaseOrders = sqliteTable('purchase_orders', {
     .notNull()
     .$defaultFn(() => new Date().toISOString()),
   expectedDate: text('expected_date'),
+  // Set by the Inbound "Mark as Delivered" step, before quantities are confirmed.
+  deliveredAt: text('delivered_at'),
   createdAt: text('created_at')
     .notNull()
     .$defaultFn(() => new Date().toISOString()),

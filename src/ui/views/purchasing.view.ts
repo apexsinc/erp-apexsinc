@@ -18,6 +18,15 @@ async function loadPurchasing() {
     state.purchaseOrders = ordersJson.data || [];
     state.vendors = vendorsJson.data || [];
 
+    const poStatusBadgeClass = {
+      DRAFT: 'badge-neutral',
+      APPROVED: 'badge-primary',
+      DELIVERED: 'badge-warning',
+      PARTIALLY_RECEIVED: 'badge-warning',
+      RECEIVED: 'badge-success',
+      CANCELLED: 'badge-danger',
+    };
+
     let rowsHtml = '';
     state.purchaseOrders.forEach((po) => {
       const itemsList = po.items.map((i) => \`\${i.product?.name || 'Product'} (\${i.quantityOrdered} ordered, \${i.quantityReceived} received)\`).join(', ');
@@ -26,19 +35,13 @@ async function loadPurchasing() {
           <td><strong>\${po.poNumber}</strong></td>
           <td>\${po.vendor?.name || 'Unknown'}</td>
           <td>
-            <span class="badge \${po.status === 'RECEIVED' ? 'badge-success' : 'badge-primary'}">
+            <span class="badge \${poStatusBadgeClass[po.status] || 'badge-neutral'}">
               <span class="badge-dot"></span>
-              \${po.status}
+              \${po.status.replace('_', ' ')}
             </span>
           </td>
           <td><strong>\${formatCurrency(po.totalAmountCents)}</strong></td>
           <td style="font-size: 0.8rem; color: #64748b;">\${itemsList}</td>
-          <td>
-            \${po.status !== 'RECEIVED'
-              ? \`<button class="btn btn-success btn-sm" onclick='openReceivePOModal("\${po.id}", "\${po.poNumber}", \${JSON.stringify(po.items)})'>Receive Goods</button>\`
-              : '<span class="badge badge-success">Fulfilled</span>'
-            }
-          </td>
         </tr>
       \`;
     });
@@ -52,6 +55,9 @@ async function loadPurchasing() {
             <button class="btn btn-primary btn-sm" onclick="openNewPOModal()">Create Purchase Order</button>
           </div>
         </div>
+        <p style="padding: 0 1.35rem 1rem; font-size: 0.85rem; color: #64748b;">
+          Once a purchase order is created it moves to Inbound Deliveries, where it's marked delivered and its arrived quantities are confirmed.
+        </p>
         <div class="table-responsive">
           <table class="data-table">
             <thead>
@@ -61,11 +67,10 @@ async function loadPurchasing() {
                 <th>Status</th>
                 <th>Total Value</th>
                 <th>Ordered Items</th>
-                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              \${rowsHtml || '<tr><td colspan="6" style="text-align: center; color: #64748b;">No purchase orders found.</td></tr>'}
+              \${rowsHtml || '<tr><td colspan="5" style="text-align: center; color: #64748b;">No purchase orders found.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -201,71 +206,6 @@ async function submitNewPO(e) {
 
     closeModal();
     showToast('Purchase Order ' + json.data.poNumber + ' issued', 'success');
-    loadPurchasing();
-  } catch (err) {
-    showToast(err.message, 'danger');
-  }
-}
-
-function openReceivePOModal(poId, poNumber, items) {
-  let itemInputs = items.map((item, idx) => \`
-    <div style="padding: 0.75rem; background: #f8fafc; border-radius: 6px; margin-bottom: 0.75rem; border: 1px solid #e2e8f0;">
-      <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.35rem;">
-        \${item.product?.name || 'Product'} (Ordered: \${item.quantityOrdered}, Received: \${item.quantityReceived})
-      </div>
-      <div class="form-group" style="margin-bottom: 0;">
-        <label class="form-label">Quantity to Receive</label>
-        <input type="number" id="grn-qty-\${idx}" data-poitemid="\${item.id}" class="form-input grn-item-input" value="\${item.quantityOrdered - item.quantityReceived}" min="1" max="\${item.quantityOrdered - item.quantityReceived}" required />
-      </div>
-    </div>
-  \`).join('');
-
-  const body = \`
-    <form id="form-receive-grn" onsubmit="submitReceivePO(event, '\${poId}')">
-      <p style="font-size: 0.84rem; color: #64748b; margin-bottom: 1rem;">
-        Receiving inventory against <strong>\${poNumber}</strong> will create a Goods Received Note (GRN) and update the stock ledger.
-      </p>
-      \${itemInputs}
-      <div class="form-group">
-        <label class="form-label">Receiving Notes / Location</label>
-        <input type="text" id="grn-notes" class="form-input" placeholder="Warehouse Bay 4" />
-      </div>
-    </form>
-  \`;
-  const footer = \`
-    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-success" onclick="document.getElementById('form-receive-grn').requestSubmit()">Confirm Receipt</button>
-  \`;
-  openModal('Receive Goods for ' + poNumber, body, footer);
-}
-
-async function submitReceivePO(e, poId) {
-  e.preventDefault();
-  const itemInputs = document.querySelectorAll('.grn-item-input');
-  const items = [];
-  itemInputs.forEach((inp) => {
-    items.push({
-      poItemId: inp.dataset.poitemid,
-      quantityReceived: parseInt(inp.value, 10),
-    });
-  });
-
-  const payload = {
-    notes: document.getElementById('grn-notes').value || 'Goods receipt',
-    items,
-  };
-
-  try {
-    const res = await apiFetch('/api/purchasing/orders/' + poId + '/receive', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const json = await res.json();
-    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to receive goods');
-
-    closeModal();
-    showToast('GRN ' + json.grnNumber + ' recorded', 'success');
     loadPurchasing();
   } catch (err) {
     showToast(err.message, 'danger');

@@ -2,6 +2,7 @@ import { LOGIN_CLIENT_JS } from './views/login.view';
 import { DASHBOARD_CLIENT_JS } from './views/dashboard.view';
 import { INVENTORY_CLIENT_JS } from './views/inventory.view';
 import { PURCHASING_CLIENT_JS } from './views/purchasing.view';
+import { INBOUND_CLIENT_JS } from './views/inbound.view';
 import { SALES_CLIENT_JS } from './views/sales.view';
 import { ACCOUNTING_CLIENT_JS } from './views/accounting.view';
 import { PAYROLL_CLIENT_JS } from './views/payroll.view';
@@ -18,6 +19,7 @@ const state = {
   products: [],
   vendors: [],
   purchaseOrders: [],
+  inboundOrders: [],
   customers: [],
   salesOrders: [],
   employees: [],
@@ -108,6 +110,7 @@ ${LOGIN_CLIENT_JS}
 ${DASHBOARD_CLIENT_JS}
 ${INVENTORY_CLIENT_JS}
 ${PURCHASING_CLIENT_JS}
+${INBOUND_CLIENT_JS}
 ${SALES_CLIENT_JS}
 ${ACCOUNTING_CLIENT_JS}
 ${PAYROLL_CLIENT_JS}
@@ -138,6 +141,7 @@ function switchTab(tabName) {
     dashboard: 'Executive Dashboard',
     inventory: 'Inventory & Stock Movements',
     purchasing: 'Purchasing (P2P Procurement)',
+    inbound: 'Inbound Deliveries',
     sales: 'Sales (O2C Orders & Invoices)',
     accounting: 'Accounting & Ledger',
     payroll: 'Payroll & Staff',
@@ -155,6 +159,7 @@ function switchTab(tabName) {
   if (tabName === 'dashboard') loadDashboard();
   if (tabName === 'inventory') loadInventory();
   if (tabName === 'purchasing') loadPurchasing();
+  if (tabName === 'inbound') loadInbound();
   if (tabName === 'sales') loadSales();
   if (tabName === 'accounting') loadAccounting();
   if (tabName === 'payroll') loadPayroll();
