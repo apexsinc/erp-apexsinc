@@ -8,8 +8,10 @@ import {
   renderSalesView,
   renderAccountingView,
   renderPayrollView,
+  renderAdminView,
 } from './views';
 import { APP_CLIENT_JS } from './app.client';
+import type { Module, Role } from '../lib/permissions';
 
 export * from './styles';
 export * from './components';
@@ -19,8 +21,13 @@ export * from './app.client';
 /**
  * Renders the complete Single Page Application HTML markup
  * directly for Cloudflare Workers edge delivery.
+ *
+ * `rolePermissions` (role -> visible module list) is computed server-side
+ * from the DB-backed permission matrix (src/lib/permissions.ts) and
+ * serialized here so the client router can show/hide sidebar items and
+ * tabs without re-implementing the rules.
  */
-export function renderAppHtml(): string {
+export function renderAppHtml(rolePermissions: Record<Role, Module[]>): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -33,6 +40,7 @@ export function renderAppHtml(): string {
   <style>
     ${APP_CSS}
   </style>
+  <script>window.__ROLE_PERMISSIONS__ = ${JSON.stringify(rolePermissions)};</script>
 </head>
 <body>
 
@@ -57,6 +65,7 @@ export function renderAppHtml(): string {
         ${renderSalesView()}
         ${renderAccountingView()}
         ${renderPayrollView()}
+        ${renderAdminView()}
       </div>
     </main>
   </div>

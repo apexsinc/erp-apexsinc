@@ -9,8 +9,8 @@ async function loadAccounting() {
 
   try {
     const [tbRes, ledgerRes] = await Promise.all([
-      fetch('/api/accounting/trial-balance'),
-      fetch('/api/accounting/ledger'),
+      apiFetch('/api/accounting/trial-balance'),
+      apiFetch('/api/accounting/ledger'),
     ]);
     const tbJson = await tbRes.json();
     const ledgerJson = await ledgerRes.json();
@@ -160,7 +160,7 @@ async function submitNewJV(e) {
   };
 
   try {
-    const res = await fetch('/api/accounting/vouchers/journal', {
+    const res = await apiFetch('/api/accounting/vouchers/journal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

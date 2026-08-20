@@ -8,7 +8,7 @@ async function loadInventory() {
   container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading inventory...</div>';
 
   try {
-    const res = await fetch('/api/inventory/products');
+    const res = await apiFetch('/api/inventory/products');
     const json = await res.json();
     state.products = json.data || [];
 
@@ -120,7 +120,7 @@ async function submitNewProduct(e) {
   };
 
   try {
-    const res = await fetch('/api/inventory/products', {
+    const res = await apiFetch('/api/inventory/products', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -138,7 +138,7 @@ async function submitNewProduct(e) {
 
 async function openProductHistoryModal(productId, productName) {
   try {
-    const res = await fetch('/api/inventory/products/' + productId);
+    const res = await apiFetch('/api/inventory/products/' + productId);
     const json = await res.json();
     const movements = json.data?.stockMovements || [];
 
@@ -230,7 +230,7 @@ async function submitStockAdjustment(e) {
   };
 
   try {
-    const res = await fetch('/api/inventory/movements', {
+    const res = await apiFetch('/api/inventory/movements', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

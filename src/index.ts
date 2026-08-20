@@ -5,13 +5,19 @@ import { eq, desc } from 'drizzle-orm';
 import { createDbClient } from './db/client';
 import * as schema from './db/schema';
 import { renderAppHtml } from './ui';
+import { authMiddleware, requireAdmin, requireModule } from './middleware/auth';
+import { hashPassword, verifyPasswordLegacyAware } from './lib/password';
+import { ALL_MODULES, DEFAULT_PERMISSION_MATRIX, isAdminRole, loadPermissionMatrix, seedDefaultPermissions, type EditableRole, type Module } from './lib/permissions';
 
 // Environment Bindings for Cloudflare Workers
 type Bindings = {
   DB: D1Database;
 };
+type Variables = {
+  authUser: { id: string; email: string; name: string; role: schema.User['role'] };
+};
 
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // Global Error Handler
 app.onError((err, c) => {
@@ -25,10 +31,32 @@ app.onError((err, c) => {
   );
 });
 
+/* ========================================================================== */
+/* ROUTE PROTECTION — registered before any handlers so every matching       */
+/* request passes through auth/role checks first. Session role/isActive is   */
+/* re-read from the DB on every request, so permission or account changes    */
+/* made via /api/admin take effect immediately, without waiting for token    */
+/* expiry.                                                                    */
+/* ========================================================================== */
+app.use('/api/auth/me', authMiddleware);
+app.use('/api/auth/logout', authMiddleware);
+app.use('/api/admin/*', authMiddleware, requireAdmin);
+app.use('/api/dashboard', authMiddleware, requireModule('dashboard'));
+app.use('/api/inventory/*', authMiddleware, requireModule('inventory'));
+app.use('/api/purchasing/*', authMiddleware, requireModule('purchasing'));
+app.use('/api/sales/*', authMiddleware, requireModule('sales'));
+app.use('/api/accounting/*', authMiddleware, requireModule('accounting'));
+app.use('/api/payroll/*', authMiddleware, requireModule('payroll'));
+
 // UI Web Application Entrypoint (Served directly at edge)
-app.get('/', (c) => c.html(renderAppHtml()));
-app.get('/login', (c) => c.html(renderAppHtml()));
-app.get('/app', (c) => c.html(renderAppHtml()));
+async function renderApp(c: { env: Bindings }) {
+  const db = createDbClient(c.env.DB);
+  const rolePermissions = await loadPermissionMatrix(db);
+  return renderAppHtml(rolePermissions);
+}
+app.get('/', async (c) => c.html(await renderApp(c)));
+app.get('/login', async (c) => c.html(await renderApp(c)));
+app.get('/app', async (c) => c.html(await renderApp(c)));
 
 /* ========================================================================== */
 /* 0. AUTHENTICATION & ADMIN SYSTEM                                           */
@@ -52,31 +80,43 @@ app.post(
       where: eq(schema.users.email, body.email.toLowerCase()),
     });
 
-    // Default admin fallback if not yet seeded
+    // Default admin bootstrap if the DB hasn't been seeded yet
     if (!user && body.email.toLowerCase() === 'admin@apexsinc.com' && body.password === 'kbs812sls729@admin') {
       const adminId = crypto.randomUUID();
       await db.insert(schema.users).values({
         id: adminId,
         email: 'admin@apexsinc.com',
         name: 'System Administrator',
-        passwordHash: 'kbs812sls729@admin',
+        passwordHash: await hashPassword('kbs812sls729@admin'),
         role: 'ADMIN',
       });
       user = await db.query.users.findFirst({ where: eq(schema.users.id, adminId) });
-    } else if (user && user.email === 'admin@apexsinc.com' && body.password === 'kbs812sls729@admin') {
-      // Sync password update if modified
-      if (user.passwordHash !== 'kbs812sls729@admin') {
-        await db.update(schema.users).set({ passwordHash: 'kbs812sls729@admin' }).where(eq(schema.users.id, user.id));
-        user.passwordHash = 'kbs812sls729@admin';
-      }
     }
 
-    if (!user || user.passwordHash !== body.password) {
+    if (!user || !user.isActive) {
       return c.json({ success: false, error: 'Invalid email or password' }, 401);
     }
 
-    // Return session token and user profile
-    const token = 'session_' + user.id + '_' + Date.now();
+    const { valid, legacy } = await verifyPasswordLegacyAware(body.password, user.passwordHash);
+    if (!valid) {
+      return c.json({ success: false, error: 'Invalid email or password' }, 401);
+    }
+    // Transparently upgrade pre-hashing accounts the moment they next log in successfully.
+    if (legacy) {
+      await db.update(schema.users).set({ passwordHash: await hashPassword(body.password) }).where(eq(schema.users.id, user.id));
+    }
+
+    // Issue a real, verifiable session (24h expiry) — API routes check this,
+    // not the role the client happens to send.
+    const token = crypto.randomUUID() + crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    await db.insert(schema.sessions).values({
+      id: crypto.randomUUID(),
+      token,
+      userId: user.id,
+      expiresAt,
+    });
+
     return c.json({
       success: true,
       token,
@@ -90,15 +130,18 @@ app.post(
   }
 );
 
+app.post('/api/auth/logout', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const token = (c.req.header('Authorization') || '').replace('Bearer ', '');
+  if (token) {
+    await db.delete(schema.sessions).where(eq(schema.sessions.token, token));
+  }
+  return c.json({ success: true });
+});
+
 app.get('/api/auth/me', async (c) => {
-  return c.json({
-    success: true,
-    user: {
-      email: 'admin@apexsinc.com',
-      name: 'System Administrator',
-      role: 'ADMIN',
-    },
-  });
+  const authUser = c.get('authUser');
+  return c.json({ success: true, user: authUser });
 });
 
 /* ========================================================================== */
@@ -107,6 +150,24 @@ app.get('/api/auth/me', async (c) => {
 
 app.post('/api/setup/seed', async (c) => {
   const db = createDbClient(c.env.DB);
+
+  // Once any user exists, reseeding (which resets the admin password) is
+  // an ADMIN-only operation — otherwise anyone could hit this endpoint to
+  // take over the admin account.
+  const anyUser = await db.query.users.findFirst();
+  if (anyUser) {
+    const token = (c.req.header('Authorization') || '').replace('Bearer ', '');
+    const session = token
+      ? await db.query.sessions.findFirst({
+          where: eq(schema.sessions.token, token),
+          with: { user: true },
+        })
+      : null;
+    const sessionValid = session && session.expiresAt > new Date().toISOString();
+    if (!sessionValid || !session.user?.isActive || !isAdminRole(session.user.role)) {
+      return c.json({ success: false, error: 'Administrator access required to reseed an initialized system' }, 403);
+    }
+  }
 
   // 1. Seed or Update Admin User
   const existingAdmin = await db.query.users.findFirst({
@@ -117,12 +178,15 @@ app.post('/api/setup/seed', async (c) => {
       id: crypto.randomUUID(),
       email: 'admin@apexsinc.com',
       name: 'System Administrator',
-      passwordHash: 'kbs812sls729@admin',
+      passwordHash: await hashPassword('kbs812sls729@admin'),
       role: 'ADMIN',
     });
   } else {
-    await db.update(schema.users).set({ passwordHash: 'kbs812sls729@admin' }).where(eq(schema.users.id, existingAdmin.id));
+    await db.update(schema.users).set({ passwordHash: await hashPassword('kbs812sls729@admin') }).where(eq(schema.users.id, existingAdmin.id));
   }
+
+  // 2. Seed default role -> module permission matrix (no-op if already seeded)
+  await seedDefaultPermissions(db);
 
   // 2. Seed Default Chart of Accounts
   const defaultAccounts = [
@@ -1311,5 +1375,174 @@ app.get('/api/dashboard', async (c) => {
     },
   });
 });
+
+/* ========================================================================== */
+/* 7. ADMINISTRATION — USER & ROLE PERMISSION MANAGEMENT (ADMIN only)         */
+/* ========================================================================== */
+
+// GET /api/admin/users - List all user accounts
+app.get('/api/admin/users', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const users = await db.query.users.findMany({ orderBy: [desc(schema.users.createdAt)] });
+  return c.json({
+    success: true,
+    data: users.map(({ passwordHash, ...safe }) => safe),
+  });
+});
+
+// POST /api/admin/users - Create a user account
+app.post(
+  '/api/admin/users',
+  zValidator(
+    'json',
+    z.object({
+      email: z.string().email(),
+      name: z.string().min(1),
+      password: z.string().min(8),
+      role: z.enum(['ADMIN', 'MANAGER', 'STAFF']),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const body = c.req.valid('json');
+
+    const existing = await db.query.users.findFirst({ where: eq(schema.users.email, body.email.toLowerCase()) });
+    if (existing) {
+      return c.json({ success: false, error: 'A user with that email already exists' }, 400);
+    }
+
+    const userId = crypto.randomUUID();
+    await db.insert(schema.users).values({
+      id: userId,
+      email: body.email.toLowerCase(),
+      name: body.name,
+      passwordHash: await hashPassword(body.password),
+      role: body.role,
+    });
+
+    const created = await db.query.users.findFirst({ where: eq(schema.users.id, userId) });
+    if (!created) return c.json({ success: false, error: 'Failed to create user' }, 500);
+    const { passwordHash, ...safe } = created;
+    return c.json({ success: true, data: safe }, 201);
+  }
+);
+
+// PATCH /api/admin/users/:id - Update name/role/active status (and optionally reset password)
+app.patch(
+  '/api/admin/users/:id',
+  zValidator(
+    'json',
+    z.object({
+      name: z.string().min(1).optional(),
+      role: z.enum(['ADMIN', 'MANAGER', 'STAFF']).optional(),
+      isActive: z.boolean().optional(),
+      password: z.string().min(8).optional(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const userId = c.req.param('id');
+    const body = c.req.valid('json');
+
+    const target = await db.query.users.findFirst({ where: eq(schema.users.id, userId) });
+    if (!target) return c.json({ success: false, error: 'User not found' }, 404);
+
+    const losingAdminStatus = isAdminRole(target.role) && ((body.role && !isAdminRole(body.role)) || body.isActive === false);
+    if (losingAdminStatus) {
+      const otherActiveAdmins = await db.query.users.findMany({ where: eq(schema.users.role, 'ADMIN') });
+      const remaining = otherActiveAdmins.filter((u) => u.id !== userId && u.isActive);
+      if (remaining.length === 0) {
+        return c.json({ success: false, error: 'Cannot remove the last active administrator' }, 400);
+      }
+    }
+
+    await db
+      .update(schema.users)
+      .set({
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.role !== undefined ? { role: body.role } : {}),
+        ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+        ...(body.password !== undefined ? { passwordHash: await hashPassword(body.password) } : {}),
+      })
+      .where(eq(schema.users.id, userId));
+
+    // Any change here should take effect immediately, not at next token expiry.
+    if (body.isActive === false || body.role !== undefined || body.password !== undefined) {
+      await db.delete(schema.sessions).where(eq(schema.sessions.userId, userId));
+    }
+
+    const updated = await db.query.users.findFirst({ where: eq(schema.users.id, userId) });
+    const { passwordHash, ...safe } = updated!;
+    return c.json({ success: true, data: safe });
+  }
+);
+
+// DELETE /api/admin/users/:id - Deactivate a user account (soft delete; preserves referential integrity)
+app.delete('/api/admin/users/:id', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const userId = c.req.param('id');
+
+  const target = await db.query.users.findFirst({ where: eq(schema.users.id, userId) });
+  if (!target) return c.json({ success: false, error: 'User not found' }, 404);
+
+  if (isAdminRole(target.role)) {
+    const admins = await db.query.users.findMany({ where: eq(schema.users.role, 'ADMIN') });
+    const remaining = admins.filter((u) => u.id !== userId && u.isActive);
+    if (remaining.length === 0) {
+      return c.json({ success: false, error: 'Cannot deactivate the last active administrator' }, 400);
+    }
+  }
+
+  await db.update(schema.users).set({ isActive: false }).where(eq(schema.users.id, userId));
+  await db.delete(schema.sessions).where(eq(schema.sessions.userId, userId));
+
+  return c.json({ success: true, message: 'User deactivated' });
+});
+
+// GET /api/admin/role-permissions - Current role -> module visibility matrix
+app.get('/api/admin/role-permissions', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const matrix = await loadPermissionMatrix(db);
+  return c.json({
+    success: true,
+    modules: ALL_MODULES,
+    matrix, // { ADMIN: [...always all], MANAGER: [...], STAFF: [...] }
+  });
+});
+
+// PUT /api/admin/role-permissions - Bulk-update one editable role's module access
+app.put(
+  '/api/admin/role-permissions',
+  zValidator(
+    'json',
+    z.object({
+      role: z.enum(['MANAGER', 'STAFF']),
+      permissions: z.record(z.enum(ALL_MODULES), z.boolean()),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const body = c.req.valid('json');
+    const role = body.role as EditableRole;
+
+    const statements = ALL_MODULES.filter((mod) => body.permissions[mod] !== undefined).map((mod) => {
+      const canView = body.permissions[mod as Module] as boolean;
+      return db
+        .insert(schema.rolePermissions)
+        .values({ id: crypto.randomUUID(), role, module: mod, canView })
+        .onConflictDoUpdate({
+          target: [schema.rolePermissions.role, schema.rolePermissions.module],
+          set: { canView, updatedAt: new Date().toISOString() },
+        });
+    });
+
+    if (statements.length > 0) {
+      await db.batch(statements as any);
+    }
+
+    const matrix = await loadPermissionMatrix(db);
+    return c.json({ success: true, message: 'Permissions updated', matrix });
+  }
+);
 
 export default app;
