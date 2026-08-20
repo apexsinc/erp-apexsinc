@@ -165,6 +165,44 @@ function openNewEmployeeModal() {
           <input type="number" id="nemp-deduct" class="form-input" value="200000" />
         </div>
       </div>
+
+      <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 1.25rem 0;" />
+
+      <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+        <input type="checkbox" id="nemp-create-account" onchange="toggleNewEmployeeAccountFields()" />
+        <label class="form-label" style="margin: 0;" for="nemp-create-account">Also create a system login account for this employee</label>
+      </div>
+
+      <div id="nemp-account-fields" style="display: none;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <div class="form-group">
+            <label class="form-label">Password *</label>
+            <div class="password-input-wrapper">
+              <input type="password" id="nemp-password" class="form-input" minlength="8" autocomplete="new-password" />
+              <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('nemp-password', this)" tabindex="-1" aria-label="Show password">
+                \${EYE_ICON_SVG}
+              </button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Confirm Password *</label>
+            <div class="password-input-wrapper">
+              <input type="password" id="nemp-password-confirm" class="form-input" minlength="8" autocomplete="new-password" />
+              <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('nemp-password-confirm', this)" tabindex="-1" aria-label="Show password">
+                \${EYE_ICON_SVG}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Account Role *</label>
+          <select id="nemp-role" class="form-input">
+            <option value="STAFF">STAFF</option>
+            <option value="MANAGER">MANAGER</option>
+            <option value="ADMIN">ADMIN</option>
+          </select>
+        </div>
+      </div>
     </form>
   \`;
   const footer = \`
@@ -174,8 +212,17 @@ function openNewEmployeeModal() {
   openModal('Add New Employee', body, footer);
 }
 
+function toggleNewEmployeeAccountFields() {
+  const enabled = document.getElementById('nemp-create-account').checked;
+  document.getElementById('nemp-account-fields').style.display = enabled ? 'block' : 'none';
+  document.getElementById('nemp-password').required = enabled;
+  document.getElementById('nemp-password-confirm').required = enabled;
+}
+
 async function submitNewEmployee(e) {
   e.preventDefault();
+  const createUserAccount = document.getElementById('nemp-create-account').checked;
+
   const payload = {
     employeeCode: document.getElementById('nemp-code').value,
     firstName: document.getElementById('nemp-first').value,
@@ -188,7 +235,19 @@ async function submitNewEmployee(e) {
       allowancesCents: parseInt(document.getElementById('nemp-allow').value, 10) || 0,
       deductionsCents: parseInt(document.getElementById('nemp-deduct').value, 10) || 0,
     },
+    createUserAccount,
   };
+
+  if (createUserAccount) {
+    const password = document.getElementById('nemp-password').value;
+    const passwordConfirm = document.getElementById('nemp-password-confirm').value;
+    if (password !== passwordConfirm) {
+      showToast('Passwords do not match', 'danger');
+      return;
+    }
+    payload.password = password;
+    payload.userRole = document.getElementById('nemp-role').value;
+  }
 
   try {
     const res = await apiFetch('/api/payroll/employees', {
@@ -200,7 +259,7 @@ async function submitNewEmployee(e) {
     if (!res.ok || !json.success) throw new Error(json.error || 'Failed to create employee');
 
     closeModal();
-    showToast('Employee ' + json.data.firstName + ' added', 'success');
+    showToast('Employee ' + json.data.firstName + (json.data.user ? ' added with a login account' : ' added'), 'success');
     loadPayroll();
   } catch (err) {
     showToast(err.message, 'danger');

@@ -1,6 +1,7 @@
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 import { relations } from 'drizzle-orm';
 import { paymentVouchers } from './vouchers';
+import { users } from './auth';
 
 /**
  * Employees Master Table
@@ -16,6 +17,9 @@ export const employees = sqliteTable('employees', {
   phone: text('phone'),
   department: text('department').notNull(),
   position: text('position').notNull(),
+  // Linked login account, created together with the employee record from the
+  // "Add Employee" flow. Nullable — not every employee needs system access.
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
   status: text('status', {
     enum: ['ACTIVE', 'ON_LEAVE', 'TERMINATED'],
   })
@@ -113,9 +117,13 @@ export const payslips = sqliteTable('payslips', {
     .$defaultFn(() => new Date().toISOString()),
 });
 
-export const employeesRelations = relations(employees, ({ many }) => ({
+export const employeesRelations = relations(employees, ({ one, many }) => ({
   salaryStructures: many(salaryStructures),
   payslips: many(payslips),
+  user: one(users, {
+    fields: [employees.userId],
+    references: [users.id],
+  }),
 }));
 
 export const salaryStructuresRelations = relations(salaryStructures, ({ one }) => ({
