@@ -144,7 +144,21 @@ function openNewUserModal() {
       </div>
       <div class="form-group">
         <label class="form-label">Temporary Password *</label>
-        <input type="password" id="new-user-password" class="form-input" minlength="8" required />
+        <div class="password-input-wrapper">
+          <input type="password" id="new-user-password" class="form-input" minlength="8" required autocomplete="new-password" />
+          <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('new-user-password', this)" tabindex="-1" aria-label="Show password">
+            \${EYE_ICON_SVG}
+          </button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirm Password *</label>
+        <div class="password-input-wrapper">
+          <input type="password" id="new-user-password-confirm" class="form-input" minlength="8" required autocomplete="new-password" />
+          <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('new-user-password-confirm', this)" tabindex="-1" aria-label="Show password">
+            \${EYE_ICON_SVG}
+          </button>
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">Role *</label>
@@ -165,10 +179,18 @@ function openNewUserModal() {
 
 async function submitNewUser(e) {
   e.preventDefault();
+  const password = document.getElementById('new-user-password').value;
+  const passwordConfirm = document.getElementById('new-user-password-confirm').value;
+
+  if (password !== passwordConfirm) {
+    showToast('Passwords do not match', 'danger');
+    return;
+  }
+
   const payload = {
     name: document.getElementById('new-user-name').value,
     email: document.getElementById('new-user-email').value,
-    password: document.getElementById('new-user-password').value,
+    password,
     role: document.getElementById('new-user-role').value,
   };
 

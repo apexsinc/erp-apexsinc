@@ -37,6 +37,39 @@ export const COMPONENTS_CSS = `
   color: var(--text-light);
 }
 
+.password-input-wrapper {
+  position: relative;
+}
+
+.password-input-wrapper .form-input {
+  padding-right: 2.5rem;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  top: 50%;
+  right: 0.6rem;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  cursor: pointer;
+  color: var(--text-light);
+  line-height: 0;
+}
+
+.password-toggle-btn:hover {
+  color: var(--text-muted);
+}
+
+.password-toggle-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
