@@ -1089,71 +1089,111 @@ app.get('/api/accounting/ledger', async (c) => {
 /* 5. PAYROLL MODULE                                                          */
 /* ========================================================================== */
 
-// POST /api/payroll/employees - Create Employee
+// POST /api/payroll/employees - Create Employee (optionally with a linked login account)
 app.post(
   '/api/payroll/employees',
   zValidator(
     'json',
-    z.object({
-      employeeCode: z.string().min(2),
-      firstName: z.string().min(1),
-      lastName: z.string().min(1),
-      email: z.string().email(),
-      phone: z.string().optional(),
-      department: z.string().min(1),
-      position: z.string().min(1),
-      hireDate: z.string().default(() => new Date().toISOString()),
-      bankAccountNumber: z.string().optional(),
-      bankName: z.string().optional(),
-      salary: z
-        .object({
-          baseSalaryCents: z.number().int().positive(),
-          allowancesCents: z.number().int().nonnegative().default(0),
-          deductionsCents: z.number().int().nonnegative().default(0),
-        })
-        .optional(),
-    })
+    z
+      .object({
+        employeeCode: z.string().min(2),
+        firstName: z.string().min(1),
+        lastName: z.string().min(1),
+        email: z.string().email(),
+        phone: z.string().optional(),
+        department: z.string().min(1),
+        position: z.string().min(1),
+        hireDate: z.string().default(() => new Date().toISOString()),
+        bankAccountNumber: z.string().optional(),
+        bankName: z.string().optional(),
+        salary: z
+          .object({
+            baseSalaryCents: z.number().int().positive(),
+            allowancesCents: z.number().int().nonnegative().default(0),
+            deductionsCents: z.number().int().nonnegative().default(0),
+          })
+          .optional(),
+        createUserAccount: z.boolean().default(false),
+        userRole: z.enum(['ADMIN', 'MANAGER', 'STAFF']).default('STAFF'),
+        password: z.string().min(8).optional(),
+      })
+      .refine((data) => !data.createUserAccount || !!data.password, {
+        message: 'Password is required to create a login account',
+        path: ['password'],
+      })
   ),
   async (c) => {
     const db = createDbClient(c.env.DB);
     const body = c.req.valid('json');
 
+    const existingEmployee = await db.query.employees.findFirst({ where: eq(schema.employees.email, body.email) });
+    if (existingEmployee) {
+      return c.json({ success: false, error: 'An employee with that email already exists' }, 400);
+    }
+
+    let userId: string | undefined;
+    const batchStatements: any[] = [];
+
+    if (body.createUserAccount) {
+      const existingUser = await db.query.users.findFirst({ where: eq(schema.users.email, body.email.toLowerCase()) });
+      if (existingUser) {
+        return c.json({ success: false, error: 'A user account with that email already exists' }, 400);
+      }
+      userId = crypto.randomUUID();
+      batchStatements.push(
+        db.insert(schema.users).values({
+          id: userId,
+          email: body.email.toLowerCase(),
+          name: `${body.firstName} ${body.lastName}`,
+          passwordHash: await hashPassword(body.password!),
+          role: body.userRole,
+        })
+      );
+    }
+
     const employeeId = crypto.randomUUID();
-    const empInsert = db.insert(schema.employees).values({
-      id: employeeId,
-      employeeCode: body.employeeCode.toUpperCase(),
-      firstName: body.firstName,
-      lastName: body.lastName,
-      email: body.email,
-      phone: body.phone,
-      department: body.department,
-      position: body.position,
-      hireDate: body.hireDate,
-      bankAccountNumber: body.bankAccountNumber,
-      bankName: body.bankName,
-    });
+    batchStatements.push(
+      db.insert(schema.employees).values({
+        id: employeeId,
+        employeeCode: body.employeeCode.toUpperCase(),
+        firstName: body.firstName,
+        lastName: body.lastName,
+        email: body.email,
+        phone: body.phone,
+        department: body.department,
+        position: body.position,
+        hireDate: body.hireDate,
+        bankAccountNumber: body.bankAccountNumber,
+        bankName: body.bankName,
+        userId,
+      })
+    );
 
     if (body.salary) {
       const net = body.salary.baseSalaryCents + body.salary.allowancesCents - body.salary.deductionsCents;
-      const salaryInsert = db.insert(schema.salaryStructures).values({
-        id: crypto.randomUUID(),
-        employeeId,
-        baseSalaryCents: body.salary.baseSalaryCents,
-        allowancesCents: body.salary.allowancesCents,
-        deductionsCents: body.salary.deductionsCents,
-        netSalaryCents: net,
-      });
-      await db.batch([empInsert, salaryInsert]);
-    } else {
-      await empInsert;
+      batchStatements.push(
+        db.insert(schema.salaryStructures).values({
+          id: crypto.randomUUID(),
+          employeeId,
+          baseSalaryCents: body.salary.baseSalaryCents,
+          allowancesCents: body.salary.allowancesCents,
+          deductionsCents: body.salary.deductionsCents,
+          netSalaryCents: net,
+        })
+      );
     }
+
+    await db.batch(batchStatements as any);
 
     const created = await db.query.employees.findFirst({
       where: eq(schema.employees.id, employeeId),
-      with: { salaryStructures: true },
+      with: { salaryStructures: true, user: true },
     });
 
-    return c.json({ success: true, data: created }, 201);
+    const { user, ...employeeSafe } = created as NonNullable<typeof created>;
+    const safeUser = user ? (({ passwordHash, ...rest }) => rest)(user) : null;
+
+    return c.json({ success: true, data: { ...employeeSafe, user: safeUser } }, 201);
   }
 );
 
@@ -1405,43 +1445,6 @@ app.get('/api/admin/users', async (c) => {
     data: users.map(({ passwordHash, ...safe }) => safe),
   });
 });
-
-// POST /api/admin/users - Create a user account
-app.post(
-  '/api/admin/users',
-  zValidator(
-    'json',
-    z.object({
-      email: z.string().email(),
-      name: z.string().min(1),
-      password: z.string().min(8),
-      role: z.enum(['ADMIN', 'MANAGER', 'STAFF']),
-    })
-  ),
-  async (c) => {
-    const db = createDbClient(c.env.DB);
-    const body = c.req.valid('json');
-
-    const existing = await db.query.users.findFirst({ where: eq(schema.users.email, body.email.toLowerCase()) });
-    if (existing) {
-      return c.json({ success: false, error: 'A user with that email already exists' }, 400);
-    }
-
-    const userId = crypto.randomUUID();
-    await db.insert(schema.users).values({
-      id: userId,
-      email: body.email.toLowerCase(),
-      name: body.name,
-      passwordHash: await hashPassword(body.password),
-      role: body.role,
-    });
-
-    const created = await db.query.users.findFirst({ where: eq(schema.users.id, userId) });
-    if (!created) return c.json({ success: false, error: 'Failed to create user' }, 500);
-    const { passwordHash, ...safe } = created;
-    return c.json({ success: true, data: safe }, 201);
-  }
-);
 
 // PATCH /api/admin/users/:id - Update name/role/active status (and optionally reset password)
 app.patch(

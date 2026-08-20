@@ -83,10 +83,10 @@ function renderAdminPanel(container) {
     <div class="panel-card">
       <div class="panel-header">
         <div class="panel-title">User Accounts</div>
-        <div class="panel-actions">
-          <button class="btn btn-primary btn-sm" onclick="openNewUserModal()">+ New User</button>
-        </div>
       </div>
+      <p style="padding: 0 0 1rem; font-size: 0.85rem; color: #64748b;">
+        New logins are created from Payroll &amp; Staff when adding an employee. This page manages roles and access for existing accounts.
+      </p>
       <div class="table-responsive">
         <table class="data-table">
           <thead>
@@ -129,86 +129,6 @@ function renderAdminPanel(container) {
       </div>
     </div>
   \`;
-}
-
-function openNewUserModal() {
-  const body = \`
-    <form id="form-new-user" onsubmit="submitNewUser(event)">
-      <div class="form-group">
-        <label class="form-label">Full Name *</label>
-        <input type="text" id="new-user-name" class="form-input" required />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Email Address *</label>
-        <input type="email" id="new-user-email" class="form-input" required />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Temporary Password *</label>
-        <div class="password-input-wrapper">
-          <input type="password" id="new-user-password" class="form-input" minlength="8" required autocomplete="new-password" />
-          <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('new-user-password', this)" tabindex="-1" aria-label="Show password">
-            \${EYE_ICON_SVG}
-          </button>
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Confirm Password *</label>
-        <div class="password-input-wrapper">
-          <input type="password" id="new-user-password-confirm" class="form-input" minlength="8" required autocomplete="new-password" />
-          <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('new-user-password-confirm', this)" tabindex="-1" aria-label="Show password">
-            \${EYE_ICON_SVG}
-          </button>
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Role *</label>
-        <select id="new-user-role" class="form-input" required>
-          <option value="STAFF">STAFF</option>
-          <option value="MANAGER">MANAGER</option>
-          <option value="ADMIN">ADMIN</option>
-        </select>
-      </div>
-    </form>
-  \`;
-  const footer = \`
-    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-primary" onclick="document.getElementById('form-new-user').requestSubmit()">Create User</button>
-  \`;
-  openModal('Create User Account', body, footer);
-}
-
-async function submitNewUser(e) {
-  e.preventDefault();
-  const password = document.getElementById('new-user-password').value;
-  const passwordConfirm = document.getElementById('new-user-password-confirm').value;
-
-  if (password !== passwordConfirm) {
-    showToast('Passwords do not match', 'danger');
-    return;
-  }
-
-  const payload = {
-    name: document.getElementById('new-user-name').value,
-    email: document.getElementById('new-user-email').value,
-    password,
-    role: document.getElementById('new-user-role').value,
-  };
-
-  try {
-    const res = await apiFetch('/api/admin/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const json = await res.json();
-    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to create user');
-
-    closeModal();
-    showToast('User ' + json.data.email + ' created', 'success');
-    loadAdmin();
-  } catch (err) {
-    showToast(err.message, 'danger');
-  }
 }
 
 async function applyUserRoleChange(userId) {
