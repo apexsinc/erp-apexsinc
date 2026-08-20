@@ -65,7 +65,7 @@ export const rolePermissions = sqliteTable(
       .$defaultFn(() => crypto.randomUUID()),
     role: text('role', { enum: ['MANAGER', 'STAFF'] }).notNull(),
     module: text('module', {
-      enum: ['dashboard', 'inventory', 'purchasing', 'sales', 'accounting', 'payroll'],
+      enum: ['dashboard', 'inventory', 'purchasing', 'inbound', 'sales', 'accounting', 'payroll'],
     }).notNull(),
     canView: integer('can_view', { mode: 'boolean' }).notNull().default(false),
     updatedAt: text('updated_at')

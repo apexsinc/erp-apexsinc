@@ -6,6 +6,7 @@ const MODULE_LABELS = {
   dashboard: 'Dashboard',
   inventory: 'Inventory & Stock',
   purchasing: 'Purchasing (P2P)',
+  inbound: 'Inbound Deliveries',
   sales: 'Sales & Invoicing',
   accounting: 'Accounting & Ledger',
   payroll: 'Payroll & Staff',

@@ -50,6 +50,7 @@ app.use('/api/admin/*', authMiddleware, requireAdmin);
 app.use('/api/dashboard', authMiddleware, requireModule('dashboard'));
 app.use('/api/inventory/*', authMiddleware, requireModule('inventory'));
 app.use('/api/purchasing/*', authMiddleware, requireModule('purchasing'));
+app.use('/api/inbound/*', authMiddleware, requireModule('inbound'));
 app.use('/api/sales/*', authMiddleware, requireModule('sales'));
 app.use('/api/accounting/*', authMiddleware, requireModule('accounting'));
 app.use('/api/payroll/*', authMiddleware, requireModule('payroll'));
@@ -531,9 +532,52 @@ app.get('/api/purchasing/orders', async (c) => {
   return c.json({ success: true, data: orders });
 });
 
-// POST /api/purchasing/orders/:id/receive - Process Goods Received Note (GRN) & increment inventory
+/* ========================================================================== */
+/* 3. INBOUND DELIVERY TRACKING MODULE                                        */
+/* Every approved PO shows up here for two-step receiving:                    */
+/*   1) Mark as Delivered — the shipment has physically arrived.              */
+/*   2) Confirm Quantity Arrived — records a GRN, updates the stock ledger,   */
+/*      and moves the PO to PARTIALLY_RECEIVED or RECEIVED depending on       */
+/*      whether every line item is now fully accounted for.                  */
+/* ========================================================================== */
+
+// GET /api/inbound/orders - List POs that have moved past DRAFT for delivery tracking
+app.get('/api/inbound/orders', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const orders = await db.query.purchaseOrders.findMany({
+    where: (poTable, { inArray }) => inArray(poTable.status, ['APPROVED', 'DELIVERED', 'PARTIALLY_RECEIVED', 'RECEIVED']),
+    orderBy: [desc(schema.purchaseOrders.createdAt)],
+    with: { vendor: true, items: { with: { product: true } } },
+  });
+  return c.json({ success: true, data: orders });
+});
+
+// POST /api/inbound/orders/:id/mark-delivered - Step 1: shipment has physically arrived
+app.post('/api/inbound/orders/:id/mark-delivered', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const poId = c.req.param('id');
+
+  const po = await db.query.purchaseOrders.findFirst({ where: eq(schema.purchaseOrders.id, poId) });
+  if (!po) return c.json({ success: false, error: 'Purchase Order not found' }, 404);
+  if (po.status !== 'APPROVED') {
+    return c.json({ success: false, error: `Cannot mark as delivered from status ${po.status}` }, 400);
+  }
+
+  await db
+    .update(schema.purchaseOrders)
+    .set({ status: 'DELIVERED', deliveredAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+    .where(eq(schema.purchaseOrders.id, poId));
+
+  const updated = await db.query.purchaseOrders.findFirst({
+    where: eq(schema.purchaseOrders.id, poId),
+    with: { vendor: true, items: { with: { product: true } } },
+  });
+  return c.json({ success: true, data: updated });
+});
+
+// POST /api/inbound/orders/:id/receive - Step 2: confirm quantity arrived, create GRN & increment inventory
 app.post(
-  '/api/purchasing/orders/:id/receive',
+  '/api/inbound/orders/:id/receive',
   zValidator(
     'json',
     z.object({
@@ -556,6 +600,9 @@ app.post(
       with: { items: true },
     });
     if (!po) return c.json({ success: false, error: 'Purchase Order not found' }, 404);
+    if (po.status !== 'DELIVERED' && po.status !== 'PARTIALLY_RECEIVED') {
+      return c.json({ success: false, error: `Cannot confirm quantity from status ${po.status}. Mark as delivered first.` }, 400);
+    }
 
     const grnId = crypto.randomUUID();
     const grnNumber = 'GRN-' + Date.now().toString().slice(-6);
@@ -568,6 +615,7 @@ app.post(
     });
 
     const batchStatements: any[] = [grnInsert];
+    const updatedQtyByItemId = new Map<string, number>();
 
     for (const recItem of body.items) {
       const poItem = po.items.find((i) => i.id === recItem.poItemId);
@@ -601,14 +649,20 @@ app.post(
 
       // Update PO Item quantity received
       const updatedQty = poItem.quantityReceived + recItem.quantityReceived;
+      updatedQtyByItemId.set(poItem.id, updatedQty);
       batchStatements.push(
         db.update(schema.purchaseOrderItems).set({ quantityReceived: updatedQty }).where(eq(schema.purchaseOrderItems.id, poItem.id))
       );
     }
 
-    // Update PO Status
+    // A PO is only fully RECEIVED once every line item's received quantity meets its ordered
+    // quantity; otherwise it's PARTIALLY_RECEIVED so the remainder still shows up in Inbound.
+    const isFullyReceived = po.items.every((item) => (updatedQtyByItemId.get(item.id) ?? item.quantityReceived) >= item.quantityOrdered);
     batchStatements.push(
-      db.update(schema.purchaseOrders).set({ status: 'RECEIVED', updatedAt: new Date().toISOString() }).where(eq(schema.purchaseOrders.id, poId))
+      db
+        .update(schema.purchaseOrders)
+        .set({ status: isFullyReceived ? 'RECEIVED' : 'PARTIALLY_RECEIVED', updatedAt: new Date().toISOString() })
+        .where(eq(schema.purchaseOrders.id, poId))
     );
 
     // Execute atomic batch transaction
@@ -624,7 +678,7 @@ app.post(
 );
 
 /* ========================================================================== */
-/* 3. SALES (O2C) MODULE                                                      */
+/* 4. SALES (O2C) MODULE                                                      */
 /* ========================================================================== */
 
 // POST /api/sales/customers - Create Customer
@@ -950,7 +1004,7 @@ app.post(
 );
 
 /* ========================================================================== */
-/* 4. VOUCHERS & ACCOUNTING MODULE                                            */
+/* 5. VOUCHERS & ACCOUNTING MODULE                                            */
 /* ========================================================================== */
 
 // GET /api/accounting/accounts - List Chart of Accounts
@@ -1086,7 +1140,7 @@ app.get('/api/accounting/ledger', async (c) => {
 });
 
 /* ========================================================================== */
-/* 5. PAYROLL MODULE                                                          */
+/* 6. PAYROLL MODULE                                                          */
 /* ========================================================================== */
 
 // POST /api/payroll/employees - Create Employee (optionally with a linked login account)
@@ -1385,7 +1439,7 @@ app.get('/api/payroll/runs', async (c) => {
 });
 
 /* ========================================================================== */
-/* 6. EXECUTIVE DASHBOARD & AGGREGATIONS                                      */
+/* 7. EXECUTIVE DASHBOARD & AGGREGATIONS                                      */
 /* ========================================================================== */
 
 app.get('/api/dashboard', async (c) => {
@@ -1433,7 +1487,7 @@ app.get('/api/dashboard', async (c) => {
 });
 
 /* ========================================================================== */
-/* 7. ADMINISTRATION — USER & ROLE PERMISSION MANAGEMENT (ADMIN only)         */
+/* 8. ADMINISTRATION — USER & ROLE PERMISSION MANAGEMENT (ADMIN only)         */
 /* ========================================================================== */
 
 // GET /api/admin/users - List all user accounts
