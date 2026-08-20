@@ -4,6 +4,7 @@ export function renderAdminView(): string {
 
 const MODULE_LABELS = {
   dashboard: 'Dashboard',
+  directory: 'Business Directory',
   inventory: 'Inventory & Stock',
   purchasing: 'Purchasing (P2P)',
   inbound: 'Inbound Deliveries',
