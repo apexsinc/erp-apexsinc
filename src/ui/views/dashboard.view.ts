@@ -9,8 +9,8 @@ async function loadDashboard() {
 
   try {
     const [dashRes, tbRes] = await Promise.all([
-      fetch('/api/dashboard'),
-      fetch('/api/accounting/trial-balance'),
+      apiFetch('/api/dashboard'),
+      apiFetch('/api/accounting/trial-balance'),
     ]);
     const dashData = await dashRes.json();
     const tbData = await tbRes.json();

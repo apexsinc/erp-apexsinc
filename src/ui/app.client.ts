@@ -5,6 +5,7 @@ import { PURCHASING_CLIENT_JS } from './views/purchasing.view';
 import { SALES_CLIENT_JS } from './views/sales.view';
 import { ACCOUNTING_CLIENT_JS } from './views/accounting.view';
 import { PAYROLL_CLIENT_JS } from './views/payroll.view';
+import { ADMIN_CLIENT_JS } from './views/admin.view';
 
 export const APP_CLIENT_JS = `
 // ============================================================================
@@ -23,12 +24,34 @@ const state = {
   payrollRuns: [],
   accounts: [],
   trialBalance: null,
+  adminUsers: [],
+  adminModules: [],
+  adminMatrix: {},
 };
 
 // Global Utilities
 function formatCurrency(cents) {
   if (cents === undefined || cents === null) return '₱0.00';
   return '₱' + (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Attaches the session token to every API call and handles a revoked/expired
+// session (401) by bouncing back to the login screen instead of leaving the
+// UI in a broken half-authenticated state.
+async function apiFetch(url, options = {}) {
+  const token = localStorage.getItem('apexs_token');
+  const headers = Object.assign({}, options.headers, token ? { Authorization: 'Bearer ' + token } : {});
+  const res = await fetch(url, Object.assign({}, options, { headers }));
+
+  if (res.status === 401) {
+    localStorage.removeItem('apexs_token');
+    localStorage.removeItem('apexs_user');
+    state.user = null;
+    showLogin();
+    showToast('Your session has expired. Please sign in again.', 'danger');
+  }
+
+  return res;
 }
 
 function showToast(message, type = 'info') {
@@ -74,9 +97,18 @@ ${PURCHASING_CLIENT_JS}
 ${SALES_CLIENT_JS}
 ${ACCOUNTING_CLIENT_JS}
 ${PAYROLL_CLIENT_JS}
+${ADMIN_CLIENT_JS}
 
 // Global Tab Router
 function switchTab(tabName) {
+  const permissions = window.__ROLE_PERMISSIONS__ || {};
+  const allowedTabs = ((state.user && permissions[state.user.role]) || []).slice();
+  if (state.user && state.user.role === 'ADMIN') allowedTabs.push('admin');
+  if (!allowedTabs.includes(tabName)) {
+    showToast('You do not have access to that module', 'danger');
+    tabName = allowedTabs[0] || tabName;
+  }
+
   state.activeTab = tabName;
 
   document.querySelectorAll('.nav-item').forEach((item) => {
@@ -95,6 +127,7 @@ function switchTab(tabName) {
     sales: 'Sales (O2C Orders & Invoices)',
     accounting: 'Accounting & Ledger',
     payroll: 'Payroll & Staff',
+    admin: 'Roles & Permissions',
   };
   breadcrumb.innerText = tabTitles[tabName] || tabName;
 
@@ -111,6 +144,7 @@ function switchTab(tabName) {
   if (tabName === 'sales') loadSales();
   if (tabName === 'accounting') loadAccounting();
   if (tabName === 'payroll') loadPayroll();
+  if (tabName === 'admin') loadAdmin();
 }
 
 // Initial Boot

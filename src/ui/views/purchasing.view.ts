@@ -9,8 +9,8 @@ async function loadPurchasing() {
 
   try {
     const [ordersRes, vendorsRes] = await Promise.all([
-      fetch('/api/purchasing/orders'),
-      fetch('/api/purchasing/vendors'),
+      apiFetch('/api/purchasing/orders'),
+      apiFetch('/api/purchasing/vendors'),
     ]);
     const ordersJson = await ordersRes.json();
     const vendorsJson = await vendorsRes.json();
@@ -114,7 +114,7 @@ async function submitNewVendor(e) {
   };
 
   try {
-    const res = await fetch('/api/purchasing/vendors', {
+    const res = await apiFetch('/api/purchasing/vendors', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -191,7 +191,7 @@ async function submitNewPO(e) {
   };
 
   try {
-    const res = await fetch('/api/purchasing/orders', {
+    const res = await apiFetch('/api/purchasing/orders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -256,7 +256,7 @@ async function submitReceivePO(e, poId) {
   };
 
   try {
-    const res = await fetch('/api/purchasing/orders/' + poId + '/receive', {
+    const res = await apiFetch('/api/purchasing/orders/' + poId + '/receive', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

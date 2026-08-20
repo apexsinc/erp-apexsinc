@@ -8,12 +8,13 @@
     "build": "wrangler deploy --dry-run",
     "deploy": "wrangler deploy",
     "db:generate": "drizzle-kit generate",
-    "db:migrate:local": "wrangler d1 migrations apply erp-db --local",
-    "db:migrate:prod": "wrangler d1 migrations apply erp-db --remote",
+    "db:migrate:local": "wrangler d1 migrations apply apexsinc-erp-db --local",
+    "db:migrate:prod": "wrangler d1 migrations apply apexsinc-erp-db --remote",
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@casl/ability": "^7.0.1",
     "@hono/zod-validator": "^0.4.3",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.7.2",

@@ -9,8 +9,8 @@ async function loadSales() {
 
   try {
     const [soRes, custRes] = await Promise.all([
-      fetch('/api/sales/orders'),
-      fetch('/api/sales/customers'),
+      apiFetch('/api/sales/orders'),
+      apiFetch('/api/sales/customers'),
     ]);
     const soJson = await soRes.json();
     const custJson = await custRes.json();
@@ -107,7 +107,7 @@ async function submitNewCustomer(e) {
   };
 
   try {
-    const res = await fetch('/api/sales/customers', {
+    const res = await apiFetch('/api/sales/customers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -184,7 +184,7 @@ async function submitNewSalesOrder(e) {
   };
 
   try {
-    const res = await fetch('/api/sales/orders', {
+    const res = await apiFetch('/api/sales/orders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -204,7 +204,7 @@ async function fulfillSalesOrder(soId, soNumber) {
   if (!confirm('Fulfill ' + soNumber + '? This will decrement inventory, issue an invoice, and post revenue accounting entries.')) return;
 
   try {
-    const res = await fetch('/api/sales/orders/' + soId + '/invoice', {
+    const res = await apiFetch('/api/sales/orders/' + soId + '/invoice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ notes: 'Order fulfillment' }),
@@ -260,7 +260,7 @@ async function submitReceipt(e, invoiceId) {
   };
 
   try {
-    const res = await fetch('/api/sales/invoices/' + invoiceId + '/receipt', {
+    const res = await apiFetch('/api/sales/invoices/' + invoiceId + '/receipt', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

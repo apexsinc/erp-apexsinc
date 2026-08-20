@@ -69,12 +69,21 @@ async function handleLogin(e) {
   }
 }
 
-function handleLogout() {
+async function handleLogout() {
+  const token = localStorage.getItem('apexs_token');
   localStorage.removeItem('apexs_token');
   localStorage.removeItem('apexs_user');
   state.user = null;
   showLogin();
   showToast('Signed out', 'info');
+
+  if (token) {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
+    } catch (_) {
+      // Local session is already cleared client-side; best-effort server revoke.
+    }
+  }
 }
 
 function checkAuth() {
@@ -116,6 +125,30 @@ function showApp() {
     if (nameEl) nameEl.innerText = state.user.name;
     if (roleEl) roleEl.innerText = state.user.role;
   }
-  switchTab(state.activeTab || 'dashboard');
+
+  const allowedTabs = applyRolePermissions();
+  const initialTab = allowedTabs.includes(state.activeTab) ? state.activeTab : allowedTabs[0];
+  switchTab(initialTab || 'dashboard');
+}
+
+// Hides sidebar nav items the current user's role isn't permitted to view,
+// per the role -> module map computed server-side (src/lib/permissions.ts)
+// and injected as window.__ROLE_PERMISSIONS__. Returns the allowed tab list.
+//
+// 'admin' (Roles & Permissions) is intentionally NOT part of that editable
+// matrix — it's hardcoded to ADMIN only here so the permission-matrix UI
+// itself can never be used to grant access to the permission-matrix UI.
+function applyRolePermissions() {
+  const permissions = window.__ROLE_PERMISSIONS__ || {};
+  const role = state.user && state.user.role;
+  const allowedTabs = (permissions[role] || []).slice();
+  if (role === 'ADMIN') allowedTabs.push('admin');
+
+  document.querySelectorAll('.nav-item[data-tab]').forEach((item) => {
+    const tab = item.dataset.tab;
+    item.style.display = allowedTabs.includes(tab) ? '' : 'none';
+  });
+
+  return allowedTabs;
 }
 `;

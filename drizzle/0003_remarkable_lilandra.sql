@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `role_permissions_role_module_unique` ON `role_permissions` (`role`,`module`);

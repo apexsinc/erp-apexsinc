@@ -9,8 +9,8 @@ async function loadPayroll() {
 
   try {
     const [empRes, runsRes] = await Promise.all([
-      fetch('/api/payroll/employees'),
-      fetch('/api/payroll/runs'),
+      apiFetch('/api/payroll/employees'),
+      apiFetch('/api/payroll/runs'),
     ]);
     const empJson = await empRes.json();
     const runsJson = await runsRes.json();
@@ -191,7 +191,7 @@ async function submitNewEmployee(e) {
   };
 
   try {
-    const res = await fetch('/api/payroll/employees', {
+    const res = await apiFetch('/api/payroll/employees', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -242,7 +242,7 @@ async function submitNewPayrollRun(e) {
   };
 
   try {
-    const res = await fetch('/api/payroll/runs', {
+    const res = await apiFetch('/api/payroll/runs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -262,7 +262,7 @@ async function finalizePayrollRun(runId, runNumber) {
   if (!confirm('Finalize ' + runNumber + '? This will generate payslips and create a Payment Voucher.')) return;
 
   try {
-    const res = await fetch('/api/payroll/runs/' + runId + '/finalize', { method: 'POST' });
+    const res = await apiFetch('/api/payroll/runs/' + runId + '/finalize', { method: 'POST' });
     const json = await res.json();
     if (!res.ok || !json.success) throw new Error(json.error || 'Failed to finalize payroll');
 
