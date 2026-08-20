@@ -1,0 +1,56 @@
+export function renderSidebar(): string {
+  return `
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon">A</div>
+        <div class="brand-text">
+          <h1>Apexs ERP</h1>
+          <span>Enterprise System</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-menu">
+        <div class="nav-section-title">Operations</div>
+        <a class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          Dashboard
+        </a>
+        <a class="nav-item" data-tab="inventory" onclick="switchTab('inventory')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+          Inventory & Stock
+        </a>
+        <a class="nav-item" data-tab="purchasing" onclick="switchTab('purchasing')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+          Purchasing (P2P)
+        </a>
+        <a class="nav-item" data-tab="sales" onclick="switchTab('sales')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          Sales & Invoicing
+        </a>
+
+        <div class="nav-section-title">Finance & HR</div>
+        <a class="nav-item" data-tab="accounting" onclick="switchTab('accounting')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+          Accounting & Ledger
+        </a>
+        <a class="nav-item" data-tab="payroll" onclick="switchTab('payroll')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          Payroll & Staff
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="admin-badge-box">
+          <div class="avatar">AD</div>
+          <div class="admin-info">
+            <div class="admin-name" id="admin-display-name">Administrator</div>
+            <div class="admin-role" id="admin-display-role">System Admin</div>
+          </div>
+        </div>
+        <button class="btn-logout" onclick="handleLogout()" title="Sign Out">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+        </button>
+      </div>
+    </aside>
+  `;
+}
