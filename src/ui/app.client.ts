@@ -1,5 +1,6 @@
 import { LOGIN_CLIENT_JS } from './views/login.view';
 import { DASHBOARD_CLIENT_JS } from './views/dashboard.view';
+import { DIRECTORY_CLIENT_JS } from './views/directory.view';
 import { INVENTORY_CLIENT_JS } from './views/inventory.view';
 import { PURCHASING_CLIENT_JS } from './views/purchasing.view';
 import { INBOUND_CLIENT_JS } from './views/inbound.view';
@@ -108,6 +109,7 @@ function togglePasswordVisibility(inputId, btn) {
 // Subsystem Client Logic
 ${LOGIN_CLIENT_JS}
 ${DASHBOARD_CLIENT_JS}
+${DIRECTORY_CLIENT_JS}
 ${INVENTORY_CLIENT_JS}
 ${PURCHASING_CLIENT_JS}
 ${INBOUND_CLIENT_JS}
@@ -139,6 +141,7 @@ function switchTab(tabName) {
   const breadcrumb = document.getElementById('active-breadcrumb');
   const tabTitles = {
     dashboard: 'Executive Dashboard',
+    directory: 'Business Directory',
     inventory: 'Inventory & Stock Movements',
     purchasing: 'Purchasing (P2P Procurement)',
     inbound: 'Inbound Deliveries',
@@ -157,6 +160,7 @@ function switchTab(tabName) {
   }
 
   if (tabName === 'dashboard') loadDashboard();
+  if (tabName === 'directory') loadDirectory();
   if (tabName === 'inventory') loadInventory();
   if (tabName === 'purchasing') loadPurchasing();
   if (tabName === 'inbound') loadInbound();

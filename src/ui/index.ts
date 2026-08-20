@@ -3,6 +3,7 @@ import { renderSidebar, renderTopbar, renderModalAndToasts } from './components'
 import {
   renderLoginView,
   renderDashboardView,
+  renderDirectoryView,
   renderInventoryView,
   renderPurchasingView,
   renderInboundView,
@@ -61,6 +62,7 @@ export function renderAppHtml(rolePermissions: Record<Role, Module[]>, options: 
       <!-- ACTIVE TAB SUBVIEWS -->
       <div class="page-body">
         ${renderDashboardView()}
+        ${renderDirectoryView()}
         ${renderInventoryView()}
         ${renderPurchasingView()}
         ${renderInboundView()}

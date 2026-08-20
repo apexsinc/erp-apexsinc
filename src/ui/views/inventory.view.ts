@@ -40,10 +40,12 @@ async function loadInventory() {
         <div class="panel-header">
           <div class="panel-title">Product Catalog & Stock Levels</div>
           <div class="panel-actions">
-            <button class="btn btn-primary btn-sm" onclick="openNewProductModal()">Add Product</button>
             <button class="btn btn-secondary btn-sm" onclick="openStockAdjustmentModal()">Stock Adjustment</button>
           </div>
         </div>
+        <p style="padding: 0 1.35rem 1rem; font-size: 0.85rem; color: #64748b;">
+          Add new products from the Business Directory. This view tracks stock levels, valuation, and movement history.
+        </p>
         <div class="table-responsive">
           <table class="data-table">
             <thead>
@@ -67,72 +69,6 @@ async function loadInventory() {
     \`;
   } catch (err) {
     container.innerHTML = \`<div class="panel-card" style="padding: 2rem; color: #dc2626;">Error loading inventory: \${err.message}</div>\`;
-  }
-}
-
-function openNewProductModal() {
-  const body = \`
-    <form id="form-new-product" onsubmit="submitNewProduct(event)">
-      <div class="form-group">
-        <label class="form-label">Product SKU *</label>
-        <input type="text" id="np-sku" class="form-input" placeholder="e.g. WIDGET-100" required />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Product Name *</label>
-        <input type="text" id="np-name" class="form-input" placeholder="e.g. Industrial Widget" required />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Unit of Measure</label>
-        <input type="text" id="np-uom" class="form-input" value="pcs" />
-      </div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-        <div class="form-group">
-          <label class="form-label">Cost Price (Cents) *</label>
-          <input type="number" id="np-cost" class="form-input" placeholder="4500" required />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Selling Price (Cents) *</label>
-          <input type="number" id="np-selling" class="form-input" placeholder="9000" required />
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Initial Stock Count</label>
-        <input type="number" id="np-stock" class="form-input" value="0" min="0" />
-      </div>
-    </form>
-  \`;
-  const footer = \`
-    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-primary" onclick="document.getElementById('form-new-product').requestSubmit()">Save Product</button>
-  \`;
-  openModal('Add New Product', body, footer);
-}
-
-async function submitNewProduct(e) {
-  e.preventDefault();
-  const payload = {
-    sku: document.getElementById('np-sku').value,
-    name: document.getElementById('np-name').value,
-    unitOfMeasure: document.getElementById('np-uom').value,
-    costPriceCents: parseInt(document.getElementById('np-cost').value, 10),
-    sellingPriceCents: parseInt(document.getElementById('np-selling').value, 10),
-    initialStock: parseInt(document.getElementById('np-stock').value, 10) || 0,
-  };
-
-  try {
-    const res = await apiFetch('/api/inventory/products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const json = await res.json();
-    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to save product');
-
-    closeModal();
-    showToast('Product ' + json.data.name + ' created', 'success');
-    loadInventory();
-  } catch (err) {
-    showToast(err.message, 'danger');
   }
 }
 

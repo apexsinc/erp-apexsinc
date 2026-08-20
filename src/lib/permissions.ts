@@ -7,7 +7,7 @@ import type { User } from '../db/schema/auth';
  * Sidebar modules gated by role. Keys match the `data-tab` values
  * used by the sidebar nav items and the client-side tab router.
  */
-export const ALL_MODULES = ['dashboard', 'inventory', 'purchasing', 'inbound', 'sales', 'accounting', 'payroll'] as const;
+export const ALL_MODULES = ['dashboard', 'directory', 'inventory', 'purchasing', 'inbound', 'sales', 'accounting', 'payroll'] as const;
 export type Module = (typeof ALL_MODULES)[number];
 
 export type Role = User['role'];
@@ -24,8 +24,8 @@ type AppAbility = MongoAbility<[Actions, Module]>;
  * further restricted to order fulfillment modules.
  */
 export const DEFAULT_PERMISSION_MATRIX: Record<EditableRole, Module[]> = {
-  MANAGER: ['dashboard', 'inventory', 'purchasing', 'inbound', 'sales'],
-  STAFF: ['dashboard', 'inventory', 'inbound', 'sales'],
+  MANAGER: ['dashboard', 'directory', 'inventory', 'purchasing', 'inbound', 'sales'],
+  STAFF: ['dashboard', 'directory', 'inventory', 'inbound', 'sales'],
 };
 
 /** ADMIN always has full access — enforced in code, never stored/editable, so the matrix can't be edited into locking out every admin. */

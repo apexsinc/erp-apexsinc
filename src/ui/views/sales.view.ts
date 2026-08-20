@@ -47,10 +47,12 @@ async function loadSales() {
         <div class="panel-header">
           <div class="panel-title">Sales Orders & Invoicing</div>
           <div class="panel-actions">
-            <button class="btn btn-secondary btn-sm" onclick="openNewCustomerModal()">Add Customer</button>
             <button class="btn btn-primary btn-sm" onclick="openNewSalesOrderModal()">Create Sales Order</button>
           </div>
         </div>
+        <p style="padding: 0 1.35rem 1rem; font-size: 0.85rem; color: #64748b;">
+          Manage customers in the Business Directory.
+        </p>
         <div class="table-responsive">
           <table class="data-table">
             <thead>
@@ -71,55 +73,6 @@ async function loadSales() {
     \`;
   } catch (err) {
     container.innerHTML = \`<div class="panel-card" style="padding: 2rem; color: #dc2626;">Error loading sales: \${err.message}</div>\`;
-  }
-}
-
-function openNewCustomerModal() {
-  const body = \`
-    <form id="form-new-cust" onsubmit="submitNewCustomer(event)">
-      <div class="form-group">
-        <label class="form-label">Customer Code *</label>
-        <input type="text" id="nc-code" class="form-input" placeholder="e.g. CUST-GLOBEX" required />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Customer Name *</label>
-        <input type="text" id="nc-name" class="form-input" placeholder="e.g. Globex Corporation" required />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Email</label>
-        <input type="email" id="nc-email" class="form-input" placeholder="billing@client.com" />
-      </div>
-    </form>
-  \`;
-  const footer = \`
-    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-primary" onclick="document.getElementById('form-new-cust').requestSubmit()">Save Customer</button>
-  \`;
-  openModal('Add New Customer', body, footer);
-}
-
-async function submitNewCustomer(e) {
-  e.preventDefault();
-  const payload = {
-    customerCode: document.getElementById('nc-code').value,
-    name: document.getElementById('nc-name').value,
-    email: document.getElementById('nc-email').value || undefined,
-  };
-
-  try {
-    const res = await apiFetch('/api/sales/customers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const json = await res.json();
-    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to create customer');
-
-    closeModal();
-    showToast('Customer ' + json.data.name + ' created', 'success');
-    loadSales();
-  } catch (err) {
-    showToast(err.message, 'danger');
   }
 }
 

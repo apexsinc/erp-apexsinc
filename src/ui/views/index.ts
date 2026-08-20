@@ -1,5 +1,6 @@
 export * from './login.view';
 export * from './dashboard.view';
+export * from './directory.view';
 export * from './inventory.view';
 export * from './purchasing.view';
 export * from './inbound.view';
