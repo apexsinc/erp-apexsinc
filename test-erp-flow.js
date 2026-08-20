@@ -3,20 +3,21 @@ async function runTests() {
 
   console.log('=== 1. TEST ROOT HEALTH ===');
   const rootRes = await fetch(`${baseUrl}/`);
-  const rootJson = await rootRes.json();
-  console.log('Root:', JSON.stringify(rootJson, null, 2));
+  console.log('Root Status:', rootRes.status, 'Content-Type:', rootRes.headers.get('content-type'));
 
   console.log('\n=== 2. SEED CHART OF ACCOUNTS ===');
   const seedRes = await fetch(`${baseUrl}/api/setup/seed`, { method: 'POST' });
   const seedJson = await seedRes.json();
   console.log('Seed:', seedJson.message);
 
+  const suffix = Date.now().toString().slice(-4);
+
   console.log('\n=== 3. INVENTORY: CREATE PRODUCT WITH INITIAL STOCK ===');
   const productRes = await fetch(`${baseUrl}/api/inventory/products`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      sku: 'WIDGET-PRO-100',
+      sku: `WIDGET-PRO-${suffix}`,
       name: 'Industrial Widget Pro',
       description: 'High-precision titanium component',
       unitOfMeasure: 'pcs',
@@ -26,6 +27,10 @@ async function runTests() {
     }),
   });
   const productData = await productRes.json();
+  if (!productData.success) {
+    console.error('Product creation failed:', productData);
+    process.exit(1);
+  }
   console.log('Created Product:', productData.data.name, 'SKU:', productData.data.sku, 'Stock:', productData.data.onHandStock);
   const productId = productData.data.id;
 
@@ -34,9 +39,9 @@ async function runTests() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      vendorCode: 'VEND-ACME',
+      vendorCode: `VEND-ACME-${suffix}`,
       name: 'Acme Materials Corp',
-      email: 'sales@acmematerials.com',
+      email: `sales-${suffix}@acmematerials.com`,
       paymentTermsDays: 30,
     }),
   });
@@ -86,9 +91,9 @@ async function runTests() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      customerCode: 'CUST-GLOBEX',
+      customerCode: `CUST-GLOBEX-${suffix}`,
       name: 'Globex Corporation',
-      email: 'procurement@globex.com',
+      email: `procurement-${suffix}@globex.com`,
     }),
   });
   const customerData = await customerRes.json();
@@ -141,10 +146,10 @@ async function runTests() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      employeeCode: 'EMP-001',
+      employeeCode: `EMP-${suffix}`,
       firstName: 'Sarah',
       lastName: 'Connor',
-      email: 'sarah.connor@apexsinc.com',
+      email: `sarah-${suffix}@apexsinc.com`,
       department: 'Engineering',
       position: 'Staff Edge Architect',
       salary: {

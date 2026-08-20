@@ -9,9 +9,16 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "erp-db",
-      "database_id": "erp-db-local-id",
+      "database_name": "apexsinc-erp-db",
+      "database_id": "b682c62b-31f5-4244-a861-bf72c979c6a4",
       "migrations_dir": "drizzle"
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "erp.apexsinc.com",
+      "custom_domain": true
     }
   ]
 }
+
