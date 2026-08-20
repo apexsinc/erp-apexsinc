@@ -1,0 +1,28 @@
+{
+  "name": "apexsinc-erp-app",
+  "version": "1.0.0",
+  "description": "Lightweight Cloudflare Workers ERP & Business Management System using Hono, Drizzle ORM, and Cloudflare D1",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply erp-db --local",
+    "db:migrate:prod": "wrangler d1 migrations apply erp-db --remote",
+    "db:studio": "drizzle-kit studio",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/zod-validator": "^0.4.3",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.7.2",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250224.0",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "^5.7.3",
+    "wrangler": "^4.124.0"
+  }
+}

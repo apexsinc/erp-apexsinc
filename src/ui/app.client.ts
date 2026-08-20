@@ -1,0 +1,120 @@
+import { LOGIN_CLIENT_JS } from './views/login.view';
+import { DASHBOARD_CLIENT_JS } from './views/dashboard.view';
+import { INVENTORY_CLIENT_JS } from './views/inventory.view';
+import { PURCHASING_CLIENT_JS } from './views/purchasing.view';
+import { SALES_CLIENT_JS } from './views/sales.view';
+import { ACCOUNTING_CLIENT_JS } from './views/accounting.view';
+import { PAYROLL_CLIENT_JS } from './views/payroll.view';
+
+export const APP_CLIENT_JS = `
+// ============================================================================
+// APEXS ERP - CLIENT CONTROLLER & ROUTER
+// ============================================================================
+
+const state = {
+  user: null,
+  activeTab: 'dashboard',
+  products: [],
+  vendors: [],
+  purchaseOrders: [],
+  customers: [],
+  salesOrders: [],
+  employees: [],
+  payrollRuns: [],
+  accounts: [],
+  trialBalance: null,
+};
+
+// Global Utilities
+function formatCurrency(cents) {
+  if (cents === undefined || cents === null) return '₱0.00';
+  return '₱' + (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = 'toast toast-' + type;
+  toast.innerHTML = '<span>' + message + '</span>';
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(10px)';
+    toast.style.transition = 'all 0.3s ease';
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
+
+// Modal Manager
+function openModal(title, bodyHtml, footerButtonsHtml = '') {
+  const backdrop = document.getElementById('modal-backdrop');
+  const modalTitle = document.getElementById('modal-title');
+  const modalBody = document.getElementById('modal-body');
+  const modalFooter = document.getElementById('modal-footer');
+
+  modalTitle.innerText = title;
+  modalBody.innerHTML = bodyHtml;
+  modalFooter.innerHTML = footerButtonsHtml || '<button class="btn btn-secondary" onclick="closeModal()">Close</button>';
+  backdrop.style.display = 'flex';
+}
+
+function closeModal() {
+  const backdrop = document.getElementById('modal-backdrop');
+  if (backdrop) backdrop.style.display = 'none';
+}
+
+// Subsystem Client Logic
+${LOGIN_CLIENT_JS}
+${DASHBOARD_CLIENT_JS}
+${INVENTORY_CLIENT_JS}
+${PURCHASING_CLIENT_JS}
+${SALES_CLIENT_JS}
+${ACCOUNTING_CLIENT_JS}
+${PAYROLL_CLIENT_JS}
+
+// Global Tab Router
+function switchTab(tabName) {
+  state.activeTab = tabName;
+
+  document.querySelectorAll('.nav-item').forEach((item) => {
+    if (item.dataset.tab === tabName) {
+      item.classList.add('active');
+    } else {
+      item.classList.remove('active');
+    }
+  });
+
+  const breadcrumb = document.getElementById('active-breadcrumb');
+  const tabTitles = {
+    dashboard: 'Executive Dashboard',
+    inventory: 'Inventory & Stock Movements',
+    purchasing: 'Purchasing (P2P Procurement)',
+    sales: 'Sales (O2C Orders & Invoices)',
+    accounting: 'Accounting & Ledger',
+    payroll: 'Payroll & Staff',
+  };
+  breadcrumb.innerText = tabTitles[tabName] || tabName;
+
+  document.querySelectorAll('.tab-view').forEach((el) => (el.style.display = 'none'));
+
+  const activeView = document.getElementById('view-' + tabName);
+  if (activeView) {
+    activeView.style.display = 'block';
+  }
+
+  if (tabName === 'dashboard') loadDashboard();
+  if (tabName === 'inventory') loadInventory();
+  if (tabName === 'purchasing') loadPurchasing();
+  if (tabName === 'sales') loadSales();
+  if (tabName === 'accounting') loadAccounting();
+  if (tabName === 'payroll') loadPayroll();
+}
+
+// Initial Boot
+document.addEventListener('DOMContentLoaded', () => {
+  checkAuth();
+});
+`;
