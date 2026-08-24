@@ -43,6 +43,13 @@
       "when": 1787211458428,
       "tag": "0005_dashing_deadpool",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1787535384672,
+      "tag": "0006_overjoyed_vector",
+      "breakpoints": true
     }
   ]
 }

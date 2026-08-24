@@ -9,6 +9,7 @@ const MODULE_LABELS = {
   purchasing: 'Purchasing (P2P)',
   inbound: 'Inbound Deliveries',
   sales: 'Sales & Invoicing',
+  outbound: 'Outbound Deliveries',
   accounting: 'Accounting & Ledger',
   payroll: 'Payroll & Staff',
 };

@@ -37,7 +37,7 @@ export const salesOrders = sqliteTable('sales_orders', {
     .notNull()
     .references(() => customers.id),
   status: text('status', {
-    enum: ['DRAFT', 'CONFIRMED', 'FULFILLED', 'CANCELLED'],
+    enum: ['DRAFT', 'CONFIRMED', 'PACKED', 'PARTIALLY_FULFILLED', 'FULFILLED', 'CANCELLED'],
   })
     .notNull()
     .default('DRAFT'),
@@ -46,6 +46,8 @@ export const salesOrders = sqliteTable('sales_orders', {
   orderDate: text('order_date')
     .notNull()
     .$defaultFn(() => new Date().toISOString()),
+  // Set by the Outbound "Mark as Packed" step, before shipped quantities are confirmed.
+  packedAt: text('packed_at'),
   createdAt: text('created_at')
     .notNull()
     .$defaultFn(() => new Date().toISOString()),
@@ -68,6 +70,7 @@ export const salesOrderItems = sqliteTable('sales_order_items', {
     .notNull()
     .references(() => products.id),
   quantity: integer('quantity').notNull(),
+  quantityShipped: integer('quantity_shipped').notNull().default(0),
   unitPriceCents: integer('unit_price_cents').notNull(),
   subtotalCents: integer('subtotal_cents').notNull(),
 });
