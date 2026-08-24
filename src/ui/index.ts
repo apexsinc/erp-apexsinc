@@ -8,6 +8,7 @@ import {
   renderPurchasingView,
   renderInboundView,
   renderSalesView,
+  renderOutboundView,
   renderAccountingView,
   renderPayrollView,
   renderAdminView,
@@ -67,6 +68,7 @@ export function renderAppHtml(rolePermissions: Record<Role, Module[]>, options: 
         ${renderPurchasingView()}
         ${renderInboundView()}
         ${renderSalesView()}
+        ${renderOutboundView()}
         ${renderAccountingView()}
         ${renderPayrollView()}
         ${renderAdminView()}

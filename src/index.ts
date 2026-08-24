@@ -52,6 +52,7 @@ app.use('/api/inventory/*', authMiddleware, requireModule('inventory'));
 app.use('/api/purchasing/*', authMiddleware, requireModule('purchasing'));
 app.use('/api/inbound/*', authMiddleware, requireModule('inbound'));
 app.use('/api/sales/*', authMiddleware, requireModule('sales'));
+app.use('/api/outbound/*', authMiddleware, requireModule('outbound'));
 app.use('/api/accounting/*', authMiddleware, requireModule('accounting'));
 app.use('/api/payroll/*', authMiddleware, requireModule('payroll'));
 
@@ -785,138 +786,10 @@ app.get('/api/sales/orders', async (c) => {
   const db = createDbClient(c.env.DB);
   const orders = await db.query.salesOrders.findMany({
     orderBy: [desc(schema.salesOrders.createdAt)],
-    with: { customer: true, items: { with: { product: true } } },
+    with: { customer: true, items: { with: { product: true } }, invoices: true },
   });
   return c.json({ success: true, data: orders });
 });
-
-// POST /api/sales/orders/:id/invoice - Invoice & Fulfill SO
-app.post(
-  '/api/sales/orders/:id/invoice',
-  zValidator(
-    'json',
-    z.object({
-      dueDate: z.string().default(() => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()),
-      notes: z.string().optional(),
-    })
-  ),
-  async (c) => {
-    const db = createDbClient(c.env.DB);
-    const soId = c.req.param('id');
-    const body = c.req.valid('json');
-
-    const so = await db.query.salesOrders.findFirst({
-      where: eq(schema.salesOrders.id, soId),
-      with: { items: { with: { product: true } } },
-    });
-    if (!so) return c.json({ success: false, error: 'Sales Order not found' }, 404);
-
-    const invoiceId = crypto.randomUUID();
-    const invoiceNumber = 'INV-' + Date.now().toString().slice(-6);
-
-    const invoiceInsert = db.insert(schema.invoices).values({
-      id: invoiceId,
-      invoiceNumber,
-      salesOrderId: so.id,
-      customerId: so.customerId,
-      status: 'ISSUED',
-      dueDate: body.dueDate,
-      totalAmountCents: so.totalAmountCents,
-      paidAmountCents: 0,
-      notes: body.notes,
-    });
-
-    const batchStatements: any[] = [invoiceInsert];
-
-    // Invoice items & Stock Movements OUT
-    for (const item of so.items) {
-      batchStatements.push(
-        db.insert(schema.invoiceItems).values({
-          id: crypto.randomUUID(),
-          invoiceId,
-          productId: item.productId,
-          quantity: item.quantity,
-          unitPriceCents: item.unitPriceCents,
-          subtotalCents: item.subtotalCents,
-        })
-      );
-
-      // Decrement Inventory via stock movement
-      batchStatements.push(
-        db.insert(schema.stockMovements).values({
-          id: crypto.randomUUID(),
-          productId: item.productId,
-          type: 'OUT',
-          quantity: item.quantity,
-          unitCostCents: item.product.costPriceCents,
-          referenceType: 'SO_DELIVERY',
-          referenceId: invoiceNumber,
-          notes: 'Fulfillment for ' + so.soNumber,
-        })
-      );
-    }
-
-    // Mark Sales Order as Fulfilled
-    batchStatements.push(
-      db.update(schema.salesOrders).set({ status: 'FULFILLED', updatedAt: new Date().toISOString() }).where(eq(schema.salesOrders.id, so.id))
-    );
-
-    // Double-Entry Accounting: Accounts Receivable (1300) Debit, Sales Revenue (4010) Credit
-    const arAccount = await db.query.accounts.findFirst({ where: eq(schema.accounts.code, '1300') });
-    const revAccount = await db.query.accounts.findFirst({ where: eq(schema.accounts.code, '4010') });
-
-    if (arAccount && revAccount) {
-      const jvId = crypto.randomUUID();
-      const jvNumber = 'JV-SALES-' + Date.now().toString().slice(-6);
-
-      batchStatements.push(
-        db.insert(schema.journalVouchers).values({
-          id: jvId,
-          jvNumber,
-          description: 'Sales revenue recognition for ' + invoiceNumber,
-          referenceType: 'INVOICE',
-          referenceId: invoiceId,
-        })
-      );
-
-      // Debit A/R
-      batchStatements.push(
-        db.insert(schema.journalEntries).values({
-          id: crypto.randomUUID(),
-          voucherType: 'JOURNAL',
-          voucherId: jvId,
-          accountId: arAccount.id,
-          debitCents: so.totalAmountCents,
-          creditCents: 0,
-          description: 'Receivable from invoice ' + invoiceNumber,
-        })
-      );
-
-      // Credit Revenue
-      batchStatements.push(
-        db.insert(schema.journalEntries).values({
-          id: crypto.randomUUID(),
-          voucherType: 'JOURNAL',
-          voucherId: jvId,
-          accountId: revAccount.id,
-          debitCents: 0,
-          creditCents: so.totalAmountCents,
-          description: 'Revenue from sales order ' + so.soNumber,
-        })
-      );
-    }
-
-    await db.batch(batchStatements as any);
-
-    return c.json({
-      success: true,
-      message: 'Invoice created, stock decremented, and accounting entries posted.',
-      invoiceId,
-      invoiceNumber,
-      totalAmountCents: so.totalAmountCents,
-    });
-  }
-);
 
 // POST /api/sales/invoices/:id/receipt - Customer Payment Receipt
 app.post(
@@ -1004,7 +877,229 @@ app.post(
 );
 
 /* ========================================================================== */
-/* 5. VOUCHERS & ACCOUNTING MODULE                                            */
+/* 5. OUTBOUND DELIVERY TRACKING MODULE                                       */
+/* Every confirmed SO shows up here for two-step fulfillment:                 */
+/*   1) Mark as Packed — the order is picked, boxed, ready to leave.          */
+/*   2) Confirm Shipped Quantity — validates against both remaining ordered   */
+/*      quantity and actual on-hand stock, decrements inventory, issues an    */
+/*      invoice for just the shipped value, and moves the SO to               */
+/*      PARTIALLY_FULFILLED or FULFILLED depending on whether every line is   */
+/*      now fully shipped.                                                    */
+/* ========================================================================== */
+
+// GET /api/outbound/orders - List SOs that have moved past DRAFT for shipment tracking
+app.get('/api/outbound/orders', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const orders = await db.query.salesOrders.findMany({
+    where: (soTable, { inArray }) => inArray(soTable.status, ['CONFIRMED', 'PACKED', 'PARTIALLY_FULFILLED', 'FULFILLED']),
+    orderBy: [desc(schema.salesOrders.createdAt)],
+    with: { customer: true, items: { with: { product: true } } },
+  });
+  return c.json({ success: true, data: orders });
+});
+
+// POST /api/outbound/orders/:id/mark-packed - Step 1: order picked and ready to ship
+app.post('/api/outbound/orders/:id/mark-packed', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const soId = c.req.param('id');
+
+  const so = await db.query.salesOrders.findFirst({ where: eq(schema.salesOrders.id, soId) });
+  if (!so) return c.json({ success: false, error: 'Sales Order not found' }, 404);
+  if (so.status !== 'CONFIRMED') {
+    return c.json({ success: false, error: `Cannot mark as packed from status ${so.status}` }, 400);
+  }
+
+  await db
+    .update(schema.salesOrders)
+    .set({ status: 'PACKED', packedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+    .where(eq(schema.salesOrders.id, soId));
+
+  const updated = await db.query.salesOrders.findFirst({
+    where: eq(schema.salesOrders.id, soId),
+    with: { customer: true, items: { with: { product: true } } },
+  });
+  return c.json({ success: true, data: updated });
+});
+
+// POST /api/outbound/orders/:id/ship - Step 2: confirm shipped quantity, invoice, decrement inventory
+app.post(
+  '/api/outbound/orders/:id/ship',
+  zValidator(
+    'json',
+    z.object({
+      notes: z.string().optional(),
+      items: z.array(
+        z.object({
+          soItemId: z.string().uuid(),
+          quantityShipped: z.number().int().positive(),
+        })
+      ).min(1),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const soId = c.req.param('id');
+    const body = c.req.valid('json');
+
+    const so = await db.query.salesOrders.findFirst({
+      where: eq(schema.salesOrders.id, soId),
+      with: { items: { with: { product: true } } },
+    });
+    if (!so) return c.json({ success: false, error: 'Sales Order not found' }, 404);
+    if (so.status !== 'PACKED' && so.status !== 'PARTIALLY_FULFILLED') {
+      return c.json({ success: false, error: `Cannot ship from status ${so.status}. Mark as packed first.` }, 400);
+    }
+
+    // Validate every line before writing anything: can't ship more than what's still
+    // owed on the order, and — unlike receiving inbound stock — can't ship more than
+    // what's actually on hand.
+    for (const shipItem of body.items) {
+      const soItem = so.items.find((i) => i.id === shipItem.soItemId);
+      if (!soItem) return c.json({ success: false, error: 'Sales order item not found: ' + shipItem.soItemId }, 400);
+
+      const remaining = soItem.quantity - soItem.quantityShipped;
+      if (shipItem.quantityShipped > remaining) {
+        return c.json(
+          { success: false, error: `Cannot ship ${shipItem.quantityShipped} of ${soItem.product.name}; only ${remaining} remain on this order.` },
+          400
+        );
+      }
+
+      const onHand = await getProductStockBalance(db, soItem.productId);
+      if (shipItem.quantityShipped > onHand) {
+        return c.json(
+          { success: false, error: `Insufficient stock for ${soItem.product.name}: ${onHand} available, ${shipItem.quantityShipped} requested.` },
+          400
+        );
+      }
+    }
+
+    const invoiceId = crypto.randomUUID();
+    const invoiceNumber = 'INV-' + Date.now().toString().slice(-6);
+    const shippedTotalCents = body.items.reduce((acc, shipItem) => {
+      const soItem = so.items.find((i) => i.id === shipItem.soItemId)!;
+      return acc + shipItem.quantityShipped * soItem.unitPriceCents;
+    }, 0);
+
+    const invoiceInsert = db.insert(schema.invoices).values({
+      id: invoiceId,
+      invoiceNumber,
+      salesOrderId: so.id,
+      customerId: so.customerId,
+      status: 'ISSUED',
+      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      totalAmountCents: shippedTotalCents,
+      paidAmountCents: 0,
+      notes: body.notes,
+    });
+
+    const batchStatements: any[] = [invoiceInsert];
+    const updatedQtyByItemId = new Map<string, number>();
+
+    for (const shipItem of body.items) {
+      const soItem = so.items.find((i) => i.id === shipItem.soItemId)!;
+
+      batchStatements.push(
+        db.insert(schema.invoiceItems).values({
+          id: crypto.randomUUID(),
+          invoiceId,
+          productId: soItem.productId,
+          quantity: shipItem.quantityShipped,
+          unitPriceCents: soItem.unitPriceCents,
+          subtotalCents: shipItem.quantityShipped * soItem.unitPriceCents,
+        })
+      );
+
+      // Decrement inventory via stock movement
+      batchStatements.push(
+        db.insert(schema.stockMovements).values({
+          id: crypto.randomUUID(),
+          productId: soItem.productId,
+          type: 'OUT',
+          quantity: shipItem.quantityShipped,
+          unitCostCents: soItem.product.costPriceCents,
+          referenceType: 'SO_DELIVERY',
+          referenceId: invoiceNumber,
+          notes: 'Shipment for ' + so.soNumber,
+        })
+      );
+
+      // Update SO Item quantity shipped
+      const updatedQty = soItem.quantityShipped + shipItem.quantityShipped;
+      updatedQtyByItemId.set(soItem.id, updatedQty);
+      batchStatements.push(
+        db.update(schema.salesOrderItems).set({ quantityShipped: updatedQty }).where(eq(schema.salesOrderItems.id, soItem.id))
+      );
+    }
+
+    // A SO is only fully FULFILLED once every line item's shipped quantity meets its
+    // ordered quantity; otherwise it's PARTIALLY_FULFILLED so the remainder still shows
+    // up in Outbound.
+    const isFullyShipped = so.items.every((item) => (updatedQtyByItemId.get(item.id) ?? item.quantityShipped) >= item.quantity);
+    batchStatements.push(
+      db
+        .update(schema.salesOrders)
+        .set({ status: isFullyShipped ? 'FULFILLED' : 'PARTIALLY_FULFILLED', updatedAt: new Date().toISOString() })
+        .where(eq(schema.salesOrders.id, soId))
+    );
+
+    // Double-Entry Accounting: Accounts Receivable (1300) Debit, Sales Revenue (4010) Credit — for the shipped value only
+    const arAccount = await db.query.accounts.findFirst({ where: eq(schema.accounts.code, '1300') });
+    const revAccount = await db.query.accounts.findFirst({ where: eq(schema.accounts.code, '4010') });
+
+    if (arAccount && revAccount) {
+      const jvId = crypto.randomUUID();
+      const jvNumber = 'JV-SALES-' + Date.now().toString().slice(-6);
+
+      batchStatements.push(
+        db.insert(schema.journalVouchers).values({
+          id: jvId,
+          jvNumber,
+          description: 'Sales revenue recognition for ' + invoiceNumber,
+          referenceType: 'INVOICE',
+          referenceId: invoiceId,
+        })
+      );
+
+      batchStatements.push(
+        db.insert(schema.journalEntries).values({
+          id: crypto.randomUUID(),
+          voucherType: 'JOURNAL',
+          voucherId: jvId,
+          accountId: arAccount.id,
+          debitCents: shippedTotalCents,
+          creditCents: 0,
+          description: 'Receivable from invoice ' + invoiceNumber,
+        })
+      );
+
+      batchStatements.push(
+        db.insert(schema.journalEntries).values({
+          id: crypto.randomUUID(),
+          voucherType: 'JOURNAL',
+          voucherId: jvId,
+          accountId: revAccount.id,
+          debitCents: 0,
+          creditCents: shippedTotalCents,
+          description: 'Revenue from sales order ' + so.soNumber,
+        })
+      );
+    }
+
+    await db.batch(batchStatements as any);
+
+    return c.json({
+      success: true,
+      message: 'Shipment confirmed, invoice issued, and stock ledger updated.',
+      invoiceId,
+      invoiceNumber,
+      totalAmountCents: shippedTotalCents,
+    });
+  }
+);
+
+/* ========================================================================== */
+/* 6. VOUCHERS & ACCOUNTING MODULE                                            */
 /* ========================================================================== */
 
 // GET /api/accounting/accounts - List Chart of Accounts
@@ -1140,7 +1235,7 @@ app.get('/api/accounting/ledger', async (c) => {
 });
 
 /* ========================================================================== */
-/* 6. PAYROLL MODULE                                                          */
+/* 7. PAYROLL MODULE                                                          */
 /* ========================================================================== */
 
 // POST /api/payroll/employees - Create Employee (optionally with a linked login account)
@@ -1439,7 +1534,7 @@ app.get('/api/payroll/runs', async (c) => {
 });
 
 /* ========================================================================== */
-/* 7. EXECUTIVE DASHBOARD & AGGREGATIONS                                      */
+/* 8. EXECUTIVE DASHBOARD & AGGREGATIONS                                      */
 /* ========================================================================== */
 
 app.get('/api/dashboard', async (c) => {
@@ -1487,7 +1582,7 @@ app.get('/api/dashboard', async (c) => {
 });
 
 /* ========================================================================== */
-/* 8. ADMINISTRATION — USER & ROLE PERMISSION MANAGEMENT (ADMIN only)         */
+/* 9. ADMINISTRATION — USER & ROLE PERMISSION MANAGEMENT (ADMIN only)         */
 /* ========================================================================== */
 
 // GET /api/admin/users - List all user accounts

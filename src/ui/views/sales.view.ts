@@ -18,26 +18,42 @@ async function loadSales() {
     state.salesOrders = soJson.data || [];
     state.customers = custJson.data || [];
 
+    const soStatusBadgeClass = {
+      DRAFT: 'badge-neutral',
+      CONFIRMED: 'badge-primary',
+      PACKED: 'badge-warning',
+      PARTIALLY_FULFILLED: 'badge-warning',
+      FULFILLED: 'badge-success',
+      CANCELLED: 'badge-danger',
+    };
+
     let rowsHtml = '';
     state.salesOrders.forEach((so) => {
-      const isFulfilled = so.status === 'FULFILLED';
+      const invoices = so.invoices || [];
+      const invoicesHtml = invoices.length
+        ? invoices.map((inv) => \`
+            <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem;">
+              <span class="badge \${inv.status === 'PAID' ? 'badge-success' : inv.status === 'PARTIALLY_PAID' ? 'badge-warning' : 'badge-primary'}" style="font-size: 0.68rem;">\${inv.invoiceNumber}</span>
+              \${inv.status !== 'PAID'
+                ? \`<button class="btn btn-success btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.72rem;" onclick="openRecordReceiptModal('\${inv.id}', '\${inv.invoiceNumber}', \${inv.totalAmountCents - inv.paidAmountCents})">Pay</button>\`
+                : ''
+              }
+            </div>
+          \`).join('')
+        : '<span style="color: #94a3b8; font-size: 0.78rem;">Not yet invoiced</span>';
+
       rowsHtml += \`
         <tr>
           <td><strong>\${so.soNumber}</strong></td>
           <td>\${so.customer?.name || 'Customer'}</td>
           <td>
-            <span class="badge \${isFulfilled ? 'badge-success' : 'badge-primary'}">
+            <span class="badge \${soStatusBadgeClass[so.status] || 'badge-neutral'}">
               <span class="badge-dot"></span>
-              \${so.status}
+              \${so.status.replace('_', ' ')}
             </span>
           </td>
           <td><strong>\${formatCurrency(so.totalAmountCents)}</strong></td>
-          <td>
-            \${!isFulfilled
-              ? \`<button class="btn btn-primary btn-sm" onclick="fulfillSalesOrder('\${so.id}', '\${so.soNumber}')">Issue Invoice & Fulfill</button>\`
-              : \`<button class="btn btn-success btn-sm" onclick="openRecordReceiptModal('\${so.invoices?.[0]?.id || ''}', '\${so.invoices?.[0]?.invoiceNumber || 'INV'}', \${so.totalAmountCents})">Record Payment</button>\`
-            }
-          </td>
+          <td>\${invoicesHtml}</td>
         </tr>
       \`;
     });
@@ -51,7 +67,7 @@ async function loadSales() {
           </div>
         </div>
         <p style="padding: 0 1.35rem 1rem; font-size: 0.85rem; color: #64748b;">
-          Manage customers in the Business Directory.
+          Manage customers in the Business Directory. Ship confirmed orders and issue their invoices from Outbound Deliveries.
         </p>
         <div class="table-responsive">
           <table class="data-table">
@@ -61,7 +77,7 @@ async function loadSales() {
                 <th>Customer</th>
                 <th>Status</th>
                 <th>Order Total</th>
-                <th>Actions</th>
+                <th>Invoices & Payment</th>
               </tr>
             </thead>
             <tbody>
@@ -147,25 +163,6 @@ async function submitNewSalesOrder(e) {
 
     closeModal();
     showToast('Sales Order ' + json.data.soNumber + ' confirmed', 'success');
-    loadSales();
-  } catch (err) {
-    showToast(err.message, 'danger');
-  }
-}
-
-async function fulfillSalesOrder(soId, soNumber) {
-  if (!confirm('Fulfill ' + soNumber + '? This will decrement inventory, issue an invoice, and post revenue accounting entries.')) return;
-
-  try {
-    const res = await apiFetch('/api/sales/orders/' + soId + '/invoice', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ notes: 'Order fulfillment' }),
-    });
-    const json = await res.json();
-    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to invoice SO');
-
-    showToast('Invoice ' + json.invoiceNumber + ' created and fulfilled', 'success');
     loadSales();
   } catch (err) {
     showToast(err.message, 'danger');
