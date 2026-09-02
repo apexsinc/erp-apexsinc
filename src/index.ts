@@ -343,7 +343,7 @@ app.get('/api/inventory/products/:id', async (c) => {
 // PATCH /api/inventory/products/:id/price - Set the Price List selling price
 app.patch(
   '/api/inventory/products/:id/price',
-  zValidator('json', z.object({ sellingPriceCents: z.number().int().nonnegative() })),
+  zValidator('json', z.object({ sellingPriceCents: z.number().int().nonnegative(), sellingPriceCurrency: z.enum(['USD', 'PHP']) })),
   async (c) => {
     const db = createDbClient(c.env.DB);
     const id = c.req.param('id');
@@ -354,7 +354,7 @@ app.patch(
 
     await db
       .update(schema.products)
-      .set({ sellingPriceCents: body.sellingPriceCents, updatedAt: new Date().toISOString() })
+      .set({ sellingPriceCents: body.sellingPriceCents, sellingPriceCurrency: body.sellingPriceCurrency, updatedAt: new Date().toISOString() })
       .where(eq(schema.products.id, id));
 
     const updated = await db.query.products.findFirst({ where: eq(schema.products.id, id) });
@@ -469,6 +469,22 @@ app.get('/api/purchasing/vendors', async (c) => {
   return c.json({ success: true, data: vendors });
 });
 
+// Continues the buyer's own PO numbering: if the request doesn't supply a
+// PO number, pick up right after the most recently created one (preserving
+// its prefix and zero-padding) so a manually-entered legacy sequence keeps
+// going automatically once the buyer stops typing it in by hand.
+function generateNextPoNumber(lastNumber?: string | null): string {
+  if (lastNumber) {
+    const match = lastNumber.match(/^(.*?)(\d+)$/);
+    if (match) {
+      const [, prefix, digits] = match;
+      const next = (parseInt(digits, 10) + 1).toString().padStart(digits.length, '0');
+      return prefix + next;
+    }
+  }
+  return 'PO-' + Date.now().toString().slice(-6);
+}
+
 // POST /api/purchasing/orders - Create Purchase Order
 app.post(
   '/api/purchasing/orders',
@@ -476,6 +492,8 @@ app.post(
     'json',
     z.object({
       vendorId: z.string().uuid(),
+      poNumber: z.string().trim().min(1).max(64).optional(),
+      currency: z.enum(['USD', 'PHP']),
       notes: z.string().optional(),
       items: z.array(
         z.object({
@@ -483,7 +501,6 @@ app.post(
           quantityOrdered: z.number().int().positive(),
           unitOfMeasure: z.string().min(1),
           unitPriceCents: z.number().int().nonnegative(),
-          costPriceCurrency: z.enum(['USD', 'PHP']),
         })
       ).min(1),
     })
@@ -493,7 +510,17 @@ app.post(
     const body = c.req.valid('json');
 
     const poId = crypto.randomUUID();
-    const poNumber = 'PO-' + Date.now().toString().slice(-6);
+    let poNumber: string;
+    if (body.poNumber) {
+      const existing = await db.query.purchaseOrders.findFirst({ where: eq(schema.purchaseOrders.poNumber, body.poNumber) });
+      if (existing) {
+        return c.json({ success: false, error: 'PO number "' + body.poNumber + '" is already in use' }, 409);
+      }
+      poNumber = body.poNumber;
+    } else {
+      const lastPO = await db.query.purchaseOrders.findFirst({ orderBy: [desc(schema.purchaseOrders.createdAt)] });
+      poNumber = generateNextPoNumber(lastPO?.poNumber);
+    }
     const totalAmountCents = body.items.reduce((acc, it) => acc + it.quantityOrdered * it.unitPriceCents, 0);
 
     const poInsert = db.insert(schema.purchaseOrders).values({
@@ -501,6 +528,7 @@ app.post(
       poNumber,
       vendorId: body.vendorId,
       status: 'APPROVED',
+      currency: body.currency,
       totalAmountCents,
       notes: body.notes,
     });
@@ -526,7 +554,7 @@ app.post(
         .set({
           unitOfMeasure: item.unitOfMeasure,
           costPriceCents: item.unitPriceCents,
-          costPriceCurrency: item.costPriceCurrency,
+          costPriceCurrency: body.currency,
           updatedAt: new Date().toISOString(),
         })
         .where(eq(schema.products.id, item.productId))
@@ -752,6 +780,7 @@ app.post(
     'json',
     z.object({
       customerId: z.string().uuid(),
+      currency: z.enum(['USD', 'PHP']),
       notes: z.string().optional(),
       items: z.array(
         z.object({
@@ -775,6 +804,7 @@ app.post(
       soNumber,
       customerId: body.customerId,
       status: 'CONFIRMED',
+      currency: body.currency,
       totalAmountCents,
       notes: body.notes,
     });
@@ -1007,6 +1037,7 @@ app.post(
       salesOrderId: so.id,
       customerId: so.customerId,
       status: 'ISSUED',
+      currency: so.currency,
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       totalAmountCents: shippedTotalCents,
       paidAmountCents: 0,
@@ -1166,7 +1197,408 @@ app.get('/api/accounting/trial-balance', async (c) => {
   });
 });
 
-// POST /api/accounting/vouchers/journal - Create Balanced Journal Voucher
+// Helper to generate APEXS official sequential voucher numbers (e.g. 26-000440)
+async function generateNextPaymentVoucherNumber(db: any): Promise<string> {
+  const currentYear = new Date().getFullYear().toString().slice(-2);
+  const prefix = `${currentYear}-`;
+
+  const existing = await db.query.paymentVouchers.findMany({
+    orderBy: [desc(schema.paymentVouchers.createdAt)],
+    limit: 100,
+  });
+
+  let maxSeq = 0;
+  for (const v of existing) {
+    if (v.voucherNumber && v.voucherNumber.startsWith(prefix)) {
+      const numPart = v.voucherNumber.slice(prefix.length);
+      const parsed = parseInt(numPart, 10);
+      if (!isNaN(parsed) && parsed > maxSeq) {
+        maxSeq = parsed;
+      }
+    }
+  }
+
+  // Next sequential number with 6-digit padding (or start at 440 if existing sample)
+  const nextSeq = (maxSeq + 1).toString().padStart(6, '0');
+  return `${prefix}${nextSeq}`;
+}
+
+// GET /api/accounting/vouchers - Unified Voucher Registry (PV, RV, JV)
+app.get('/api/accounting/vouchers', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const typeFilter = c.req.query('type'); // 'PAYMENT', 'RECEIPT', 'JOURNAL', or all
+
+  const [pvs, rvs, jvs, allEntries, allAccounts] = await Promise.all([
+    db.query.paymentVouchers.findMany({ orderBy: [desc(schema.paymentVouchers.createdAt)] }),
+    db.query.receiptVouchers.findMany({
+      orderBy: [desc(schema.receiptVouchers.createdAt)],
+      with: { customer: true, invoice: true },
+    }),
+    db.query.journalVouchers.findMany({ orderBy: [desc(schema.journalVouchers.createdAt)] }),
+    db.query.journalEntries.findMany({ with: { account: true } }),
+    db.query.accounts.findMany(),
+  ]);
+
+  const vouchers: any[] = [];
+
+  if (!typeFilter || typeFilter === 'PAYMENT') {
+    pvs.forEach((pv) => {
+      const entries = allEntries.filter((e) => e.voucherId === pv.id && e.voucherType === 'PAYMENT');
+      let parsedItems = [];
+      try {
+        if (pv.items) parsedItems = JSON.parse(pv.items);
+      } catch {}
+
+      let parsedSignatories = null;
+      try {
+        if (pv.signatories) parsedSignatories = JSON.parse(pv.signatories);
+      } catch {}
+
+      vouchers.push({
+        id: pv.id,
+        voucherType: 'PAYMENT',
+        voucherNumber: pv.voucherNumber,
+        voucherDate: pv.voucherDate,
+        recipient: pv.recipientName || pv.notes || pv.recipientType,
+        recipientName: pv.recipientName,
+        recipientType: pv.recipientType,
+        currency: pv.currency || 'PHP',
+        amountCents: pv.amountCents,
+        paymentMethod: pv.paymentMethod,
+        referenceType: pv.referenceType,
+        referenceId: pv.referenceId,
+        status: pv.status,
+        notes: pv.notes,
+        items: parsedItems,
+        signatories: parsedSignatories,
+        createdAt: pv.createdAt,
+        entries,
+      });
+    });
+  }
+
+  if (!typeFilter || typeFilter === 'RECEIPT') {
+    rvs.forEach((rv) => {
+      const entries = allEntries.filter((e) => e.voucherId === rv.id && e.voucherType === 'RECEIPT');
+      vouchers.push({
+        id: rv.id,
+        voucherType: 'RECEIPT',
+        voucherNumber: rv.voucherNumber,
+        voucherDate: rv.voucherDate,
+        recipient: rv.customer?.name || 'Customer Deposit',
+        recipientType: 'CUSTOMER',
+        currency: 'PHP',
+        amountCents: rv.amountCents,
+        paymentMethod: rv.paymentMethod,
+        referenceType: rv.invoiceId ? 'INVOICE' : 'DIRECT_RECEIPT',
+        referenceId: rv.invoice?.invoiceNumber || rv.invoiceId,
+        status: rv.status,
+        notes: rv.notes,
+        createdAt: rv.createdAt,
+        entries,
+      });
+    });
+  }
+
+  if (!typeFilter || typeFilter === 'JOURNAL') {
+    jvs.forEach((jv) => {
+      const entries = allEntries.filter((e) => e.voucherId === jv.id && e.voucherType === 'JOURNAL');
+      const totalAmount = entries.reduce((sum, e) => sum + e.debitCents, 0);
+      vouchers.push({
+        id: jv.id,
+        voucherType: 'JOURNAL',
+        voucherNumber: jv.jvNumber,
+        voucherDate: jv.voucherDate,
+        recipient: jv.description,
+        recipientType: 'GENERAL_LEDGER',
+        currency: 'PHP',
+        amountCents: totalAmount,
+        paymentMethod: 'DOUBLE_ENTRY',
+        referenceType: jv.referenceType || 'ADJUSTING_ENTRY',
+        referenceId: jv.referenceId,
+        status: jv.status,
+        notes: jv.description,
+        createdAt: jv.createdAt,
+        entries,
+      });
+    });
+  }
+
+  vouchers.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  return c.json({
+    success: true,
+    count: vouchers.length,
+    data: vouchers,
+    summary: {
+      totalPaymentCents: pvs.reduce((s, p) => s + p.amountCents, 0),
+      totalReceiptCents: rvs.reduce((s, r) => s + r.amountCents, 0),
+      paymentCount: pvs.length,
+      receiptCount: rvs.length,
+      journalCount: jvs.length,
+    },
+  });
+});
+
+// POST /api/accounting/vouchers/payment - Create Payment Voucher (PV)
+app.post(
+  '/api/accounting/vouchers/payment',
+  zValidator(
+    'json',
+    z.object({
+      voucherNumber: z.string().optional(),
+      voucherDate: z.string().optional(),
+      recipientType: z.enum(['VENDOR', 'EMPLOYEE', 'OTHER']).default('VENDOR'),
+      recipientName: z.string().min(1),
+      currency: z.enum(['PHP', 'USD']).default('PHP'),
+      amountCents: z.number().int().nonnegative().optional(),
+      items: z
+        .array(
+          z.object({
+            invoiceNo: z.string().optional(),
+            description: z.string(),
+            currency: z.string().optional(),
+            amountCents: z.number().int().nonnegative(),
+          })
+        )
+        .optional(),
+      signatories: z
+        .object({
+          preparedBy: z.string().optional(),
+          certifiedBy: z.string().optional(),
+          approvedBy: z.string().optional(),
+          receivedBy: z.string().optional(),
+        })
+        .optional(),
+      paymentMethod: z.enum(['BANK_TRANSFER', 'CHECK', 'CASH', 'CREDIT_CARD']).default('BANK_TRANSFER'),
+      paymentAccountCode: z.string().default('1010'), // Cash & Bank Account (credited)
+      expenseAccountCode: z.string().default('5020'), // Expense or AP Account (debited)
+      notes: z.string().optional(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const body = c.req.valid('json');
+
+    const [payAcc, expAcc] = await Promise.all([
+      db.query.accounts.findFirst({ where: eq(schema.accounts.code, body.paymentAccountCode) }),
+      db.query.accounts.findFirst({ where: eq(schema.accounts.code, body.expenseAccountCode) }),
+    ]);
+
+    if (!payAcc) return c.json({ success: false, error: `Payment account code ${body.paymentAccountCode} not found` }, 404);
+    if (!expAcc) return c.json({ success: false, error: `Expense account code ${body.expenseAccountCode} not found` }, 404);
+
+    let totalAmountCents = body.amountCents || 0;
+    if (body.items && body.items.length > 0) {
+      totalAmountCents = body.items.reduce((sum, it) => sum + (it.amountCents || 0), 0);
+    }
+
+    if (totalAmountCents <= 0) {
+      return c.json({ success: false, error: 'Total voucher amount must be greater than zero' }, 400);
+    }
+
+    const pvId = crypto.randomUUID();
+    const voucherNumber = body.voucherNumber?.trim() || (await generateNextPaymentVoucherNumber(db));
+    const voucherDate = body.voucherDate || new Date().toISOString();
+
+    const pvInsert = db.insert(schema.paymentVouchers).values({
+      id: pvId,
+      voucherNumber,
+      voucherDate,
+      recipientType: body.recipientType,
+      recipientName: body.recipientName,
+      currency: body.currency,
+      amountCents: totalAmountCents,
+      paymentMethod: body.paymentMethod,
+      referenceType: 'MANUAL',
+      notes: body.notes || null,
+      items: body.items && body.items.length > 0 ? JSON.stringify(body.items) : null,
+      signatories: body.signatories ? JSON.stringify(body.signatories) : null,
+      status: 'POSTED',
+    });
+
+    // Leg 1: Debit Expense / AP Account
+    const debitLeg = db.insert(schema.journalEntries).values({
+      id: crypto.randomUUID(),
+      voucherType: 'PAYMENT',
+      voucherId: pvId,
+      accountId: expAcc.id,
+      debitCents: totalAmountCents,
+      creditCents: 0,
+      description: `Payment to ${body.recipientName} (${voucherNumber})`,
+      entryDate: voucherDate,
+    });
+
+    // Leg 2: Credit Cash / Bank Account
+    const creditLeg = db.insert(schema.journalEntries).values({
+      id: crypto.randomUUID(),
+      voucherType: 'PAYMENT',
+      voucherId: pvId,
+      accountId: payAcc.id,
+      debitCents: 0,
+      creditCents: totalAmountCents,
+      description: `Disbursement for ${body.recipientName} (${voucherNumber})`,
+      entryDate: voucherDate,
+    });
+
+    await db.batch([pvInsert, debitLeg, creditLeg]);
+
+    return c.json(
+      {
+        success: true,
+        message: 'Payment Voucher posted successfully',
+        voucherNumber,
+        amountCents: totalAmountCents,
+      },
+      201
+    );
+  }
+);
+
+// POST /api/accounting/vouchers/receipt - Create Receipt Voucher (RV)
+app.post(
+  '/api/accounting/vouchers/receipt',
+  zValidator(
+    'json',
+    z.object({
+      payerName: z.string().min(1),
+      amountCents: z.number().int().positive(),
+      paymentMethod: z.enum(['BANK_TRANSFER', 'CHECK', 'CASH', 'CREDIT_CARD', 'ONLINE']).default('BANK_TRANSFER'),
+      depositAccountCode: z.string().default('1010'), // Cash & Bank Account (debited)
+      creditAccountCode: z.string().default('4010'),  // Revenue or AR Account (credited)
+      notes: z.string().optional(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const body = c.req.valid('json');
+
+    const [depAcc, crdAcc] = await Promise.all([
+      db.query.accounts.findFirst({ where: eq(schema.accounts.code, body.depositAccountCode) }),
+      db.query.accounts.findFirst({ where: eq(schema.accounts.code, body.creditAccountCode) }),
+    ]);
+
+    if (!depAcc) return c.json({ success: false, error: `Deposit account code ${body.depositAccountCode} not found` }, 404);
+    if (!crdAcc) return c.json({ success: false, error: `Credit account code ${body.creditAccountCode} not found` }, 404);
+
+    const rvId = crypto.randomUUID();
+    const voucherNumber = 'RV-' + Date.now().toString().slice(-6);
+
+    const rvInsert = db.insert(schema.receiptVouchers).values({
+      id: rvId,
+      voucherNumber,
+      amountCents: body.amountCents,
+      paymentMethod: body.paymentMethod,
+      notes: `${body.payerName}${body.notes ? ' - ' + body.notes : ''}`,
+      status: 'POSTED',
+    });
+
+    // Leg 1: Debit Cash / Bank Account (Funds In)
+    const debitLeg = db.insert(schema.journalEntries).values({
+      id: crypto.randomUUID(),
+      voucherType: 'RECEIPT',
+      voucherId: rvId,
+      accountId: depAcc.id,
+      debitCents: body.amountCents,
+      creditCents: 0,
+      description: `Receipt from ${body.payerName} (${voucherNumber})`,
+    });
+
+    // Leg 2: Credit Revenue / AR Account
+    const creditLeg = db.insert(schema.journalEntries).values({
+      id: crypto.randomUUID(),
+      voucherType: 'RECEIPT',
+      voucherId: rvId,
+      accountId: crdAcc.id,
+      debitCents: 0,
+      creditCents: body.amountCents,
+      description: `Credit allocation for receipt ${body.payerName} (${voucherNumber})`,
+    });
+
+    await db.batch([rvInsert, debitLeg, creditLeg]);
+
+    return c.json({
+      success: true,
+      message: 'Receipt Voucher posted successfully',
+      voucherNumber,
+      amountCents: body.amountCents,
+    }, 201);
+  }
+);
+
+// POST /api/accounting/vouchers/contra - Create Contra Voucher (CV / Bank-to-Cash transfer)
+app.post(
+  '/api/accounting/vouchers/contra',
+  zValidator(
+    'json',
+    z.object({
+      fromAccountCode: z.string(), // e.g., '1010' Cash on Hand (credited)
+      toAccountCode: z.string(),   // e.g., '1020' Main Bank Account (debited)
+      amountCents: z.number().int().positive(),
+      description: z.string().min(1),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const body = c.req.valid('json');
+
+    if (body.fromAccountCode === body.toAccountCode) {
+      return c.json({ success: false, error: 'Source and destination accounts must be different' }, 400);
+    }
+
+    const [fromAcc, toAcc] = await Promise.all([
+      db.query.accounts.findFirst({ where: eq(schema.accounts.code, body.fromAccountCode) }),
+      db.query.accounts.findFirst({ where: eq(schema.accounts.code, body.toAccountCode) }),
+    ]);
+
+    if (!fromAcc) return c.json({ success: false, error: `Source account ${body.fromAccountCode} not found` }, 404);
+    if (!toAcc) return c.json({ success: false, error: `Destination account ${body.toAccountCode} not found` }, 404);
+
+    const jvId = crypto.randomUUID();
+    const cvNumber = 'CV-' + Date.now().toString().slice(-6);
+
+    const jvInsert = db.insert(schema.journalVouchers).values({
+      id: jvId,
+      jvNumber: cvNumber,
+      description: `Contra Transfer: ${body.description}`,
+      referenceType: 'CONTRA_TRANSFER',
+      status: 'POSTED',
+    });
+
+    // Debit destination account
+    const debitLeg = db.insert(schema.journalEntries).values({
+      id: crypto.randomUUID(),
+      voucherType: 'JOURNAL',
+      voucherId: jvId,
+      accountId: toAcc.id,
+      debitCents: body.amountCents,
+      creditCents: 0,
+      description: `Contra: Transfer to ${toAcc.name} (${cvNumber})`,
+    });
+
+    // Credit source account
+    const creditLeg = db.insert(schema.journalEntries).values({
+      id: crypto.randomUUID(),
+      voucherType: 'JOURNAL',
+      voucherId: jvId,
+      accountId: fromAcc.id,
+      debitCents: 0,
+      creditCents: body.amountCents,
+      description: `Contra: Transfer from ${fromAcc.name} (${cvNumber})`,
+    });
+
+    await db.batch([jvInsert, debitLeg, creditLeg]);
+
+    return c.json({
+      success: true,
+      message: 'Contra Voucher posted successfully',
+      voucherNumber: cvNumber,
+      amountCents: body.amountCents,
+    }, 201);
+  }
+);
+
+// POST /api/accounting/vouchers/journal - Create Balanced Journal Voucher (JV)
 app.post(
   '/api/accounting/vouchers/journal',
   zValidator(
@@ -1570,14 +2002,25 @@ app.get('/api/dashboard', async (c) => {
     db.query.payrollRuns.findMany({ where: eq(schema.payrollRuns.status, 'FINALIZED') }),
   ]);
 
-  let totalInventoryValuationCents = 0;
+  // Each product/order carries its own currency, so these totals are grouped
+  // by currency rather than summed together - a USD PO and a PHP PO are not
+  // the same unit and must never be added as if they were.
+  const inventoryValuationByCurrency: Record<string, number> = {};
   for (const prod of products) {
     const stock = await getProductStockBalance(db, prod.id);
-    totalInventoryValuationCents += stock * prod.costPriceCents;
+    inventoryValuationByCurrency[prod.costPriceCurrency] = (inventoryValuationByCurrency[prod.costPriceCurrency] || 0) + stock * prod.costPriceCents;
   }
 
-  const totalSalesRevenueCents = soList.reduce((acc, so) => acc + so.totalAmountCents, 0);
-  const totalPurchaseCommitmentCents = poList.reduce((acc, po) => acc + po.totalAmountCents, 0);
+  const salesRevenueByCurrency: Record<string, number> = {};
+  for (const so of soList) {
+    salesRevenueByCurrency[so.currency] = (salesRevenueByCurrency[so.currency] || 0) + so.totalAmountCents;
+  }
+
+  const purchaseCommitmentByCurrency: Record<string, number> = {};
+  for (const po of poList) {
+    purchaseCommitmentByCurrency[po.currency] = (purchaseCommitmentByCurrency[po.currency] || 0) + po.totalAmountCents;
+  }
+
   const totalPayrollPaidCents = payrollList.reduce((acc, pr) => acc + pr.totalNetCents, 0);
 
   return c.json({
@@ -1587,16 +2030,10 @@ app.get('/api/dashboard', async (c) => {
       totalCustomers: customers.length,
       totalVendors: vendors.length,
       activeEmployees: employees.length,
-      totalInventoryValuationCents,
-      totalSalesRevenueCents,
-      totalPurchaseCommitmentCents,
+      inventoryValuationByCurrency,
+      salesRevenueByCurrency,
+      purchaseCommitmentByCurrency,
       totalPayrollPaidCents,
-    },
-    formatted: {
-      inventoryValuation: '₱' + (totalInventoryValuationCents / 100).toFixed(2),
-      salesRevenue: '₱' + (totalSalesRevenueCents / 100).toFixed(2),
-      purchaseCommitments: '₱' + (totalPurchaseCommitmentCents / 100).toFixed(2),
-      payrollPaid: '₱' + (totalPayrollPaidCents / 100).toFixed(2),
     },
   });
 });

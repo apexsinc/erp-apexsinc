@@ -36,6 +36,8 @@ export const paymentVouchers = sqliteTable('payment_vouchers', {
     enum: ['VENDOR', 'EMPLOYEE', 'OTHER'],
   }).notNull(),
   recipientId: text('recipient_id'),
+  recipientName: text('recipient_name'),
+  currency: text('currency', { enum: ['PHP', 'USD'] }).notNull().default('PHP'),
   amountCents: integer('amount_cents').notNull(),
   paymentMethod: text('payment_method', {
     enum: ['BANK_TRANSFER', 'CHECK', 'CASH', 'CREDIT_CARD'],
@@ -47,6 +49,8 @@ export const paymentVouchers = sqliteTable('payment_vouchers', {
   }).notNull(),
   referenceId: text('reference_id'),
   notes: text('notes'),
+  items: text('items'), // JSON string: Array<{ invoiceNo?: string, description: string, currency?: string, amountCents: number }>
+  signatories: text('signatories'), // JSON string: { preparedBy?: string, certifiedBy?: string, approvedBy?: string, receivedBy?: string }
   status: text('status', {
     enum: ['DRAFT', 'POSTED', 'VOID'],
   })

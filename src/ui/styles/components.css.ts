@@ -496,6 +496,14 @@ export const COMPONENTS_CSS = `
   background-color: #f8fafc;
 }
 
+.data-table tbody tr.row-clickable {
+  cursor: pointer;
+}
+
+.data-table tbody tr.row-clickable:hover {
+  background-color: #eef2ff;
+}
+
 .data-table tbody tr:last-child td {
   border-bottom: none;
 }
@@ -553,6 +561,14 @@ export const COMPONENTS_CSS = `
   overflow: hidden;
   border: 1px solid var(--border-color);
   animation: slideUp 0.2s ease-out;
+}
+
+.modal-dialog-lg {
+  max-width: 760px;
+}
+
+.modal-dialog-xl {
+  max-width: 920px;
 }
 
 .modal-header {
@@ -649,5 +665,74 @@ export const COMPONENTS_CSS = `
 @keyframes slideInRight {
   from { opacity: 0; transform: translateX(25px); }
   to { opacity: 1; transform: translateX(0); }
+}
+
+/* ========================================================================== */
+/* PRINT STYLING & OFFICIAL VOUCHER SLIP EXPORT                               */
+/* ========================================================================== */
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm 12mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .sidebar,
+  .top-bar,
+  .app-sidebar,
+  .toast-container,
+  .modal-header,
+  .modal-footer,
+  .modal-close-btn,
+  .page-body > div:not(#view-accounting),
+  .no-print,
+  button {
+    display: none !important;
+  }
+
+  .modal-backdrop {
+    position: static !important;
+    background: transparent !important;
+    display: block !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .modal-dialog,
+  .modal-dialog-lg,
+  .modal-dialog-xl {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: transparent !important;
+  }
+
+  .modal-body {
+    padding: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .official-voucher-sheet {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    page-break-inside: avoid !important;
+  }
 }
 `;

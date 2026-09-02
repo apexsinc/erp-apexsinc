@@ -41,6 +41,15 @@ function formatCurrency(cents, currency) {
   return symbol + (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Renders a { USD: cents, PHP: cents } total as "$X + ₱Y" - used for figures
+// aggregated across many orders/products that may not share one currency,
+// where a single summed number would silently mix units.
+function formatCurrencyBreakdown(byCurrency) {
+  const entries = Object.entries(byCurrency || {}).filter(([, cents]) => cents);
+  if (!entries.length) return formatCurrency(0, 'PHP');
+  return entries.map(([cur, cents]) => formatCurrency(cents, cur)).join(' + ');
+}
+
 // Attaches the session token to every API call and handles a revoked/expired
 // session (401) by bouncing back to the login screen instead of leaving the
 // UI in a broken half-authenticated state.
@@ -78,15 +87,17 @@ function showToast(message, type = 'info') {
 }
 
 // Modal Manager
-function openModal(title, bodyHtml, footerButtonsHtml = '') {
+function openModal(title, bodyHtml, footerButtonsHtml = '', size = '') {
   const backdrop = document.getElementById('modal-backdrop');
   const modalTitle = document.getElementById('modal-title');
   const modalBody = document.getElementById('modal-body');
   const modalFooter = document.getElementById('modal-footer');
+  const modalDialog = backdrop.querySelector('.modal-dialog');
 
   modalTitle.innerText = title;
   modalBody.innerHTML = bodyHtml;
   modalFooter.innerHTML = footerButtonsHtml || '<button class="btn btn-secondary" onclick="closeModal()">Close</button>';
+  if (modalDialog) modalDialog.className = 'modal-dialog' + (size ? ' modal-dialog-' + size : '');
   backdrop.style.display = 'flex';
 }
 
@@ -151,7 +162,7 @@ function switchTab(tabName) {
     inbound: 'Inbound Deliveries',
     sales: 'Sales (O2C Orders & Invoices)',
     outbound: 'Outbound Deliveries',
-    accounting: 'Accounting & Ledger',
+    accounting: 'Vouchers',
     payroll: 'Payroll & Staff',
     admin: 'Roles & Permissions',
   };

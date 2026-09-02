@@ -22,7 +22,7 @@ async function loadDashboard() {
         <div class="kpi-card">
           <div class="kpi-content">
             <h3>Inventory Valuation</h3>
-            <div class="kpi-value">\${formatCurrency(kpis.totalInventoryValuationCents)}</div>
+            <div class="kpi-value">\${formatCurrencyBreakdown(kpis.inventoryValuationByCurrency)}</div>
             <div class="kpi-sub">\${kpis.totalProducts || 0} active SKU items</div>
           </div>
           <div class="kpi-icon-box">
@@ -33,7 +33,7 @@ async function loadDashboard() {
         <div class="kpi-card">
           <div class="kpi-content">
             <h3>Total Sales Revenue</h3>
-            <div class="kpi-value">\${formatCurrency(kpis.totalSalesRevenueCents)}</div>
+            <div class="kpi-value">\${formatCurrencyBreakdown(kpis.salesRevenueByCurrency)}</div>
             <div class="kpi-sub">\${kpis.totalCustomers || 0} registered clients</div>
           </div>
           <div class="kpi-icon-box">
@@ -44,7 +44,7 @@ async function loadDashboard() {
         <div class="kpi-card">
           <div class="kpi-content">
             <h3>Purchase Commitments</h3>
-            <div class="kpi-value">\${formatCurrency(kpis.totalPurchaseCommitmentCents)}</div>
+            <div class="kpi-value">\${formatCurrencyBreakdown(kpis.purchaseCommitmentByCurrency)}</div>
             <div class="kpi-sub">\${kpis.totalVendors || 0} active suppliers</div>
           </div>
           <div class="kpi-icon-box">

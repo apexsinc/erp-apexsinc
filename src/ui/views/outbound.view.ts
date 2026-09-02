@@ -90,7 +90,7 @@ function renderOutboundCard(so) {
       <div class="panel-title">
         \${so.soNumber} — \${so.customer?.name || 'Unknown Customer'}
         <div style="font-size: 0.75rem; font-weight: 400; color: #64748b; margin-top: 0.3rem; display: flex; align-items: center; gap: 0.5rem;">
-          <span>Order Total: \${formatCurrency(so.totalAmountCents)}</span>
+          <span>Order Total: \${formatCurrency(so.totalAmountCents, so.currency)}</span>
           \${outboundStatusBadge(so.status)}
         </div>
       </div>

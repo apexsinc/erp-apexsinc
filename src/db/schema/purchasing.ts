@@ -41,6 +41,9 @@ export const purchaseOrders = sqliteTable('purchase_orders', {
   })
     .notNull()
     .default('DRAFT'),
+  // One currency per order - every line item is priced in it, so totalAmountCents
+  // is always an unambiguous sum (never a mix of USD and PHP cents).
+  currency: text('currency', { enum: ['USD', 'PHP'] }).notNull().default('USD'),
   totalAmountCents: integer('total_amount_cents').notNull().default(0),
   notes: text('notes'),
   issueDate: text('issue_date')
