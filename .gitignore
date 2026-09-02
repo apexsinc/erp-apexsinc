@@ -7,3 +7,4 @@ dist/
 temp/
 .agents/
 .stitch/
+.git_old/
