@@ -20,6 +20,9 @@ async function runTests() {
     '/settings',
     '/vouchers?tab=vouchers-pv',
     '/vouchers?tab=general-ledger',
+    '/accounting?tab=reports-pl',
+    '/accounting?tab=reports-bs',
+    '/accounting?tab=reports-cf',
     '/inventory?search=WIDGET',
   ];
 
@@ -344,7 +347,53 @@ async function runTests() {
   const updatedSign = verifySettingsData.settings?.['vouchers.signatories'];
   console.log('Verified Updated Signatories in DB:', updatedSign?.preparedBy, '|', updatedSign?.approvedBy);
 
-  console.log('\n🎉 ALL URL ROUTE CHECKS, SYSTEM SETTINGS & ERP END-TO-END TESTS PASSED SUCCESSFULLY!');
+  console.log('\n=== 11. FINANCIAL STATEMENTS & REPORTING AUDIT ===');
+  // 1. Profit & Loss (Income Statement)
+  const plRes = await fetch(`${baseUrl}/api/accounting/reports/profit-loss`, { headers: authHeaders });
+  const plData = await plRes.json();
+  if (!plData.success) {
+    console.error('P&L report failed:', plData);
+    process.exit(1);
+  }
+  console.log('Profit & Loss Summary:');
+  console.log(`  - Total Revenue: ₱${(plData.totalRevenueCents / 100).toFixed(2)}`);
+  console.log(`  - Total COGS: ₱${(plData.totalCogsCents / 100).toFixed(2)}`);
+  console.log(`  - Gross Profit: ₱${(plData.grossProfitCents / 100).toFixed(2)} (${plData.grossMarginPct}%)`);
+  console.log(`  - Total OPEX: ₱${(plData.totalOpexCents / 100).toFixed(2)}`);
+  console.log(`  - Net Income: ₱${(plData.netIncomeCents / 100).toFixed(2)} (${plData.netMarginPct}%)`);
+
+  // 2. Balance Sheet (Statement of Financial Position)
+  const bsRes = await fetch(`${baseUrl}/api/accounting/reports/balance-sheet`, { headers: authHeaders });
+  const bsData = await bsRes.json();
+  if (!bsData.success) {
+    console.error('Balance Sheet report failed:', bsData);
+    process.exit(1);
+  }
+  console.log('Balance Sheet Summary:');
+  console.log(`  - Total Assets: ₱${(bsData.totalAssetsCents / 100).toFixed(2)}`);
+  console.log(`  - Total Liabilities: ₱${(bsData.liabilities.totalLiabilitiesCents / 100).toFixed(2)}`);
+  console.log(`  - Total Equity: ₱${(bsData.equity.totalEquityCents / 100).toFixed(2)}`);
+  console.log(`  - Is Balanced (A = L + E)?: ${bsData.isBalanced ? 'YES (Balanced)' : 'NO (Unbalanced)'}`);
+  console.log(`  - Discrepancy: ₱${(bsData.discrepancyCents / 100).toFixed(2)}`);
+  if (!bsData.isBalanced) {
+    console.error('❌ Balance Sheet equilibrium failed!');
+    process.exit(1);
+  }
+
+  // 3. Cash Flow Statement
+  const cfRes = await fetch(`${baseUrl}/api/accounting/reports/cash-flow`, { headers: authHeaders });
+  const cfData = await cfRes.json();
+  if (!cfData.success) {
+    console.error('Cash Flow report failed:', cfData);
+    process.exit(1);
+  }
+  console.log('Cash Flow Statement Summary:');
+  console.log(`  - Net Operating Cash: ₱${(cfData.operatingActivities.netOperatingCashCents / 100).toFixed(2)}`);
+  console.log(`  - Net Investing Cash: ₱${(cfData.investingActivities.netInvestingCashCents / 100).toFixed(2)}`);
+  console.log(`  - Net Financing Cash: ₱${(cfData.financingActivities.netFinancingCashCents / 100).toFixed(2)}`);
+  console.log(`  - Ending Cash Balance: ₱${(cfData.closingCashCents / 100).toFixed(2)}`);
+
+  console.log('\n🎉 ALL URL ROUTE CHECKS, SYSTEM SETTINGS, FINANCIAL REPORTS & ERP END-TO-END TESTS PASSED SUCCESSFULLY!');
 }
 
 runTests().catch(console.error);

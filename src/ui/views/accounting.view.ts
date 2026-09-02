@@ -7,23 +7,29 @@ let accountingActiveTab = 'vouchers-all';
 let cachedAccounts = [];
 let cachedVouchers = [];
 let cachedLedgerEntries = [];
+let cachedProfitLoss = null;
+let cachedBalanceSheet = null;
+let cachedCashFlow = null;
 let voucherSearchQuery = '';
 
 async function loadAccounting() {
   const container = document.getElementById('view-accounting');
-  container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading vouchers & ledger...</div>';
+  container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading vouchers, ledger & financial reports...</div>';
 
   try {
     const urlTab = typeof getUrlParam === 'function' ? getUrlParam('tab') : null;
     if (urlTab) accountingActiveTab = urlTab;
     voucherSearchQuery = (typeof getUrlParam === 'function' ? getUrlParam('search') : '') || '';
 
-    const [tbRes, ledgerRes, vouchersRes, accountsRes, settingsRes] = await Promise.all([
+    const [tbRes, ledgerRes, vouchersRes, accountsRes, settingsRes, plRes, bsRes, cfRes] = await Promise.all([
       apiFetch('/api/accounting/trial-balance'),
       apiFetch('/api/accounting/ledger'),
       apiFetch('/api/accounting/vouchers'),
       apiFetch('/api/accounting/accounts'),
       apiFetch('/api/settings/vouchers').catch(() => null),
+      apiFetch('/api/accounting/reports/profit-loss').catch(() => null),
+      apiFetch('/api/accounting/reports/balance-sheet').catch(() => null),
+      apiFetch('/api/accounting/reports/cash-flow').catch(() => null),
     ]);
 
     const tbJson = await tbRes.json();
@@ -34,6 +40,21 @@ async function loadAccounting() {
       try {
         const settingsJson = await settingsRes.json();
         window.cachedVoucherSettings = settingsJson.settings || {};
+      } catch (e) {}
+    }
+    if (plRes) {
+      try {
+        cachedProfitLoss = await plRes.json();
+      } catch (e) {}
+    }
+    if (bsRes) {
+      try {
+        cachedBalanceSheet = await bsRes.json();
+      } catch (e) {}
+    }
+    if (cfRes) {
+      try {
+        cachedCashFlow = await cfRes.json();
       } catch (e) {}
     }
 
@@ -123,6 +144,98 @@ function exportTrialBalanceCsv() {
   exportToCsv('trial_balance_' + new Date().toISOString().slice(0, 10), headers, rows);
 }
 
+function exportProfitLossCsv() {
+  if (!cachedProfitLoss) {
+    showToast('P&L report is not loaded yet', 'error');
+    return;
+  }
+  const pl = cachedProfitLoss;
+  const headers = ['Category', 'Account Code', 'Account Name', 'Amount (PHP)', '% of Revenue'];
+  const rows = [];
+
+  rows.push(['OPERATING REVENUES', '', '', '', '']);
+  (pl.revenues || []).forEach((r) => {
+    const pct = pl.totalRevenueCents > 0 ? ((r.amountCents / pl.totalRevenueCents) * 100).toFixed(2) + '%' : '0.00%';
+    rows.push(['Revenue', r.code, r.name, (r.amountCents / 100).toFixed(2), pct]);
+  });
+  rows.push(['TOTAL OPERATING REVENUE', '', '', (pl.totalRevenueCents / 100).toFixed(2), '100.00%']);
+
+  rows.push(['COST OF GOODS SOLD', '', '', '', '']);
+  (pl.cogs || []).forEach((c) => {
+    const pct = pl.totalRevenueCents > 0 ? ((c.amountCents / pl.totalRevenueCents) * 100).toFixed(2) + '%' : '0.00%';
+    rows.push(['COGS', c.code, c.name, (c.amountCents / 100).toFixed(2), pct]);
+  });
+  rows.push(['TOTAL COST OF GOODS SOLD', '', '', (pl.totalCogsCents / 100).toFixed(2), pl.totalRevenueCents > 0 ? ((pl.totalCogsCents / pl.totalRevenueCents) * 100).toFixed(2) + '%' : '0.00%']);
+  rows.push(['GROSS PROFIT', '', '', (pl.grossProfitCents / 100).toFixed(2), pl.grossMarginPct + '%']);
+
+  rows.push(['OPERATING EXPENSES (OPEX)', '', '', '', '']);
+  (pl.operatingExpenses || []).forEach((o) => {
+    const pct = pl.totalRevenueCents > 0 ? ((o.amountCents / pl.totalRevenueCents) * 100).toFixed(2) + '%' : '0.00%';
+    rows.push(['Operating Expense', o.code, o.name, (o.amountCents / 100).toFixed(2), pct]);
+  });
+  rows.push(['TOTAL OPERATING EXPENSES', '', '', (pl.totalOpexCents / 100).toFixed(2), pl.totalRevenueCents > 0 ? ((pl.totalOpexCents / pl.totalRevenueCents) * 100).toFixed(2) + '%' : '0.00%']);
+  rows.push(['NET INCOME / (LOSS)', '', '', (pl.netIncomeCents / 100).toFixed(2), pl.netMarginPct + '%']);
+
+  exportToCsv('profit_and_loss_' + new Date().toISOString().slice(0, 10), headers, rows);
+}
+
+function exportBalanceSheetCsv() {
+  if (!cachedBalanceSheet) {
+    showToast('Balance sheet is not loaded yet', 'error');
+    return;
+  }
+  const bs = cachedBalanceSheet;
+  const headers = ['Category', 'Account Code', 'Account Name', 'Amount (PHP)'];
+  const rows = [];
+
+  rows.push(['CURRENT ASSETS', '', '', '']);
+  (bs.assets?.current || []).forEach((a) => rows.push(['Current Asset', a.code, a.name, (a.amountCents / 100).toFixed(2)]));
+  rows.push(['NON-CURRENT ASSETS', '', '', '']);
+  (bs.assets?.nonCurrent || []).forEach((a) => rows.push(['Non-Current Asset', a.code, a.name, (a.amountCents / 100).toFixed(2)]));
+  rows.push(['TOTAL ASSETS', '', '', (bs.totalAssetsCents / 100).toFixed(2)]);
+
+  rows.push(['CURRENT LIABILITIES', '', '', '']);
+  (bs.liabilities?.current || []).forEach((l) => rows.push(['Current Liability', l.code, l.name, (l.amountCents / 100).toFixed(2)]));
+  rows.push(['NON-CURRENT LIABILITIES', '', '', '']);
+  (bs.liabilities?.nonCurrent || []).forEach((l) => rows.push(['Non-Current Liability', l.code, l.name, (l.amountCents / 100).toFixed(2)]));
+  rows.push(['TOTAL LIABILITIES', '', '', (bs.liabilities?.totalLiabilitiesCents / 100).toFixed(2)]);
+
+  rows.push(['EQUITY', '', '', '']);
+  (bs.equity?.items || []).forEach((e) => rows.push(['Equity', e.code, e.name, (e.amountCents / 100).toFixed(2)]));
+  rows.push(['Current Period Net Income', '', '', (bs.equity?.currentPeriodNetIncomeCents / 100).toFixed(2)]);
+  rows.push(['TOTAL EQUITY', '', '', (bs.equity?.totalEquityCents / 100).toFixed(2)]);
+  rows.push(['TOTAL LIABILITIES & EQUITY', '', '', (bs.totalLiabilitiesAndEquityCents / 100).toFixed(2)]);
+
+  exportToCsv('balance_sheet_' + new Date().toISOString().slice(0, 10), headers, rows);
+}
+
+function exportCashFlowCsv() {
+  if (!cachedCashFlow) {
+    showToast('Cash flow report is not loaded yet', 'error');
+    return;
+  }
+  const cf = cachedCashFlow;
+  const headers = ['Section', 'Description', 'Date', 'Amount (PHP)'];
+  const rows = [];
+
+  rows.push(['OPERATING INFLOWS', '', '', '']);
+  (cf.operatingActivities?.inflows || []).forEach((i) => rows.push(['Operating Inflow', i.description, new Date(i.date).toISOString().slice(0, 10), (i.amountCents / 100).toFixed(2)]));
+  rows.push(['OPERATING OUTFLOWS', '', '', '']);
+  (cf.operatingActivities?.outflows || []).forEach((o) => rows.push(['Operating Outflow', o.description, new Date(o.date).toISOString().slice(0, 10), (o.amountCents / 100).toFixed(2)]));
+  rows.push(['NET OPERATING CASH FLOW', '', '', (cf.operatingActivities?.netOperatingCashCents / 100).toFixed(2)]);
+
+  rows.push(['INVESTING ACTIVITIES', '', '', '']);
+  (cf.investingActivities?.items || []).forEach((i) => rows.push(['Investing Activity', i.description, new Date(i.date).toISOString().slice(0, 10), (i.amountCents / 100).toFixed(2)]));
+  rows.push(['NET INVESTING CASH FLOW', '', '', (cf.investingActivities?.netInvestingCashCents / 100).toFixed(2)]);
+
+  rows.push(['FINANCING ACTIVITIES', '', '', '']);
+  (cf.financingActivities?.items || []).forEach((f) => rows.push(['Financing Activity', f.description, new Date(f.date).toISOString().slice(0, 10), (f.amountCents / 100).toFixed(2)]));
+  rows.push(['NET FINANCING CASH FLOW', '', '', (cf.financingActivities?.netFinancingCashCents / 100).toFixed(2)]);
+  rows.push(['NET CHANGE IN CASH / ENDING CASH', '', '', (cf.closingCashCents / 100).toFixed(2)]);
+
+  exportToCsv('cash_flow_' + new Date().toISOString().slice(0, 10), headers, rows);
+}
+
 function renderAccountingContent(container, tbJson, accounts, entries, vouchers, rawAccounts) {
   const isBalanced = tbJson.isBalanced;
 
@@ -209,6 +322,9 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
     { id: 'vouchers-pv', label: 'Payment Vouchers (PV)', count: vouchers.filter((x) => x.voucherType === 'PAYMENT').length },
     { id: 'vouchers-rv', label: 'Receipt Vouchers (RV)', count: vouchers.filter((x) => x.voucherType === 'RECEIPT').length },
     { id: 'vouchers-jv', label: 'Journal Vouchers (JV)', count: vouchers.filter((x) => x.voucherType === 'JOURNAL').length },
+    { id: 'reports-pl', label: '📊 Profit & Loss', count: 'P&L' },
+    { id: 'reports-bs', label: '🏛️ Balance Sheet', count: 'BS' },
+    { id: 'reports-cf', label: '💵 Cash Flow', count: 'CF' },
     { id: 'trial-balance', label: 'Chart of Accounts & TB', count: accounts.length },
     { id: 'general-ledger', label: 'General Ledger Audit', count: entries.length },
   ];
@@ -229,6 +345,21 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
     exportButtonHtml = \`<button class="btn btn-secondary btn-sm" onclick="exportTrialBalanceCsv()">📥 Export TB CSV</button>\`;
   } else if (accountingActiveTab === 'general-ledger') {
     exportButtonHtml = \`<button class="btn btn-secondary btn-sm" onclick="exportLedgerCsv()">📥 Export Ledger CSV</button>\`;
+  } else if (accountingActiveTab === 'reports-pl') {
+    exportButtonHtml = \`
+      <button class="btn btn-secondary btn-sm" onclick="window.print()">🖨️ Print P&L</button>
+      <button class="btn btn-secondary btn-sm" onclick="exportProfitLossCsv()">📥 Export P&L CSV</button>
+    \`;
+  } else if (accountingActiveTab === 'reports-bs') {
+    exportButtonHtml = \`
+      <button class="btn btn-secondary btn-sm" onclick="window.print()">🖨️ Print Balance Sheet</button>
+      <button class="btn btn-secondary btn-sm" onclick="exportBalanceSheetCsv()">📥 Export BS CSV</button>
+    \`;
+  } else if (accountingActiveTab === 'reports-cf') {
+    exportButtonHtml = \`
+      <button class="btn btn-secondary btn-sm" onclick="window.print()">🖨️ Print Cash Flow</button>
+      <button class="btn btn-secondary btn-sm" onclick="exportCashFlowCsv()">📥 Export CF CSV</button>
+    \`;
   }
 
   let mainSectionHtml = '';
@@ -261,6 +392,377 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
             \${voucherRows || '<tr><td colspan="8" style="text-align: center; color: #64748b; padding: 2rem;">No vouchers found in this category.</td></tr>'}
           </tbody>
         </table>
+      </div>
+    \`;
+  } else if (accountingActiveTab === 'reports-pl') {
+    const pl = cachedProfitLoss || {
+      totalRevenueCents: 0,
+      totalCogsCents: 0,
+      grossProfitCents: 0,
+      grossMarginPct: 0,
+      totalOpexCents: 0,
+      netIncomeCents: 0,
+      netMarginPct: 0,
+      revenues: [],
+      cogs: [],
+      operatingExpenses: [],
+    };
+
+    const isProfitable = pl.netIncomeCents >= 0;
+
+    let revRows = (pl.revenues || []).map((r) => {
+      const pct = pl.totalRevenueCents > 0 ? ((r.amountCents / pl.totalRevenueCents) * 100).toFixed(1) + '%' : '0.0%';
+      return \`
+        <tr>
+          <td style="padding-left: 1.5rem;"><strong style="font-family: 'JetBrains Mono', monospace;">\${r.code}</strong> \${r.name}</td>
+          <td style="text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #059669;">\${formatCurrency(r.amountCents)}</td>
+          <td style="text-align: right; color: #64748b; font-size: 0.82rem;">\${pct}</td>
+        </tr>
+      \`;
+    }).join('') || \`<tr><td colspan="3" style="padding-left: 1.5rem; color: #94a3b8; font-style: italic;">No revenue entries recorded</td></tr>\`;
+
+    let cogsRows = (pl.cogs || []).map((c) => {
+      const pct = pl.totalRevenueCents > 0 ? ((c.amountCents / pl.totalRevenueCents) * 100).toFixed(1) + '%' : '0.0%';
+      return \`
+        <tr>
+          <td style="padding-left: 1.5rem;"><strong style="font-family: 'JetBrains Mono', monospace;">\${c.code}</strong> \${c.name}</td>
+          <td style="text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #dc2626;">\${formatCurrency(c.amountCents)}</td>
+          <td style="text-align: right; color: #64748b; font-size: 0.82rem;">\${pct}</td>
+        </tr>
+      \`;
+    }).join('') || \`<tr><td colspan="3" style="padding-left: 1.5rem; color: #94a3b8; font-style: italic;">No direct cost of goods recorded</td></tr>\`;
+
+    let opexRows = (pl.operatingExpenses || []).map((o) => {
+      const pct = pl.totalRevenueCents > 0 ? ((o.amountCents / pl.totalRevenueCents) * 100).toFixed(1) + '%' : '0.0%';
+      return \`
+        <tr>
+          <td style="padding-left: 1.5rem;"><strong style="font-family: 'JetBrains Mono', monospace;">\${o.code}</strong> \${o.name}</td>
+          <td style="text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #d97706;">\${formatCurrency(o.amountCents)}</td>
+          <td style="text-align: right; color: #64748b; font-size: 0.82rem;">\${pct}</td>
+        </tr>
+      \`;
+    }).join('') || \`<tr><td colspan="3" style="padding-left: 1.5rem; color: #94a3b8; font-style: italic;">No operating expenses recorded</td></tr>\`;
+
+    mainSectionHtml = \`
+      <div style="padding: 1rem 1.35rem;">
+        <!-- KPI Metrics Grid -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+          <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 1rem;">
+            <div style="font-size: 0.78rem; font-weight: 600; color: #64748b; text-transform: uppercase;">Total Revenue</div>
+            <div style="font-size: 1.35rem; font-weight: 700; color: #059669; font-family: 'JetBrains Mono', monospace; margin-top: 0.25rem;">\${formatCurrency(pl.totalRevenueCents)}</div>
+          </div>
+          <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 1rem;">
+            <div style="font-size: 0.78rem; font-weight: 600; color: #64748b; text-transform: uppercase;">Gross Profit</div>
+            <div style="font-size: 1.35rem; font-weight: 700; color: #0f172a; font-family: 'JetBrains Mono', monospace; margin-top: 0.25rem;">\${formatCurrency(pl.grossProfitCents)}</div>
+            <div style="font-size: 0.75rem; color: #64748b;">Margin: \${pl.grossMarginPct}%</div>
+          </div>
+          <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 1rem;">
+            <div style="font-size: 0.78rem; font-weight: 600; color: #64748b; text-transform: uppercase;">Operating Expenses</div>
+            <div style="font-size: 1.35rem; font-weight: 700; color: #dc2626; font-family: 'JetBrains Mono', monospace; margin-top: 0.25rem;">\${formatCurrency(pl.totalOpexCents)}</div>
+          </div>
+          <div style="background: \${isProfitable ? '#f0fdf4' : '#fef2f2'}; border: 1px solid \${isProfitable ? '#bbf7d0' : '#fecaca'}; border-radius: var(--radius-sm); padding: 1rem;">
+            <div style="font-size: 0.78rem; font-weight: 600; color: \${isProfitable ? '#15803d' : '#b91c1c'}; text-transform: uppercase;">Net \${isProfitable ? 'Profit' : 'Loss'}</div>
+            <div style="font-size: 1.35rem; font-weight: 700; color: \${isProfitable ? '#15803d' : '#b91c1c'}; font-family: 'JetBrains Mono', monospace; margin-top: 0.25rem;">\${formatCurrency(pl.netIncomeCents)}</div>
+            <div style="font-size: 0.75rem; color: \${isProfitable ? '#15803d' : '#b91c1c'};">Net Margin: \${pl.netMarginPct}%</div>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700;">Statement of Comprehensive Income (Profit & Loss)</h3>
+          <div style="display: flex; gap: 0.5rem;">
+            \${exportButtonHtml}
+          </div>
+        </div>
+
+        <!-- Official Financial Statement Table -->
+        <div class="table-responsive" style="border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: #ffffff;">
+          <table class="data-table" style="margin-bottom: 0;">
+            <thead>
+              <tr style="background: #f8fafc;">
+                <th>Line Item / Account Description</th>
+                <th style="text-align: right; width: 180px;">Amount (PHP)</th>
+                <th style="text-align: right; width: 120px;">% of Revenue</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="background: #f1f5f9;"><td colspan="3"><strong>I. OPERATING REVENUES</strong></td></tr>
+              \${revRows}
+              <tr style="border-top: 1px solid var(--border-color); font-weight: 700;">
+                <td>Total Operating Revenue</td>
+                <td style="text-align: right; font-family: 'JetBrains Mono', monospace; color: #059669;">\${formatCurrency(pl.totalRevenueCents)}</td>
+                <td style="text-align: right;">100.0%</td>
+              </tr>
+
+              <tr style="background: #f1f5f9;"><td colspan="3"><strong>II. COST OF GOODS SOLD (COGS)</strong></td></tr>
+              \${cogsRows}
+              <tr style="border-top: 1px solid var(--border-color); font-weight: 700;">
+                <td>Total Cost of Goods Sold</td>
+                <td style="text-align: right; font-family: 'JetBrains Mono', monospace; color: #dc2626;">(\${formatCurrency(pl.totalCogsCents)})</td>
+                <td style="text-align: right;">\${pl.totalRevenueCents > 0 ? ((pl.totalCogsCents / pl.totalRevenueCents) * 100).toFixed(1) + '%' : '0.0%'}</td>
+              </tr>
+
+              <tr style="background: #e2e8f0; font-weight: 800; font-size: 0.95rem;">
+                <td>GROSS PROFIT</td>
+                <td style="text-align: right; font-family: 'JetBrains Mono', monospace;">\${formatCurrency(pl.grossProfitCents)}</td>
+                <td style="text-align: right;">\${pl.grossMarginPct}%</td>
+              </tr>
+
+              <tr style="background: #f1f5f9;"><td colspan="3"><strong>III. OPERATING EXPENSES (OPEX)</strong></td></tr>
+              \${opexRows}
+              <tr style="border-top: 1px solid var(--border-color); font-weight: 700;">
+                <td>Total Operating Expenses</td>
+                <td style="text-align: right; font-family: 'JetBrains Mono', monospace; color: #d97706;">(\${formatCurrency(pl.totalOpexCents)})</td>
+                <td style="text-align: right;">\${pl.totalRevenueCents > 0 ? ((pl.totalOpexCents / pl.totalRevenueCents) * 100).toFixed(1) + '%' : '0.0%'}</td>
+              </tr>
+
+              <tr style="background: \${isProfitable ? '#dcfce7' : '#fee2e2'}; font-weight: 800; font-size: 1rem; border-top: 2px solid #0f172a; border-bottom: 2px solid #0f172a;">
+                <td>NET INCOME / (NET LOSS)</td>
+                <td style="text-align: right; font-family: 'JetBrains Mono', monospace; color: \${isProfitable ? '#15803d' : '#b91c1c'};">\${formatCurrency(pl.netIncomeCents)}</td>
+                <td style="text-align: right; color: \${isProfitable ? '#15803d' : '#b91c1c'};">\${pl.netMarginPct}%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    \`;
+  } else if (accountingActiveTab === 'reports-bs') {
+    const bs = cachedBalanceSheet || {
+      totalAssetsCents: 0,
+      totalLiabilitiesCents: 0,
+      totalLiabilitiesAndEquityCents: 0,
+      discrepancyCents: 0,
+      isBalanced: true,
+      assets: { current: [], nonCurrent: [], totalAssetsCents: 0 },
+      liabilities: { current: [], nonCurrent: [], totalLiabilitiesCents: 0 },
+      equity: { items: [], currentPeriodNetIncomeCents: 0, totalEquityCents: 0 },
+    };
+
+    let curAssetRows = (bs.assets?.current || []).map((a) => \`
+      <tr>
+        <td style="padding-left: 1.5rem;"><strong style="font-family: 'JetBrains Mono', monospace;">\${a.code}</strong> \${a.name}</td>
+        <td style="text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600;">\${formatCurrency(a.amountCents)}</td>
+      </tr>
+    \`).join('') || \`<tr><td colspan="2" style="padding-left: 1.5rem; color: #94a3b8; font-style: italic;">No current asset balances</td></tr>\`;
+
+    let nonCurAssetRows = (bs.assets?.nonCurrent || []).map((a) => \`
+      <tr>
+        <td style="padding-left: 1.5rem;"><strong style="font-family: 'JetBrains Mono', monospace;">\${a.code}</strong> \${a.name}</td>
+        <td style="text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600;">\${formatCurrency(a.amountCents)}</td>
+      </tr>
+    \`).join('') || \`<tr><td colspan="2" style="padding-left: 1.5rem; color: #94a3b8; font-style: italic;">No non-current asset balances</td></tr>\`;
+
+    let curLiabRows = (bs.liabilities?.current || []).map((l) => \`
+      <tr>
+        <td style="padding-left: 1.5rem;"><strong style="font-family: 'JetBrains Mono', monospace;">\${l.code}</strong> \${l.name}</td>
+        <td style="text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600;">\${formatCurrency(l.amountCents)}</td>
+      </tr>
+    \`).join('') || \`<tr><td colspan="2" style="padding-left: 1.5rem; color: #94a3b8; font-style: italic;">No current liability balances</td></tr>\`;
+
+    let eqRows = (bs.equity?.items || []).map((e) => \`
+      <tr>
+        <td style="padding-left: 1.5rem;"><strong style="font-family: 'JetBrains Mono', monospace;">\${e.code}</strong> \${e.name}</td>
+        <td style="text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600;">\${formatCurrency(e.amountCents)}</td>
+      </tr>
+    \`).join('') || \`<tr><td colspan="2" style="padding-left: 1.5rem; color: #94a3b8; font-style: italic;">No base equity entries</td></tr>\`;
+
+    mainSectionHtml = \`
+      <div style="padding: 1rem 1.35rem;">
+        <!-- KPI Metrics Grid -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+          <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 1rem;">
+            <div style="font-size: 0.78rem; font-weight: 600; color: #64748b; text-transform: uppercase;">Total Assets</div>
+            <div style="font-size: 1.35rem; font-weight: 700; color: #0284c7; font-family: 'JetBrains Mono', monospace; margin-top: 0.25rem;">\${formatCurrency(bs.totalAssetsCents)}</div>
+          </div>
+          <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 1rem;">
+            <div style="font-size: 0.78rem; font-weight: 600; color: #64748b; text-transform: uppercase;">Total Liabilities</div>
+            <div style="font-size: 1.35rem; font-weight: 700; color: #dc2626; font-family: 'JetBrains Mono', monospace; margin-top: 0.25rem;">\${formatCurrency(bs.liabilities?.totalLiabilitiesCents || 0)}</div>
+          </div>
+          <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 1rem;">
+            <div style="font-size: 0.78rem; font-weight: 600; color: #64748b; text-transform: uppercase;">Total Equity (incl. Net Profit)</div>
+            <div style="font-size: 1.35rem; font-weight: 700; color: #059669; font-family: 'JetBrains Mono', monospace; margin-top: 0.25rem;">\${formatCurrency(bs.equity?.totalEquityCents || 0)}</div>
+          </div>
+          <div style="background: \${bs.isBalanced ? '#f0fdf4' : '#fef2f2'}; border: 1px solid \${bs.isBalanced ? '#bbf7d0' : '#fecaca'}; border-radius: var(--radius-sm); padding: 1rem;">
+            <div style="font-size: 0.78rem; font-weight: 600; color: \${bs.isBalanced ? '#15803d' : '#b91c1c'}; text-transform: uppercase;">Equilibrium Status</div>
+            <div style="font-size: 1.15rem; font-weight: 700; color: \${bs.isBalanced ? '#15803d' : '#b91c1c'}; margin-top: 0.25rem;">\${bs.isBalanced ? '✓ Balanced (A = L + E)' : '⚠ Discrepancy'}</div>
+            <div style="font-size: 0.75rem; color: #64748b;">Diff: \${formatCurrency(Math.abs(bs.discrepancyCents || 0))}</div>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700;">Statement of Financial Position (Balance Sheet)</h3>
+          <div style="display: flex; gap: 0.5rem;">
+            \${exportButtonHtml}
+          </div>
+        </div>
+
+        <!-- Official Balance Sheet Table -->
+        <div class="table-responsive" style="border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: #ffffff;">
+          <table class="data-table" style="margin-bottom: 0;">
+            <thead>
+              <tr style="background: #f8fafc;">
+                <th>Account & Classification</th>
+                <th style="text-align: right; width: 220px;">Balance (PHP)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- ASSETS -->
+              <tr style="background: #e0f2fe;"><td colspan="2"><strong style="color: #0369a1;">1. ASSETS</strong></td></tr>
+              <tr style="background: #f1f5f9;"><td colspan="2"><strong>Current Assets</strong></td></tr>
+              \${curAssetRows}
+              <tr style="background: #f1f5f9;"><td colspan="2"><strong>Non-Current & Fixed Assets</strong></td></tr>
+              \${nonCurAssetRows}
+              <tr style="background: #bae6fd; font-weight: 800; font-size: 0.95rem; border-top: 1px solid #7dd3fc;">
+                <td>TOTAL ASSETS</td>
+                <td style="text-align: right; font-family: 'JetBrains Mono', monospace; color: #0369a1;">\${formatCurrency(bs.totalAssetsCents)}</td>
+              </tr>
+
+              <!-- LIABILITIES -->
+              <tr style="background: #fee2e2;"><td colspan="2"><strong style="color: #b91c1c;">2. LIABILITIES</strong></td></tr>
+              <tr style="background: #f1f5f9;"><td colspan="2"><strong>Current Liabilities</strong></td></tr>
+              \${curLiabRows}
+              <tr style="border-top: 1px solid var(--border-color); font-weight: 700;">
+                <td>Total Liabilities</td>
+                <td style="text-align: right; font-family: 'JetBrains Mono', monospace; color: #dc2626;">\${formatCurrency(bs.liabilities?.totalLiabilitiesCents || 0)}</td>
+              </tr>
+
+              <!-- EQUITY -->
+              <tr style="background: #dcfce7;"><td colspan="2"><strong style="color: #15803d;">3. OWNER'S EQUITY & RETAINED EARNINGS</strong></td></tr>
+              \${eqRows}
+              <tr>
+                <td style="padding-left: 1.5rem;">Current Period Net Income / (Loss)</td>
+                <td style="text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #15803d;">\${formatCurrency(bs.equity?.currentPeriodNetIncomeCents || 0)}</td>
+              </tr>
+              <tr style="border-top: 1px solid var(--border-color); font-weight: 700;">
+                <td>Total Equity</td>
+                <td style="text-align: right; font-family: 'JetBrains Mono', monospace; color: #15803d;">\${formatCurrency(bs.equity?.totalEquityCents || 0)}</td>
+              </tr>
+
+              <!-- TOTAL LIABILITIES & EQUITY -->
+              <tr style="background: #f8fafc; font-weight: 800; font-size: 1rem; border-top: 2px solid #0f172a; border-bottom: 2px solid #0f172a;">
+                <td>TOTAL LIABILITIES & EQUITY</td>
+                <td style="text-align: right; font-family: 'JetBrains Mono', monospace; color: #0f172a;">\${formatCurrency(bs.totalLiabilitiesAndEquityCents)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    \`;
+  } else if (accountingActiveTab === 'reports-cf') {
+    const cf = cachedCashFlow || {
+      operatingActivities: { inflows: [], outflows: [], totalInflowCents: 0, totalOutflowCents: 0, netOperatingCashCents: 0 },
+      investingActivities: { items: [], netInvestingCashCents: 0 },
+      financingActivities: { items: [], netFinancingCashCents: 0 },
+      netCashFlowCents: 0,
+      closingCashCents: 0,
+    };
+
+    let opInRows = (cf.operatingActivities?.inflows || []).map((i) => \`
+      <tr>
+        <td style="padding-left: 1.5rem;">\${i.description}</td>
+        <td style="color: #64748b; font-size: 0.8rem;">\${new Date(i.date).toLocaleDateString()}</td>
+        <td style="text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #059669;">+ \${formatCurrency(i.amountCents)}</td>
+      </tr>
+    \`).join('') || \`<tr><td colspan="3" style="padding-left: 1.5rem; color: #94a3b8; font-style: italic;">No operating inflows</td></tr>\`;
+
+    let opOutRows = (cf.operatingActivities?.outflows || []).map((o) => \`
+      <tr>
+        <td style="padding-left: 1.5rem;">\${o.description}</td>
+        <td style="color: #64748b; font-size: 0.8rem;">\${new Date(o.date).toLocaleDateString()}</td>
+        <td style="text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #dc2626;">- \${formatCurrency(o.amountCents)}</td>
+      </tr>
+    \`).join('') || \`<tr><td colspan="3" style="padding-left: 1.5rem; color: #94a3b8; font-style: italic;">No operating disbursements</td></tr>\`;
+
+    let invRows = (cf.investingActivities?.items || []).map((i) => \`
+      <tr>
+        <td style="padding-left: 1.5rem;">\${i.description}</td>
+        <td style="color: #64748b; font-size: 0.8rem;">\${new Date(i.date).toLocaleDateString()}</td>
+        <td style="text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600;">\${formatCurrency(i.amountCents)}</td>
+      </tr>
+    \`).join('') || \`<tr><td colspan="3" style="padding-left: 1.5rem; color: #94a3b8; font-style: italic;">No investing cash flows</td></tr>\`;
+
+    let finRows = (cf.financingActivities?.items || []).map((f) => \`
+      <tr>
+        <td style="padding-left: 1.5rem;">\${f.description}</td>
+        <td style="color: #64748b; font-size: 0.8rem;">\${new Date(f.date).toLocaleDateString()}</td>
+        <td style="text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600;">\${formatCurrency(f.amountCents)}</td>
+      </tr>
+    \`).join('') || \`<tr><td colspan="3" style="padding-left: 1.5rem; color: #94a3b8; font-style: italic;">No financing cash flows</td></tr>\`;
+
+    mainSectionHtml = \`
+      <div style="padding: 1rem 1.35rem;">
+        <!-- KPI Metrics Grid -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+          <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 1rem;">
+            <div style="font-size: 0.78rem; font-weight: 600; color: #64748b; text-transform: uppercase;">Net Operating Cash</div>
+            <div style="font-size: 1.35rem; font-weight: 700; color: #059669; font-family: 'JetBrains Mono', monospace; margin-top: 0.25rem;">\${formatCurrency(cf.operatingActivities?.netOperatingCashCents || 0)}</div>
+          </div>
+          <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 1rem;">
+            <div style="font-size: 0.78rem; font-weight: 600; color: #64748b; text-transform: uppercase;">Net Investing Cash</div>
+            <div style="font-size: 1.35rem; font-weight: 700; color: #0284c7; font-family: 'JetBrains Mono', monospace; margin-top: 0.25rem;">\${formatCurrency(cf.investingActivities?.netInvestingCashCents || 0)}</div>
+          </div>
+          <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 1rem;">
+            <div style="font-size: 0.78rem; font-weight: 600; color: #64748b; text-transform: uppercase;">Net Financing Cash</div>
+            <div style="font-size: 1.35rem; font-weight: 700; color: #7c3aed; font-family: 'JetBrains Mono', monospace; margin-top: 0.25rem;">\${formatCurrency(cf.financingActivities?.netFinancingCashCents || 0)}</div>
+          </div>
+          <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius-sm); padding: 1rem;">
+            <div style="font-size: 0.78rem; font-weight: 600; color: #15803d; text-transform: uppercase;">Ending Cash Balance</div>
+            <div style="font-size: 1.35rem; font-weight: 700; color: #15803d; font-family: 'JetBrains Mono', monospace; margin-top: 0.25rem;">\${formatCurrency(cf.closingCashCents)}</div>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700;">Statement of Cash Flows (Direct Method)</h3>
+          <div style="display: flex; gap: 0.5rem;">
+            \${exportButtonHtml}
+          </div>
+        </div>
+
+        <!-- Official Cash Flow Table -->
+        <div class="table-responsive" style="border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: #ffffff;">
+          <table class="data-table" style="margin-bottom: 0;">
+            <thead>
+              <tr style="background: #f8fafc;">
+                <th>Cash Flow Activity & Description</th>
+                <th style="width: 140px;">Date</th>
+                <th style="text-align: right; width: 180px;">Amount (PHP)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Operating Cash Flows -->
+              <tr style="background: #f1f5f9;"><td colspan="3"><strong>1. CASH FLOWS FROM OPERATING ACTIVITIES</strong></td></tr>
+              <tr><td colspan="3" style="font-weight: 600; color: #059669; padding-left: 1rem;">Cash Receipts & Inflows</td></tr>
+              \${opInRows}
+              <tr><td colspan="3" style="font-weight: 600; color: #dc2626; padding-left: 1rem;">Cash Disbursements & Outflows</td></tr>
+              \${opOutRows}
+              <tr style="border-top: 1px solid var(--border-color); font-weight: 700; background: #f8fafc;">
+                <td colspan="2">Net Cash Provided by Operating Activities</td>
+                <td style="text-align: right; font-family: 'JetBrains Mono', monospace; color: #059669;">\${formatCurrency(cf.operatingActivities?.netOperatingCashCents || 0)}</td>
+              </tr>
+
+              <!-- Investing Cash Flows -->
+              <tr style="background: #f1f5f9;"><td colspan="3"><strong>2. CASH FLOWS FROM INVESTING ACTIVITIES</strong></td></tr>
+              \${invRows}
+              <tr style="border-top: 1px solid var(--border-color); font-weight: 700; background: #f8fafc;">
+                <td colspan="2">Net Cash Provided by / (Used in) Investing Activities</td>
+                <td style="text-align: right; font-family: 'JetBrains Mono', monospace; color: #0284c7;">\${formatCurrency(cf.investingActivities?.netInvestingCashCents || 0)}</td>
+              </tr>
+
+              <!-- Financing Cash Flows -->
+              <tr style="background: #f1f5f9;"><td colspan="3"><strong>3. CASH FLOWS FROM FINANCING ACTIVITIES</strong></td></tr>
+              \${finRows}
+              <tr style="border-top: 1px solid var(--border-color); font-weight: 700; background: #f8fafc;">
+                <td colspan="2">Net Cash Provided by / (Used in) Financing Activities</td>
+                <td style="text-align: right; font-family: 'JetBrains Mono', monospace; color: #7c3aed;">\${formatCurrency(cf.financingActivities?.netFinancingCashCents || 0)}</td>
+              </tr>
+
+              <!-- Net Change & Closing Cash -->
+              <tr style="background: #dcfce7; font-weight: 800; font-size: 1rem; border-top: 2px solid #0f172a; border-bottom: 2px solid #0f172a;">
+                <td colspan="2">NET CHANGE IN CASH & CLOSING CASH EQUIVALENTS</td>
+                <td style="text-align: right; font-family: 'JetBrains Mono', monospace; color: #15803d;">\${formatCurrency(cf.closingCashCents)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     \`;
   } else if (accountingActiveTab === 'trial-balance') {

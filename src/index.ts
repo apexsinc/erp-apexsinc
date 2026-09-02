@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, asc } from 'drizzle-orm';
 import { createDbClient } from './db/client';
 import * as schema from './db/schema';
 import { renderAppHtml } from './ui';
@@ -1766,6 +1766,225 @@ app.get('/api/accounting/ledger', async (c) => {
     with: { account: true },
   });
   return c.json({ success: true, count: ledger.length, data: ledger });
+});
+
+// GET /api/accounting/reports/profit-loss - Income Statement (Profit & Loss)
+app.get('/api/accounting/reports/profit-loss', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const accounts = await db.query.accounts.findMany({ orderBy: [schema.accounts.code] });
+  const allEntries = await db.query.journalEntries.findMany();
+
+  const revenues: Array<{ code: string; name: string; amountCents: number }> = [];
+  const cogs: Array<{ code: string; name: string; amountCents: number }> = [];
+  const operatingExpenses: Array<{ code: string; name: string; amountCents: number }> = [];
+
+  let totalRevenueCents = 0;
+  let totalCogsCents = 0;
+  let totalOpexCents = 0;
+
+  for (const acc of accounts) {
+    const entries = allEntries.filter((e) => e.accountId === acc.id);
+    const debit = entries.reduce((sum, e) => sum + e.debitCents, 0);
+    const credit = entries.reduce((sum, e) => sum + e.creditCents, 0);
+
+    if (acc.type === 'REVENUE') {
+      const net = credit - debit;
+      if (net !== 0 || entries.length > 0) {
+        revenues.push({ code: acc.code, name: acc.name, amountCents: net });
+        totalRevenueCents += net;
+      }
+    } else if (acc.type === 'EXPENSE') {
+      const net = debit - credit;
+      if (acc.code === '5010' || acc.name.toLowerCase().includes('cost of goods') || acc.name.toLowerCase().includes('cogs')) {
+        cogs.push({ code: acc.code, name: acc.name, amountCents: net });
+        totalCogsCents += net;
+      } else {
+        operatingExpenses.push({ code: acc.code, name: acc.name, amountCents: net });
+        totalOpexCents += net;
+      }
+    }
+  }
+
+  const grossProfitCents = totalRevenueCents - totalCogsCents;
+  const grossMarginPct = totalRevenueCents > 0 ? (grossProfitCents / totalRevenueCents) * 100 : 0;
+  const netIncomeCents = grossProfitCents - totalOpexCents;
+  const netMarginPct = totalRevenueCents > 0 ? (netIncomeCents / totalRevenueCents) * 100 : 0;
+
+  return c.json({
+    success: true,
+    generatedAt: new Date().toISOString(),
+    revenues,
+    cogs,
+    operatingExpenses,
+    totalRevenueCents,
+    totalCogsCents,
+    grossProfitCents,
+    grossMarginPct: Number(grossMarginPct.toFixed(2)),
+    totalOpexCents,
+    netIncomeCents,
+    netMarginPct: Number(netMarginPct.toFixed(2)),
+    isProfitable: netIncomeCents >= 0,
+  });
+});
+
+// GET /api/accounting/reports/balance-sheet - Statement of Financial Position (Balance Sheet)
+app.get('/api/accounting/reports/balance-sheet', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const accounts = await db.query.accounts.findMany({ orderBy: [schema.accounts.code] });
+  const allEntries = await db.query.journalEntries.findMany();
+
+  const currentAssets: Array<{ code: string; name: string; amountCents: number }> = [];
+  const nonCurrentAssets: Array<{ code: string; name: string; amountCents: number }> = [];
+  const currentLiabilities: Array<{ code: string; name: string; amountCents: number }> = [];
+  const nonCurrentLiabilities: Array<{ code: string; name: string; amountCents: number }> = [];
+  const equityItems: Array<{ code: string; name: string; amountCents: number }> = [];
+
+  let totalAssetsCents = 0;
+  let totalLiabilitiesCents = 0;
+  let totalBaseEquityCents = 0;
+  let totalRevenueCents = 0;
+  let totalExpenseCents = 0;
+
+  for (const acc of accounts) {
+    const entries = allEntries.filter((e) => e.accountId === acc.id);
+    const debit = entries.reduce((sum, e) => sum + e.debitCents, 0);
+    const credit = entries.reduce((sum, e) => sum + e.creditCents, 0);
+
+    if (acc.type === 'ASSET') {
+      const net = debit - credit;
+      if (acc.code.startsWith('15') || acc.name.toLowerCase().includes('fixed') || acc.name.toLowerCase().includes('equipment') || acc.name.toLowerCase().includes('property')) {
+        nonCurrentAssets.push({ code: acc.code, name: acc.name, amountCents: net });
+      } else {
+        currentAssets.push({ code: acc.code, name: acc.name, amountCents: net });
+      }
+      totalAssetsCents += net;
+    } else if (acc.type === 'LIABILITY') {
+      const net = credit - debit;
+      if (acc.code.startsWith('25') || acc.name.toLowerCase().includes('long-term') || acc.name.toLowerCase().includes('loan')) {
+        nonCurrentLiabilities.push({ code: acc.code, name: acc.name, amountCents: net });
+      } else {
+        currentLiabilities.push({ code: acc.code, name: acc.name, amountCents: net });
+      }
+      totalLiabilitiesCents += net;
+    } else if (acc.type === 'EQUITY') {
+      const net = credit - debit;
+      equityItems.push({ code: acc.code, name: acc.name, amountCents: net });
+      totalBaseEquityCents += net;
+    } else if (acc.type === 'REVENUE') {
+      totalRevenueCents += (credit - debit);
+    } else if (acc.type === 'EXPENSE') {
+      totalExpenseCents += (debit - credit);
+    }
+  }
+
+  const currentPeriodNetIncomeCents = totalRevenueCents - totalExpenseCents;
+  const totalEquityCents = totalBaseEquityCents + currentPeriodNetIncomeCents;
+  const totalLiabilitiesAndEquityCents = totalLiabilitiesCents + totalEquityCents;
+  const discrepancyCents = totalAssetsCents - totalLiabilitiesAndEquityCents;
+  const isBalanced = discrepancyCents === 0;
+
+  return c.json({
+    success: true,
+    generatedAt: new Date().toISOString(),
+    isBalanced,
+    assets: {
+      current: currentAssets,
+      nonCurrent: nonCurrentAssets,
+      totalAssetsCents,
+    },
+    liabilities: {
+      current: currentLiabilities,
+      nonCurrent: nonCurrentLiabilities,
+      totalLiabilitiesCents,
+    },
+    equity: {
+      items: equityItems,
+      currentPeriodNetIncomeCents,
+      totalEquityCents,
+    },
+    totalAssetsCents,
+    totalLiabilitiesAndEquityCents,
+    discrepancyCents,
+  });
+});
+
+// GET /api/accounting/reports/cash-flow - Statement of Cash Flows
+app.get('/api/accounting/reports/cash-flow', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const cashAccount = await db.query.accounts.findFirst({
+    where: eq(schema.accounts.code, '1010'),
+  });
+
+  if (!cashAccount) {
+    return c.json({ success: false, error: 'Cash account (1010) not found in Chart of Accounts' }, 404);
+  }
+
+  const cashEntries = await db.query.journalEntries.findMany({
+    where: eq(schema.journalEntries.accountId, cashAccount.id),
+    orderBy: [asc(schema.journalEntries.createdAt)],
+  });
+
+  const operatingInflows: Array<{ description: string; amountCents: number; date: string }> = [];
+  const operatingOutflows: Array<{ description: string; amountCents: number; date: string }> = [];
+  const investingFlows: Array<{ description: string; amountCents: number; date: string }> = [];
+  const financingFlows: Array<{ description: string; amountCents: number; date: string }> = [];
+
+  let totalOperatingInflowCents = 0;
+  let totalOperatingOutflowCents = 0;
+  let totalInvestingCents = 0;
+  let totalFinancingCents = 0;
+
+  for (const entry of cashEntries) {
+    const desc = entry.description || 'Cash Transaction';
+    const descLower = desc.toLowerCase();
+
+    if (entry.debitCents > 0) {
+      if (descLower.includes('equity') || descLower.includes('capital') || descLower.includes('investment')) {
+        financingFlows.push({ description: desc, amountCents: entry.debitCents, date: entry.createdAt });
+        totalFinancingCents += entry.debitCents;
+      } else {
+        operatingInflows.push({ description: desc, amountCents: entry.debitCents, date: entry.createdAt });
+        totalOperatingInflowCents += entry.debitCents;
+      }
+    } else if (entry.creditCents > 0) {
+      if (descLower.includes('equipment') || descLower.includes('asset purchase')) {
+        investingFlows.push({ description: desc, amountCents: -entry.creditCents, date: entry.createdAt });
+        totalInvestingCents -= entry.creditCents;
+      } else if (descLower.includes('dividend') || descLower.includes('drawing') || descLower.includes('loan repayment')) {
+        financingFlows.push({ description: desc, amountCents: -entry.creditCents, date: entry.createdAt });
+        totalFinancingCents -= entry.creditCents;
+      } else {
+        operatingOutflows.push({ description: desc, amountCents: entry.creditCents, date: entry.createdAt });
+        totalOperatingOutflowCents += entry.creditCents;
+      }
+    }
+  }
+
+  const netOperatingCashCents = totalOperatingInflowCents - totalOperatingOutflowCents;
+  const netCashFlowCents = netOperatingCashCents + totalInvestingCents + totalFinancingCents;
+  const closingCashCents = netCashFlowCents;
+
+  return c.json({
+    success: true,
+    generatedAt: new Date().toISOString(),
+    operatingActivities: {
+      inflows: operatingInflows,
+      outflows: operatingOutflows,
+      totalInflowCents: totalOperatingInflowCents,
+      totalOutflowCents: totalOperatingOutflowCents,
+      netOperatingCashCents,
+    },
+    investingActivities: {
+      items: investingFlows,
+      netInvestingCashCents: totalInvestingCents,
+    },
+    financingActivities: {
+      items: financingFlows,
+      netFinancingCashCents: totalFinancingCents,
+    },
+    netCashFlowCents,
+    closingCashCents,
+  });
 });
 
 /* ========================================================================== */
