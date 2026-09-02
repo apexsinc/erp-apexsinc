@@ -219,7 +219,7 @@ const TAB_ROUTE_MAP = {
 };
 
 function getTabFromUrl() {
-  const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+  const path = window.location.pathname.toLowerCase().replace(/[/]+$/, '');
   if (ROUTE_TAB_MAP[path]) return ROUTE_TAB_MAP[path];
   const segment = path.split('/')[1];
   if (segment && ROUTE_TAB_MAP['/' + segment]) return ROUTE_TAB_MAP['/' + segment];

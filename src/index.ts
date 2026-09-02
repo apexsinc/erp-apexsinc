@@ -62,9 +62,9 @@ app.use('/api/payroll/*', authMiddleware, requireModule('payroll'));
 async function renderApp(c: { req: any; env: Bindings }) {
   const db = createDbClient(c.env.DB);
   const rolePermissions = await loadPermissionMatrix(db);
-  const host = c.req.header('host') || '';
-  const isLocalOrDev = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('0.0.0.0') || host.includes(':8787') || host.includes('.internal');
-  const turnstileSiteKey = isLocalOrDev ? '1x00000000000000000000AA' : (c.env.TURNSTILE_SITE_KEY || '1x00000000000000000000AA');
+  const host = (c.req.header('host') || '').toLowerCase();
+  const isProduction = host.startsWith('app.apexsinc.com');
+  const turnstileSiteKey = isProduction ? c.env.TURNSTILE_SITE_KEY : undefined;
   return renderAppHtml(rolePermissions, { turnstileSiteKey });
 }
 app.get('/', async (c) => c.html(await renderApp(c)));
