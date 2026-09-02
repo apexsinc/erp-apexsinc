@@ -1,0 +1,1 @@
+ALTER TABLE `products` ADD `cost_price_currency` text DEFAULT 'PHP' NOT NULL;

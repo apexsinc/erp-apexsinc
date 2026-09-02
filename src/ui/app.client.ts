@@ -35,9 +35,10 @@ const state = {
 };
 
 // Global Utilities
-function formatCurrency(cents) {
-  if (cents === undefined || cents === null) return '₱0.00';
-  return '₱' + (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function formatCurrency(cents, currency) {
+  const symbol = currency === 'USD' ? '$' : '₱';
+  if (cents === undefined || cents === null) return symbol + '0.00';
+  return symbol + (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // Attaches the session token to every API call and handles a revoked/expired

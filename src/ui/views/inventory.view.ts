@@ -19,8 +19,8 @@ async function loadInventory() {
           <td><strong>\${p.sku}</strong></td>
           <td>\${p.name}</td>
           <td>\${p.unitOfMeasure}</td>
-          <td>\${formatCurrency(p.costPriceCents)}</td>
-          <td>\${formatCurrency(p.sellingPriceCents)}</td>
+          <td>\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.75rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8;">Not purchased yet</span>'}</td>
+          <td>\${p.sellingPriceCents > 0 ? formatCurrency(p.sellingPriceCents) : '<span style="color: #94a3b8;">Not set</span>'}</td>
           <td>
             <span class="badge \${p.onHandStock > 10 ? 'badge-success' : p.onHandStock > 0 ? 'badge-warning' : 'badge-danger'}">
               <span class="badge-dot"></span>
