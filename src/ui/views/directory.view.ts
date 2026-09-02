@@ -168,8 +168,8 @@ function renderDirectoryTable() {
                 <td><strong>\${p.sku}</strong></td>
                 <td>\${p.name}</td>
                 <td>\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.75rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8;">Not purchased yet</span>'}</td>
-                <td>\${p.sellingPriceCents > 0 ? formatCurrency(p.sellingPriceCents) : '<span style="color: #94a3b8;">Not set</span>'}</td>
-                <td><button class="btn btn-secondary btn-sm" onclick="openSetPriceModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}', \${p.sellingPriceCents})">Set Price</button></td>
+                <td>\${p.sellingPriceCents > 0 ? formatCurrency(p.sellingPriceCents, p.sellingPriceCurrency) : '<span style="color: #94a3b8;">Not set</span>'}</td>
+                <td><button class="btn btn-secondary btn-sm" onclick="openSetPriceModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}', \${p.sellingPriceCents}, '\${p.sellingPriceCurrency}')">Set Price</button></td>
               </tr>
             \`).join('') || '<tr><td colspan="5" style="text-align: center; color: #64748b;">No products found.</td></tr>'}
           </tbody>
@@ -304,13 +304,24 @@ async function submitNewProduct(e) {
 
 // ---- Set Price (Price List tab) ----
 
-function openSetPriceModal(productId, name, currentSellingPriceCents) {
+function openSetPriceModal(productId, name, currentSellingPriceCents, currentSellingPriceCurrency) {
+  const currency = currentSellingPriceCurrency || 'USD';
+  const currentAmount = currentSellingPriceCents ? (currentSellingPriceCents / 100).toFixed(2) : '';
   const body = \`
     <form id="form-set-price" onsubmit="submitSetPrice(event, '\${productId}')">
       <p style="margin-bottom: 1rem; font-size: 0.85rem; color: #64748b;">Selling price for <strong>\${name}</strong>.</p>
-      <div class="form-group">
-        <label class="form-label">Selling Price (Cents) *</label>
-        <input type="number" id="sp-price" class="form-input" placeholder="9000" value="\${currentSellingPriceCents || ''}" required />
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <div class="form-group">
+          <label class="form-label">Selling Price *</label>
+          <input type="number" id="sp-price" class="form-input" placeholder="e.g. 90.00" step="0.01" min="0" value="\${currentAmount}" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Currency *</label>
+          <select id="sp-currency" class="form-select">
+            <option value="USD" \${currency === 'USD' ? 'selected' : ''}>USD ($)</option>
+            <option value="PHP" \${currency === 'PHP' ? 'selected' : ''}>PHP (₱)</option>
+          </select>
+        </div>
       </div>
     </form>
   \`;
@@ -323,7 +334,10 @@ function openSetPriceModal(productId, name, currentSellingPriceCents) {
 
 async function submitSetPrice(e, productId) {
   e.preventDefault();
-  const payload = { sellingPriceCents: parseInt(document.getElementById('sp-price').value, 10) };
+  const payload = {
+    sellingPriceCents: Math.round(parseFloat(document.getElementById('sp-price').value) * 100),
+    sellingPriceCurrency: document.getElementById('sp-currency').value,
+  };
 
   try {
     const res = await apiFetch('/api/inventory/products/' + productId + '/price', {

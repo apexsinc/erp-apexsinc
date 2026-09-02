@@ -41,6 +41,9 @@ export const salesOrders = sqliteTable('sales_orders', {
   })
     .notNull()
     .default('DRAFT'),
+  // One currency per order - every line item is priced in it, so totalAmountCents
+  // is always an unambiguous sum (never a mix of USD and PHP cents).
+  currency: text('currency', { enum: ['USD', 'PHP'] }).notNull().default('USD'),
   totalAmountCents: integer('total_amount_cents').notNull().default(0),
   notes: text('notes'),
   orderDate: text('order_date')
@@ -92,6 +95,8 @@ export const invoices = sqliteTable('invoices', {
   })
     .notNull()
     .default('DRAFT'),
+  // Inherited from the parent sales order at issue time.
+  currency: text('currency', { enum: ['USD', 'PHP'] }).notNull().default('USD'),
   issueDate: text('issue_date')
     .notNull()
     .$defaultFn(() => new Date().toISOString()),

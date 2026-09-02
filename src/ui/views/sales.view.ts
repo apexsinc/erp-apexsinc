@@ -52,7 +52,7 @@ async function loadSales() {
               \${so.status.replace('_', ' ')}
             </span>
           </td>
-          <td><strong>\${formatCurrency(so.totalAmountCents)}</strong></td>
+          <td><strong>\${formatCurrency(so.totalAmountCents, so.currency)}</strong></td>
           <td>\${invoicesHtml}</td>
         </tr>
       \`;
@@ -107,10 +107,20 @@ function openNewSalesOrderModal() {
 
   const body = \`
     <form id="form-new-so" onsubmit="submitNewSalesOrder(event)">
-      <div class="form-group">
-        <label class="form-label">Customer *</label>
-        <select id="nso-cust" class="form-select">\${custOptions}</select>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <div class="form-group">
+          <label class="form-label">Customer *</label>
+          <select id="nso-cust" class="form-select">\${custOptions}</select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Currency *</label>
+          <select id="nso-currency" class="form-select">
+            <option value="USD" selected>USD ($)</option>
+            <option value="PHP">PHP (₱)</option>
+          </select>
+        </div>
       </div>
+      <p style="margin: -0.6rem 0 1rem; font-size: 0.76rem; color: #94a3b8;">All line items on this order are priced in the currency selected here.</p>
       <div class="form-group">
         <label class="form-label">Product *</label>
         <select id="nso-product" class="form-select">\${prodOptions}</select>
@@ -121,8 +131,8 @@ function openNewSalesOrderModal() {
           <input type="number" id="nso-qty" class="form-input" value="10" min="1" required />
         </div>
         <div class="form-group">
-          <label class="form-label">Unit Price (Cents) *</label>
-          <input type="number" id="nso-price" class="form-input" value="9000" required />
+          <label class="form-label">Unit Price *</label>
+          <input type="number" id="nso-price" class="form-input" placeholder="e.g. 90.00" step="0.01" min="0" required />
         </div>
       </div>
       <div class="form-group">
@@ -140,14 +150,18 @@ function openNewSalesOrderModal() {
 
 async function submitNewSalesOrder(e) {
   e.preventDefault();
+  // Entered as a normal currency amount (e.g. 90.00), not cents - convert
+  // once here so every downstream calculation works in integer cents.
+  const unitPriceCents = Math.round(parseFloat(document.getElementById('nso-price').value) * 100);
   const payload = {
     customerId: document.getElementById('nso-cust').value,
+    currency: document.getElementById('nso-currency').value,
     notes: document.getElementById('nso-notes').value || undefined,
     items: [
       {
         productId: document.getElementById('nso-product').value,
         quantity: parseInt(document.getElementById('nso-qty').value, 10),
-        unitPriceCents: parseInt(document.getElementById('nso-price').value, 10),
+        unitPriceCents,
       },
     ],
   };

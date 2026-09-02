@@ -1,0 +1,1 @@
+ALTER TABLE `products` ADD `selling_price_currency` text DEFAULT 'USD' NOT NULL;
