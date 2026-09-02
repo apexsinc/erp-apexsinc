@@ -1,0 +1,1 @@
+ALTER TABLE `products` ADD `category` text DEFAULT 'Other' NOT NULL;
