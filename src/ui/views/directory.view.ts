@@ -14,17 +14,19 @@ function directoryAllowedTabs() {
   const tabs = [];
   if (myModules.includes('sales')) tabs.push('customers');
   if (myModules.includes('inventory')) tabs.push('products');
+  if (myModules.includes('inventory')) tabs.push('pricelist');
   if (myModules.includes('purchasing')) tabs.push('suppliers');
   return tabs;
 }
 
 function directoryTabLabel(tab) {
-  return { customers: 'Customers', products: 'Products', suppliers: 'Suppliers' }[tab] || tab;
+  return { customers: 'Customers', products: 'Products', pricelist: 'Price List', suppliers: 'Suppliers' }[tab] || tab;
 }
 
 function directoryTabCount(tab) {
   if (tab === 'customers') return state.customers.length;
   if (tab === 'products') return state.products.length;
+  if (tab === 'pricelist') return state.products.length;
   if (tab === 'suppliers') return state.vendors.length;
   return 0;
 }
@@ -139,21 +141,41 @@ function renderDirectoryTable() {
     wrap.innerHTML = \`
       <div class="table-responsive">
         <table class="data-table">
-          <thead><tr><th>SKU</th><th>Product Name</th><th>UOM</th><th>Cost Price</th><th>Selling Price</th></tr></thead>
+          <thead><tr><th>SKU</th><th>Product Name</th><th>UOM</th><th>Cost Price</th></tr></thead>
           <tbody>
             \${rows.map((p) => \`
               <tr>
                 <td><strong>\${p.sku}</strong></td>
                 <td>\${p.name}</td>
                 <td>\${p.unitOfMeasure}</td>
-                <td>\${formatCurrency(p.costPriceCents)}</td>
-                <td>\${formatCurrency(p.sellingPriceCents)}</td>
+                <td>\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.75rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8;">Not purchased yet</span>'}</td>
+              </tr>
+            \`).join('') || '<tr><td colspan="4" style="text-align: center; color: #64748b;">No products found.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+      <p style="padding: 0 1.35rem 1.25rem; font-size: 0.78rem; color: #94a3b8;">Selling prices are managed on the Price List tab. Stock levels, valuation, and movement history live in Inventory & Stock.</p>
+    \`;
+  } else if (directoryActiveTab === 'pricelist') {
+    const rows = state.products.filter((p) => !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q));
+    wrap.innerHTML = \`
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead><tr><th>SKU</th><th>Product Name</th><th>Cost Price</th><th>Selling Price</th><th></th></tr></thead>
+          <tbody>
+            \${rows.map((p) => \`
+              <tr>
+                <td><strong>\${p.sku}</strong></td>
+                <td>\${p.name}</td>
+                <td>\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.75rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8;">Not purchased yet</span>'}</td>
+                <td>\${p.sellingPriceCents > 0 ? formatCurrency(p.sellingPriceCents) : '<span style="color: #94a3b8;">Not set</span>'}</td>
+                <td><button class="btn btn-secondary btn-sm" onclick="openSetPriceModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}', \${p.sellingPriceCents})">Set Price</button></td>
               </tr>
             \`).join('') || '<tr><td colspan="5" style="text-align: center; color: #64748b;">No products found.</td></tr>'}
           </tbody>
         </table>
       </div>
-      <p style="padding: 0 1.35rem 1.25rem; font-size: 0.78rem; color: #94a3b8;">Stock levels, valuation, and movement history live in Inventory & Stock.</p>
+      <p style="padding: 0 1.35rem 1.25rem; font-size: 0.78rem; color: #94a3b8;">Selling prices set here are what Sales Orders and Invoices should quote customers.</p>
     \`;
   } else if (directoryActiveTab === 'suppliers') {
     const rows = state.vendors.filter((v) => !q || v.name.toLowerCase().includes(q) || v.vendorCode.toLowerCase().includes(q) || (v.email || '').toLowerCase().includes(q));
@@ -235,31 +257,17 @@ function openNewProductModal() {
   const body = \`
     <form id="form-new-product" onsubmit="submitNewProduct(event)">
       <div class="form-group">
-        <label class="form-label">Product SKU *</label>
+        <label class="form-label">Product Number (SKU) *</label>
         <input type="text" id="np-sku" class="form-input" placeholder="e.g. WIDGET-100" required />
       </div>
       <div class="form-group">
         <label class="form-label">Product Name *</label>
         <input type="text" id="np-name" class="form-input" placeholder="e.g. Industrial Widget" required />
       </div>
-      <div class="form-group">
-        <label class="form-label">Unit of Measure</label>
-        <input type="text" id="np-uom" class="form-input" value="pcs" />
-      </div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-        <div class="form-group">
-          <label class="form-label">Cost Price (Cents) *</label>
-          <input type="number" id="np-cost" class="form-input" placeholder="4500" required />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Selling Price (Cents) *</label>
-          <input type="number" id="np-selling" class="form-input" placeholder="9000" required />
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Initial Stock Count</label>
-        <input type="number" id="np-stock" class="form-input" value="0" min="0" />
-      </div>
+      <p style="margin: -0.5rem 0 0; font-size: 0.78rem; color: #94a3b8;">
+        Unit of measure, cost price, currency, and quantity are set when you order this product in Purchasing.
+        Selling price is set afterwards from the Price List tab.
+      </p>
     </form>
   \`;
   const footer = \`
@@ -274,10 +282,6 @@ async function submitNewProduct(e) {
   const payload = {
     sku: document.getElementById('np-sku').value,
     name: document.getElementById('np-name').value,
-    unitOfMeasure: document.getElementById('np-uom').value,
-    costPriceCents: parseInt(document.getElementById('np-cost').value, 10),
-    sellingPriceCents: parseInt(document.getElementById('np-selling').value, 10),
-    initialStock: parseInt(document.getElementById('np-stock').value, 10) || 0,
   };
 
   try {
@@ -292,6 +296,47 @@ async function submitNewProduct(e) {
     closeModal();
     showToast('Product ' + json.data.name + ' created', 'success');
     directoryActiveTab = 'products';
+    loadDirectory();
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
+}
+
+// ---- Set Price (Price List tab) ----
+
+function openSetPriceModal(productId, name, currentSellingPriceCents) {
+  const body = \`
+    <form id="form-set-price" onsubmit="submitSetPrice(event, '\${productId}')">
+      <p style="margin-bottom: 1rem; font-size: 0.85rem; color: #64748b;">Selling price for <strong>\${name}</strong>.</p>
+      <div class="form-group">
+        <label class="form-label">Selling Price (Cents) *</label>
+        <input type="number" id="sp-price" class="form-input" placeholder="9000" value="\${currentSellingPriceCents || ''}" required />
+      </div>
+    </form>
+  \`;
+  const footer = \`
+    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="document.getElementById('form-set-price').requestSubmit()">Save Price</button>
+  \`;
+  openModal('Set Price List Entry', body, footer);
+}
+
+async function submitSetPrice(e, productId) {
+  e.preventDefault();
+  const payload = { sellingPriceCents: parseInt(document.getElementById('sp-price').value, 10) };
+
+  try {
+    const res = await apiFetch('/api/inventory/products/' + productId + '/price', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to save price');
+
+    closeModal();
+    showToast('Price updated for ' + json.data.name, 'success');
+    directoryActiveTab = 'pricelist';
     loadDirectory();
   } catch (err) {
     showToast(err.message, 'danger');

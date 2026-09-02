@@ -8,15 +8,18 @@ async function loadPurchasing() {
   container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading purchasing data...</div>';
 
   try {
-    const [ordersRes, vendorsRes] = await Promise.all([
+    const [ordersRes, vendorsRes, productsRes] = await Promise.all([
       apiFetch('/api/purchasing/orders'),
       apiFetch('/api/purchasing/vendors'),
+      apiFetch('/api/inventory/products'),
     ]);
     const ordersJson = await ordersRes.json();
     const vendorsJson = await vendorsRes.json();
+    const productsJson = await productsRes.json();
 
     state.purchaseOrders = ordersJson.data || [];
     state.vendors = vendorsJson.data || [];
+    state.products = productsJson.data || [];
 
     const poStatusBadgeClass = {
       DRAFT: 'badge-neutral',
@@ -101,7 +104,7 @@ function openNewPOModal() {
       </div>
       <div class="form-group">
         <label class="form-label">Product *</label>
-        <select id="npo-product" class="form-select">\${productOptions}</select>
+        <select id="npo-product" class="form-select" onchange="prefillPOItemFromProduct(this.value)">\${productOptions}</select>
       </div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
         <div class="form-group">
@@ -109,10 +112,24 @@ function openNewPOModal() {
           <input type="number" id="npo-qty" class="form-input" value="50" min="1" required />
         </div>
         <div class="form-group">
-          <label class="form-label">Unit Cost (Cents) *</label>
-          <input type="number" id="npo-unitcost" class="form-input" value="4500" required />
+          <label class="form-label">Unit of Measure *</label>
+          <input type="text" id="npo-uom" class="form-input" placeholder="e.g. pcs" required />
         </div>
       </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <div class="form-group">
+          <label class="form-label">Unit Cost (Cents) *</label>
+          <input type="number" id="npo-unitcost" class="form-input" placeholder="4500" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cost Price Currency *</label>
+          <select id="npo-currency" class="form-select">
+            <option value="PHP">PHP (₱)</option>
+            <option value="USD">USD ($)</option>
+          </select>
+        </div>
+      </div>
+      <p style="margin: -0.5rem 0 1rem; font-size: 0.78rem; color: #94a3b8;">These become the product's current cost, currency, and unit of measure in the Business Directory.</p>
       <div class="form-group">
         <label class="form-label">Notes</label>
         <input type="text" id="npo-notes" class="form-input" placeholder="Standard replenishment order" />
@@ -124,6 +141,17 @@ function openNewPOModal() {
     <button class="btn btn-primary" onclick="document.getElementById('form-new-po').requestSubmit()">Issue Purchase Order</button>
   \`;
   openModal('Create Purchase Order', body, footer);
+  if (state.products.length) prefillPOItemFromProduct(state.products[0].id);
+}
+
+// Pre-fills UOM/cost/currency from the selected product's last known purchase
+// values (still editable) so a repeat order doesn't require re-typing them.
+function prefillPOItemFromProduct(productId) {
+  const product = state.products.find((p) => p.id === productId);
+  if (!product) return;
+  document.getElementById('npo-uom').value = product.unitOfMeasure || 'pcs';
+  document.getElementById('npo-unitcost').value = product.costPriceCents || '';
+  document.getElementById('npo-currency').value = product.costPriceCurrency || 'PHP';
 }
 
 async function submitNewPO(e) {
@@ -135,7 +163,9 @@ async function submitNewPO(e) {
       {
         productId: document.getElementById('npo-product').value,
         quantityOrdered: parseInt(document.getElementById('npo-qty').value, 10),
+        unitOfMeasure: document.getElementById('npo-uom').value,
         unitPriceCents: parseInt(document.getElementById('npo-unitcost').value, 10),
+        costPriceCurrency: document.getElementById('npo-currency').value,
       },
     ],
   };

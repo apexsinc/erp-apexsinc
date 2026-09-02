@@ -256,6 +256,9 @@ async function getProductStockBalance(db: ReturnType<typeof createDbClient>, pro
 }
 
 // POST /api/inventory/products - Create Product
+// Identity only (SKU + name). Unit of measure, cost price/currency, and
+// quantity are captured later, per purchase, on the Purchasing PO form —
+// they sync back onto this product record when that PO is issued.
 app.post(
   '/api/inventory/products',
   zValidator(
@@ -264,10 +267,6 @@ app.post(
       sku: z.string().min(2),
       name: z.string().min(1),
       description: z.string().optional(),
-      unitOfMeasure: z.string().default('unit'),
-      costPriceCents: z.number().int().nonnegative(),
-      sellingPriceCents: z.number().int().nonnegative(),
-      initialStock: z.number().int().nonnegative().default(0),
     })
   ),
   async (c) => {
@@ -275,36 +274,18 @@ app.post(
     const body = c.req.valid('json');
 
     const productId = crypto.randomUUID();
-    const productInsert = db.insert(schema.products).values({
+    await db.insert(schema.products).values({
       id: productId,
       sku: body.sku.toUpperCase(),
       name: body.name,
       description: body.description,
-      unitOfMeasure: body.unitOfMeasure,
-      costPriceCents: body.costPriceCents,
-      sellingPriceCents: body.sellingPriceCents,
     });
-
-    if (body.initialStock > 0) {
-      const stockMovementInsert = db.insert(schema.stockMovements).values({
-        id: crypto.randomUUID(),
-        productId,
-        type: 'IN',
-        quantity: body.initialStock,
-        unitCostCents: body.costPriceCents,
-        referenceType: 'INITIAL',
-        notes: 'Initial inventory count on product setup',
-      });
-      await db.batch([productInsert, stockMovementInsert]);
-    } else {
-      await productInsert;
-    }
 
     const created = await db.query.products.findFirst({
       where: eq(schema.products.id, productId),
     });
 
-    return c.json({ success: true, data: { ...created, onHandStock: body.initialStock } }, 201);
+    return c.json({ success: true, data: { ...created, onHandStock: 0 } }, 201);
   }
 );
 
@@ -358,6 +339,28 @@ app.get('/api/inventory/products/:id', async (c) => {
     },
   });
 });
+
+// PATCH /api/inventory/products/:id/price - Set the Price List selling price
+app.patch(
+  '/api/inventory/products/:id/price',
+  zValidator('json', z.object({ sellingPriceCents: z.number().int().nonnegative() })),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const id = c.req.param('id');
+    const body = c.req.valid('json');
+
+    const product = await db.query.products.findFirst({ where: eq(schema.products.id, id) });
+    if (!product) return c.json({ success: false, error: 'Product not found' }, 404);
+
+    await db
+      .update(schema.products)
+      .set({ sellingPriceCents: body.sellingPriceCents, updatedAt: new Date().toISOString() })
+      .where(eq(schema.products.id, id));
+
+    const updated = await db.query.products.findFirst({ where: eq(schema.products.id, id) });
+    return c.json({ success: true, data: updated });
+  }
+);
 
 // POST /api/inventory/movements - Stock Adjustment
 app.post(
@@ -478,7 +481,9 @@ app.post(
         z.object({
           productId: z.string().uuid(),
           quantityOrdered: z.number().int().positive(),
+          unitOfMeasure: z.string().min(1),
           unitPriceCents: z.number().int().nonnegative(),
+          costPriceCurrency: z.enum(['USD', 'PHP']),
         })
       ).min(1),
     })
@@ -512,7 +517,22 @@ app.post(
       })
     );
 
-    await db.batch([poInsert, ...itemInserts]);
+    // Purchasing is where cost/UOM/currency actually get set for a product,
+    // so a PO line writes those back onto the product master as the latest
+    // known values (used for inventory valuation and directory display).
+    const productSyncs = body.items.map((item) =>
+      db
+        .update(schema.products)
+        .set({
+          unitOfMeasure: item.unitOfMeasure,
+          costPriceCents: item.unitPriceCents,
+          costPriceCurrency: item.costPriceCurrency,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(schema.products.id, item.productId))
+    );
+
+    await db.batch([poInsert, ...itemInserts, ...productSyncs]);
 
     const createdPO = await db.query.purchaseOrders.findFirst({
       where: eq(schema.purchaseOrders.id, poId),
