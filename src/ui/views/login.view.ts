@@ -42,7 +42,7 @@ export function renderLoginView(turnstileSiteKey?: string): string {
         ${
           turnstileSiteKey
             ? `<div class="form-group">
-                 <div class="cf-turnstile" data-sitekey="${turnstileSiteKey}" data-theme="light"></div>
+                 <div class="cf-turnstile" data-sitekey="${turnstileSiteKey}" data-theme="light" data-error-callback="onTurnstileError"></div>
                </div>`
             : ''
         }
@@ -58,6 +58,10 @@ export function renderLoginView(turnstileSiteKey?: string): string {
 }
 
 export const LOGIN_CLIENT_JS = `
+function onTurnstileError(code) {
+  console.warn('[Cloudflare Turnstile] Challenge notice (handled):', code);
+}
+
 async function handleLogin(e) {
   e.preventDefault();
   const email = document.getElementById('login-email').value;

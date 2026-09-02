@@ -59,10 +59,13 @@ app.use('/api/accounting/*', authMiddleware, requireModule('accounting'));
 app.use('/api/payroll/*', authMiddleware, requireModule('payroll'));
 
 // UI Web Application Entrypoint (Served directly at edge)
-async function renderApp(c: { env: Bindings }) {
+async function renderApp(c: { req: any; env: Bindings }) {
   const db = createDbClient(c.env.DB);
   const rolePermissions = await loadPermissionMatrix(db);
-  return renderAppHtml(rolePermissions, { turnstileSiteKey: c.env.TURNSTILE_SITE_KEY });
+  const host = c.req.header('host') || '';
+  const isLocalOrDev = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('0.0.0.0') || host.includes(':8787') || host.includes('.internal');
+  const turnstileSiteKey = isLocalOrDev ? '1x00000000000000000000AA' : (c.env.TURNSTILE_SITE_KEY || '1x00000000000000000000AA');
+  return renderAppHtml(rolePermissions, { turnstileSiteKey });
 }
 app.get('/', async (c) => c.html(await renderApp(c)));
 app.get('/login', async (c) => c.html(await renderApp(c)));

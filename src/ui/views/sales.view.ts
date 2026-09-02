@@ -139,9 +139,6 @@ function renderSalesContent(container) {
     </div>
   \`;
 }
-    container.innerHTML = \`<div class="panel-card" style="padding: 2rem; color: #dc2626;">Error loading sales: \${err.message}</div>\`;
-  }
-}
 
 function openNewSalesOrderModal() {
   if (!state.customers.length) {
