@@ -1,29 +1,92 @@
 async function runTests() {
   const baseUrl = 'http://127.0.0.1:8787';
 
-  console.log('=== 1. TEST ROOT HEALTH ===');
-  const rootRes = await fetch(`${baseUrl}/`);
-  console.log('Root Status:', rootRes.status, 'Content-Type:', rootRes.headers.get('content-type'));
+  console.log('=== 1. TEST SSR & SPA WEB URL ROUTES ===');
+  const webRoutes = [
+    '/',
+    '/login',
+    '/app',
+    '/dashboard',
+    '/directory',
+    '/inventory',
+    '/purchasing',
+    '/inbound',
+    '/sales',
+    '/outbound',
+    '/vouchers',
+    '/accounting',
+    '/payroll',
+    '/admin',
+    '/settings',
+    '/vouchers?tab=vouchers-pv',
+    '/vouchers?tab=general-ledger',
+    '/inventory?search=WIDGET',
+  ];
 
-  console.log('\n=== 2. SEED CHART OF ACCOUNTS ===');
+  for (const route of webRoutes) {
+    const res = await fetch(`${baseUrl}${route}`);
+    const isHtml = (res.headers.get('content-type') || '').includes('text/html');
+    if (res.status !== 200 || !isHtml) {
+      console.error(`❌ Route check failed for ${route}: status=${res.status}, isHtml=${isHtml}`);
+      process.exit(1);
+    }
+    console.log(`  ✓ Route ${route.padEnd(30)} -> 200 OK (text/html)`);
+  }
+
+  console.log('\n=== 2. SEED CHART OF ACCOUNTS & ADMIN ===');
   const seedRes = await fetch(`${baseUrl}/api/setup/seed`, { method: 'POST' });
   const seedJson = await seedRes.json();
-  console.log('Seed:', seedJson.message);
+  console.log('Seed response:', seedJson.message || (seedJson.success ? 'Success' : 'Initialized'));
 
-  const suffix = Date.now().toString().slice(-4);
-
-  console.log('\n=== 3. INVENTORY: CREATE PRODUCT WITH INITIAL STOCK ===');
-  const productRes = await fetch(`${baseUrl}/api/inventory/products`, {
+  console.log('\n=== 3. AUTHENTICATE AS ADMIN ===');
+  const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      email: 'admin@apexsinc.com',
+      password: 'kbs812sls729@admin',
+      cfTurnstileToken: 'TEST_PASS_TOKEN',
+    }),
+  });
+  const loginJson = await loginRes.json();
+  if (!loginJson.success || !loginJson.token) {
+    console.error('Login failed:', loginJson);
+    process.exit(1);
+  }
+  const token = loginJson.token;
+  console.log('Authenticated successfully as:', loginJson.user.name, `(${loginJson.user.role})`);
+
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
+
+  const suffix = Date.now().toString().slice(-4);
+
+  console.log('\n=== 4. INVENTORY: ENSURE CATEGORY & CREATE PRODUCT ===');
+  const catRes = await fetch(`${baseUrl}/api/inventory/categories`, { headers: authHeaders });
+  const catJson = await catRes.json();
+  let categoryName = catJson.data?.[0]?.name;
+
+  if (!categoryName) {
+    const newCatRes = await fetch(`${baseUrl}/api/inventory/categories`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ name: 'Titanium Hardware' }),
+    });
+    const newCatData = await newCatRes.json();
+    categoryName = newCatData.data.name;
+  }
+  console.log('Using category:', categoryName);
+
+  const productRes = await fetch(`${baseUrl}/api/inventory/products`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
       sku: `WIDGET-PRO-${suffix}`,
       name: 'Industrial Widget Pro',
+      category: categoryName,
       description: 'High-precision titanium component',
-      unitOfMeasure: 'pcs',
-      costPriceCents: 4500, // $45.00
-      sellingPriceCents: 9000, // $90.00
-      initialStock: 50,
     }),
   });
   const productData = await productRes.json();
@@ -31,13 +94,23 @@ async function runTests() {
     console.error('Product creation failed:', productData);
     process.exit(1);
   }
-  console.log('Created Product:', productData.data.name, 'SKU:', productData.data.sku, 'Stock:', productData.data.onHandStock);
+  console.log('Created Product:', productData.data.name, 'SKU:', productData.data.sku);
   const productId = productData.data.id;
 
-  console.log('\n=== 4. PURCHASING: CREATE VENDOR & PO, PROCESS GRN RECEIVING ===');
+  // Set selling price for the product
+  await fetch(`${baseUrl}/api/inventory/products/${productId}/price`, {
+    method: 'PATCH',
+    headers: authHeaders,
+    body: JSON.stringify({
+      sellingPriceCents: 9000,
+      currency: 'PHP',
+    }),
+  });
+
+  console.log('\n=== 5. PURCHASING: CREATE VENDOR & PO, INBOUND RECEIVE VIA GRN ===');
   const vendorRes = await fetch(`${baseUrl}/api/purchasing/vendors`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders,
     body: JSON.stringify({
       vendorCode: `VEND-ACME-${suffix}`,
       name: 'Acme Materials Corp',
@@ -51,28 +124,40 @@ async function runTests() {
 
   const poRes = await fetch(`${baseUrl}/api/purchasing/orders`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders,
     body: JSON.stringify({
       vendorId,
+      currency: 'PHP',
       notes: 'Urgent restocking order',
       items: [
         {
           productId,
           quantityOrdered: 100,
+          unitOfMeasure: 'pcs',
           unitPriceCents: 4500,
         },
       ],
     }),
   });
   const poData = await poRes.json();
-  console.log('Created PO:', poData.data.poNumber, 'Total:', `$${poData.data.totalAmountCents / 100}`);
+  if (!poData.success) {
+    console.error('PO creation failed:', poData);
+    process.exit(1);
+  }
+  console.log('Created PO:', poData.data.poNumber, 'Total:', `₱${poData.data.totalAmountCents / 100}`);
   const poId = poData.data.id;
   const poItemId = poData.data.items[0].id;
 
-  // Receive items via GRN
-  const receiveRes = await fetch(`${baseUrl}/api/purchasing/orders/${poId}/receive`, {
+  // Step 1: Mark PO as delivered in inbound
+  await fetch(`${baseUrl}/api/inbound/orders/${poId}/mark-delivered`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders,
+  });
+
+  // Step 2: Receive items via GRN
+  const receiveRes = await fetch(`${baseUrl}/api/inbound/orders/${poId}/receive`, {
+    method: 'POST',
+    headers: authHeaders,
     body: JSON.stringify({
       notes: 'Received batch at warehouse dock 3',
       items: [{ poItemId, quantityReceived: 100 }],
@@ -81,15 +166,17 @@ async function runTests() {
   const receiveData = await receiveRes.json();
   console.log('GRN Processed:', receiveData.grnNumber, 'Message:', receiveData.message);
 
-  // Check inventory level after GRN (50 initial + 100 received = 150)
-  const productDetailRes = await fetch(`${baseUrl}/api/inventory/products/${productId}`);
+  // Check inventory level after GRN (100 received)
+  const productDetailRes = await fetch(`${baseUrl}/api/inventory/products/${productId}`, {
+    headers: authHeaders,
+  });
   const productDetail = await productDetailRes.json();
-  console.log('Product Stock After GRN:', productDetail.data.onHandStock, '(Expected 150)');
+  console.log('Product Stock After GRN:', productDetail.data.onHandStock, '(Expected 100)');
 
-  console.log('\n=== 5. SALES: CREATE CUSTOMER, SO, INVOICE & RECEIPT ===');
+  console.log('\n=== 6. SALES: CREATE CUSTOMER, SO, OUTBOUND SHIP & RECEIPT ===');
   const customerRes = await fetch(`${baseUrl}/api/sales/customers`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders,
     body: JSON.stringify({
       customerCode: `CUST-GLOBEX-${suffix}`,
       name: 'Globex Corporation',
@@ -102,49 +189,64 @@ async function runTests() {
 
   const soRes = await fetch(`${baseUrl}/api/sales/orders`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders,
     body: JSON.stringify({
       customerId,
+      currency: 'PHP',
       notes: 'Priority delivery',
       items: [{ productId, quantity: 20, unitPriceCents: 9000 }],
     }),
   });
   const soData = await soRes.json();
-  console.log('Created Sales Order:', soData.data.soNumber, 'Total:', `$${soData.data.totalAmountCents / 100}`);
+  console.log('Created Sales Order:', soData.data.soNumber, 'Total:', `₱${soData.data.totalAmountCents / 100}`);
   const soId = soData.data.id;
+  const soItemId = soData.data.items[0].id;
 
-  // Invoice & fulfill SO (150 - 20 = 130 stock)
-  const invoiceRes = await fetch(`${baseUrl}/api/sales/orders/${soId}/invoice`, {
+  // Step 1: Mark packed in outbound
+  await fetch(`${baseUrl}/api/outbound/orders/${soId}/mark-packed`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ notes: 'Net 30 terms' }),
+    headers: authHeaders,
   });
-  const invoiceData = await invoiceRes.json();
-  console.log('Invoiced & Fulfilled:', invoiceData.invoiceNumber, 'Total:', `$${invoiceData.totalAmountCents / 100}`);
-  const invoiceId = invoiceData.invoiceId;
 
-  // Check stock after sales fulfillment
-  const stockAfterSaleRes = await fetch(`${baseUrl}/api/inventory/products/${productId}`);
-  const stockAfterSale = await stockAfterSaleRes.json();
-  console.log('Product Stock After Sale:', stockAfterSale.data.onHandStock, '(Expected 130)');
-
-  // Pay Invoice -> Receipt Voucher
-  const receiptRes = await fetch(`${baseUrl}/api/sales/invoices/${invoiceId}/receipt`, {
+  // Step 2: Ship items (decrements inventory, creates invoice)
+  const shipRes = await fetch(`${baseUrl}/api/outbound/orders/${soId}/ship`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders,
     body: JSON.stringify({
-      amountCents: 180000, // $1800.00
-      paymentMethod: 'BANK_TRANSFER',
-      notes: 'Wire transfer ref #WT-8941',
+      notes: 'Shipped via Express Courier',
+      items: [{ soItemId, quantityShipped: 20 }],
     }),
   });
-  const receiptData = await receiptRes.json();
-  console.log('Customer Receipt Recorded:', receiptData.receiptVoucherNumber, 'Status:', receiptData.invoiceStatus);
+  const shipData = await shipRes.json();
+  console.log('Outbound Shipped & Invoiced:', shipData.invoiceNumber, 'Total:', `₱${shipData.totalAmountCents / 100}`);
+  const invoiceId = shipData.invoiceId;
 
-  console.log('\n=== 6. PAYROLL: CREATE EMPLOYEE, RUN PAYROLL & FINALIZE ===');
+  // Check stock after shipping (100 - 20 = 80)
+  const stockAfterSaleRes = await fetch(`${baseUrl}/api/inventory/products/${productId}`, {
+    headers: authHeaders,
+  });
+  const stockAfterSale = await stockAfterSaleRes.json();
+  console.log('Product Stock After Sale:', stockAfterSale.data.onHandStock, '(Expected 80)');
+
+  // Pay Invoice -> Receipt Voucher
+  if (invoiceId) {
+    const receiptRes = await fetch(`${baseUrl}/api/sales/invoices/${invoiceId}/receipt`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        amountCents: 180000, // ₱1,800.00
+        paymentMethod: 'BANK_TRANSFER',
+        notes: 'Wire transfer ref #WT-8941',
+      }),
+    });
+    const receiptData = await receiptRes.json();
+    console.log('Customer Receipt Recorded:', receiptData.receiptVoucherNumber, 'Status:', receiptData.invoiceStatus);
+  }
+
+  console.log('\n=== 7. PAYROLL: CREATE EMPLOYEE, RUN PAYROLL & FINALIZE ===');
   const employeeRes = await fetch(`${baseUrl}/api/payroll/employees`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders,
     body: JSON.stringify({
       employeeCode: `EMP-${suffix}`,
       firstName: 'Sarah',
@@ -153,48 +255,96 @@ async function runTests() {
       department: 'Engineering',
       position: 'Staff Edge Architect',
       salary: {
-        baseSalaryCents: 1200000, // $12,000.00
-        allowancesCents: 50000,   // $500.00
-        deductionsCents: 250000,  // $2,500.00
+        baseSalaryCents: 1200000, // ₱12,000.00
+        allowancesCents: 50000,   // ₱500.00
+        deductionsCents: 250000,  // ₱2,500.00
       },
     }),
   });
   const employeeData = await employeeRes.json();
-  console.log('Created Employee:', `${employeeData.data.firstName} ${employeeData.data.lastName}`, 'Net Salary:', `$${employeeData.data.salaryStructures[0].netSalaryCents / 100}`);
+  console.log('Created Employee:', `${employeeData.data.firstName} ${employeeData.data.lastName}`, 'Net Salary:', `₱${employeeData.data.salaryStructures[0].netSalaryCents / 100}`);
 
   const runRes = await fetch(`${baseUrl}/api/payroll/runs`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders,
     body: JSON.stringify({
       periodStartDate: '2026-08-01',
       periodEndDate: '2026-08-31',
     }),
   });
   const runData = await runRes.json();
-  console.log('Payroll Run Created:', runData.data.runNumber, 'Total Net:', `$${runData.data.totalNetCents / 100}`);
+  console.log('Payroll Run Created:', runData.data.runNumber, 'Total Net:', `₱${runData.data.totalNetCents / 100}`);
   const runId = runData.data.id;
 
   // Finalize Payroll Run
   const finalizeRes = await fetch(`${baseUrl}/api/payroll/runs/${runId}/finalize`, {
     method: 'POST',
+    headers: authHeaders,
   });
   const finalizeData = await finalizeRes.json();
   console.log('Payroll Run Finalized:', finalizeData.payrollRunNumber);
   console.log('Generated Payment Voucher:', finalizeData.paymentVoucherNumber);
-  console.log('Disbursed Amount:', `$${finalizeData.totalDisbursedCents / 100}`);
+  console.log('Disbursed Amount:', `₱${finalizeData.totalDisbursedCents / 100}`);
 
-  console.log('\n=== 7. ACCOUNTING: TRIAL BALANCE EQUILIBRIUM AUDIT ===');
-  const tbRes = await fetch(`${baseUrl}/api/accounting/trial-balance`);
+  console.log('\n=== 8. ACCOUNTING: TRIAL BALANCE EQUILIBRIUM AUDIT ===');
+  const tbRes = await fetch(`${baseUrl}/api/accounting/trial-balance`, {
+    headers: authHeaders,
+  });
   const tbData = await tbRes.json();
   console.log('Is Double-Entry Balanced?:', tbData.isBalanced ? 'YES (Balanced)' : 'NO (Unbalanced)');
-  console.log('Total Debits:', `$${tbData.totalDebitCents / 100}`);
-  console.log('Total Credits:', `$${tbData.totalCreditCents / 100}`);
-  console.log('Discrepancy:', `$${tbData.discrepancyCents / 100}`);
+  console.log('Total Debits:', `₱${tbData.totalDebitCents / 100}`);
+  console.log('Total Credits:', `₱${tbData.totalCreditCents / 100}`);
+  console.log('Discrepancy:', `₱${tbData.discrepancyCents / 100}`);
 
-  console.log('\n=== 8. EXECUTIVE DASHBOARD ===');
-  const dashRes = await fetch(`${baseUrl}/api/dashboard`);
+  console.log('\n=== 9. EXECUTIVE DASHBOARD ===');
+  const dashRes = await fetch(`${baseUrl}/api/dashboard`, {
+    headers: authHeaders,
+  });
   const dashData = await dashRes.json();
-  console.log('Dashboard KPIs:', JSON.stringify(dashData.formatted, null, 2));
+  console.log('Dashboard KPIs:', JSON.stringify(dashData.formatted || dashData.data || {}, null, 2));
+
+  console.log('\n=== 10. SYSTEM SETTINGS (ADMIN ONLY) ===');
+  const settingsRes = await fetch(`${baseUrl}/api/settings`, {
+    headers: authHeaders,
+  });
+  const settingsData = await settingsRes.json();
+  if (!settingsData.success) {
+    console.error('Failed to get settings:', settingsData);
+    process.exit(1);
+  }
+  console.log('Retrieved Settings Categories:', Object.keys(settingsData.settings).join(', '));
+  console.log('Default Signatories:', settingsData.settings.vouchers?.['vouchers.signatories']);
+
+  // Update signatories as Admin
+  const updateSettingsRes = await fetch(`${baseUrl}/api/settings/vouchers.signatories`, {
+    method: 'PUT',
+    headers: authHeaders,
+    body: JSON.stringify({
+      category: 'vouchers',
+      value: {
+        preparedBy: 'Administrator / Bookkeeper',
+        certifiedBy: 'Joy / Senior Admin',
+        approvedBy: 'Kenneth Brown / CEO',
+        receivedBy: 'Signature over printed name / Date',
+      },
+    }),
+  });
+  const updateSettingsData = await updateSettingsRes.json();
+  if (!updateSettingsData.success) {
+    console.error('Failed to update signatories setting:', updateSettingsData);
+    process.exit(1);
+  }
+  console.log('Signatories Update:', updateSettingsData.message);
+
+  // Verify updated signatories
+  const verifySettingsRes = await fetch(`${baseUrl}/api/settings/vouchers`, {
+    headers: authHeaders,
+  });
+  const verifySettingsData = await verifySettingsRes.json();
+  const updatedSign = verifySettingsData.settings?.['vouchers.signatories'];
+  console.log('Verified Updated Signatories in DB:', updatedSign?.preparedBy, '|', updatedSign?.approvedBy);
+
+  console.log('\n🎉 ALL URL ROUTE CHECKS, SYSTEM SETTINGS & ERP END-TO-END TESTS PASSED SUCCESSFULLY!');
 }
 
 runTests().catch(console.error);

@@ -47,6 +47,8 @@ app.onError((err, c) => {
 app.use('/api/auth/me', authMiddleware);
 app.use('/api/auth/logout', authMiddleware);
 app.use('/api/admin/*', authMiddleware, requireAdmin);
+app.use('/api/settings/*', authMiddleware);
+app.use('/api/settings', authMiddleware);
 app.use('/api/dashboard', authMiddleware, requireModule('dashboard'));
 app.use('/api/inventory/*', authMiddleware, requireModule('inventory'));
 app.use('/api/purchasing/*', authMiddleware, requireModule('purchasing'));
@@ -2247,6 +2249,292 @@ app.put(
 
     const matrix = await loadPermissionMatrix(db);
     return c.json({ success: true, message: 'Permissions updated', matrix });
+  }
+);
+
+/* ========================================================================== */
+/* 9. SYSTEM SETTINGS MODULE (ADMIN CONTROLLED)                               */
+/* ========================================================================== */
+
+export const DEFAULT_SETTINGS = [
+  // 1. VOUCHERS & ACCOUNTING SETTINGS
+  {
+    key: 'vouchers.signatories',
+    category: 'vouchers',
+    description: 'Default signatory names and titles for voucher slip generation',
+    value: JSON.stringify({
+      preparedBy: 'Administrator',
+      certifiedBy: 'Joy/Admin',
+      approvedBy: 'Kenneth Brown/CEO',
+      receivedBy: 'Signature over printed name/Date',
+    }),
+  },
+  {
+    key: 'vouchers.permissions',
+    category: 'vouchers',
+    description: 'Role-based policies for voiding, deleting, and hiding vouchers',
+    value: JSON.stringify({
+      allowStaffDelete: false,
+      allowManagerDelete: false,
+      allowAdminDelete: true,
+      allowStaffVoid: false,
+      allowManagerVoid: true,
+      allowAdminVoid: true,
+      allowStaffHide: false,
+      allowManagerHide: false,
+      allowAdminHide: true,
+    }),
+  },
+  {
+    key: 'vouchers.payment_methods',
+    category: 'vouchers',
+    description: 'Allowed payment disbursement and collection methods',
+    value: JSON.stringify([
+      { id: 'BANK_TRANSFER', name: 'Bank Transfer / Wire', isActive: true },
+      { id: 'CHECK', name: 'Corporate Check', isActive: true },
+      { id: 'CASH', name: 'Petty Cash', isActive: true },
+      { id: 'CREDIT_CARD', name: 'Corporate Credit Card', isActive: true },
+      { id: 'ONLINE', name: 'Online / E-Wallet', isActive: true },
+    ]),
+  },
+  {
+    key: 'vouchers.types',
+    category: 'vouchers',
+    description: 'Voucher types and standard numbering prefixes',
+    value: JSON.stringify([
+      { id: 'PAYMENT', name: 'Payment Voucher (PV)', prefix: '26-', description: 'Vendor disbursements, payroll payouts, expenses' },
+      { id: 'RECEIPT', name: 'Receipt Voucher (RV)', prefix: 'RV-', description: 'Customer incoming payments and receipts' },
+      { id: 'JOURNAL', name: 'Journal Voucher (JV)', prefix: 'JV-', description: 'General double-entry adjusting entries' },
+      { id: 'CONTRA', name: 'Contra Voucher (CV)', prefix: 'CV-', description: 'Bank and cash internal transfers' },
+    ]),
+  },
+  {
+    key: 'vouchers.tags',
+    category: 'vouchers',
+    description: 'Standard expense and cost-center tags for categorization',
+    value: JSON.stringify([
+      'Operating Expense (OPEX)',
+      'Capital Expenditure (CAPEX)',
+      'Office Supplies',
+      'Utilities & Power',
+      'Software & Subscriptions',
+      'Logistics & Freight',
+      'Direct Materials',
+      'Subcontractor Services',
+      'Travel & Representation',
+      'Taxes & Licenses',
+      'Salaries & Compensation',
+      'Petty Cash Replenishment',
+    ]),
+  },
+  {
+    key: 'vouchers.default_accounts',
+    category: 'vouchers',
+    description: 'Default Chart of Accounts mappings for automated voucher double entries',
+    value: JSON.stringify({
+      cashAccountCode: '1010',
+      inventoryAssetCode: '1200',
+      accountsReceivableCode: '1300',
+      accountsPayableCode: '2010',
+      payrollLiabilitiesCode: '2020',
+      equityCode: '3010',
+      salesRevenueCode: '4010',
+      cogsCode: '5010',
+      salariesExpenseCode: '5020',
+    }),
+  },
+  // 2. ORGANIZATION PROFILE
+  {
+    key: 'organization.profile',
+    category: 'organization',
+    description: 'Company identification, print header, and currency preferences',
+    value: JSON.stringify({
+      companyName: 'APEXS, INC.',
+      tagline: 'Applied Expert Systems & Software, Inc.',
+      motto: 'We put technology to work for you',
+      address: 'Suite 714 EGI City by the Sea, Maribago, Lapu-Lapu City 6015',
+      telefax: '495-2106',
+      taxId: '000-000-000-000',
+      defaultCurrency: 'PHP',
+    }),
+  },
+  // 3. OPERATIONS CONFIG
+  {
+    key: 'operations.config',
+    category: 'operations',
+    description: 'Inventory, Purchasing, and Sales workflow preferences',
+    value: JSON.stringify({
+      lowStockThreshold: 10,
+      defaultUom: 'pcs',
+      defaultPaymentTermsDays: 30,
+      poPrefix: 'PO-',
+      soPrefix: 'SO-',
+      invPrefix: 'INV-',
+      grnPrefix: 'GRN-',
+    }),
+  },
+  // 4. PAYROLL CONFIG
+  {
+    key: 'payroll.config',
+    category: 'payroll',
+    description: 'Payroll run defaults and work schedule standards',
+    value: JSON.stringify({
+      payrollRunPrefix: 'PR-',
+      standardWorkDaysPerMonth: 22,
+      defaultDisbursementMethod: 'BANK_TRANSFER',
+    }),
+  },
+];
+
+async function seedDefaultSettings(db: ReturnType<typeof createDbClient>) {
+  for (const s of DEFAULT_SETTINGS) {
+    const existing = await db.query.systemSettings.findFirst({
+      where: eq(schema.systemSettings.key, s.key),
+    });
+    if (!existing) {
+      await db.insert(schema.systemSettings).values({
+        key: s.key,
+        category: s.category,
+        value: s.value,
+        description: s.description,
+        updatedAt: new Date().toISOString(),
+        updatedBy: 'system_seed',
+      });
+    }
+  }
+}
+
+// GET /api/settings - Retrieve all system settings
+app.get('/api/settings', async (c) => {
+  const db = createDbClient(c.env.DB);
+  await seedDefaultSettings(db);
+
+  const rows = await db.query.systemSettings.findMany({
+    orderBy: [schema.systemSettings.category, schema.systemSettings.key],
+  });
+
+  const settings: Record<string, Record<string, any>> = {};
+  for (const row of rows) {
+    if (!settings[row.category]) settings[row.category] = {};
+    try {
+      settings[row.category][row.key] = JSON.parse(row.value);
+    } catch {
+      settings[row.category][row.key] = row.value;
+    }
+  }
+
+  return c.json({ success: true, settings, raw: rows });
+});
+
+// GET /api/settings/:category - Retrieve settings for a specific module category
+app.get('/api/settings/:category', async (c) => {
+  const db = createDbClient(c.env.DB);
+  await seedDefaultSettings(db);
+
+  const category = c.req.param('category');
+  const rows = await db.query.systemSettings.findMany({
+    where: eq(schema.systemSettings.category, category),
+  });
+
+  const categorySettings: Record<string, any> = {};
+  for (const row of rows) {
+    try {
+      categorySettings[row.key] = JSON.parse(row.value);
+    } catch {
+      categorySettings[row.key] = row.value;
+    }
+  }
+
+  return c.json({ success: true, category, settings: categorySettings });
+});
+
+// PUT /api/settings/:key - Update a specific system setting (Admin only)
+app.put(
+  '/api/settings/:key',
+  requireAdmin,
+  zValidator(
+    'json',
+    z.object({
+      category: z.string().min(1),
+      value: z.any(),
+      description: z.string().optional(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const key = c.req.param('key');
+    const body = c.req.valid('json');
+    const user = c.get('authUser');
+
+    const stringVal = typeof body.value === 'string' ? body.value : JSON.stringify(body.value);
+
+    await db
+      .insert(schema.systemSettings)
+      .values({
+        key,
+        category: body.category,
+        value: stringVal,
+        description: body.description,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user ? `${user.name} (${user.email})` : 'admin',
+      })
+      .onConflictDoUpdate({
+        target: [schema.systemSettings.key],
+        set: {
+          category: body.category,
+          value: stringVal,
+          description: body.description,
+          updatedAt: new Date().toISOString(),
+          updatedBy: user ? `${user.name} (${user.email})` : 'admin',
+        },
+      });
+
+    return c.json({ success: true, message: `Setting ${key} updated successfully` });
+  }
+);
+
+// PUT /api/settings/category/:category - Bulk update settings in a category (Admin only)
+app.put(
+  '/api/settings/category/:category',
+  requireAdmin,
+  zValidator(
+    'json',
+    z.object({
+      settings: z.record(z.string(), z.any()),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const category = c.req.param('category');
+    const body = c.req.valid('json');
+    const user = c.get('authUser');
+
+    const statements = Object.entries(body.settings).map(([key, value]) => {
+      const stringVal = typeof value === 'string' ? value : JSON.stringify(value);
+      return db
+        .insert(schema.systemSettings)
+        .values({
+          key,
+          category,
+          value: stringVal,
+          updatedAt: new Date().toISOString(),
+          updatedBy: user ? `${user.name} (${user.email})` : 'admin',
+        })
+        .onConflictDoUpdate({
+          target: [schema.systemSettings.key],
+          set: {
+            value: stringVal,
+            updatedAt: new Date().toISOString(),
+            updatedBy: user ? `${user.name} (${user.email})` : 'admin',
+          },
+        });
+    });
+
+    if (statements.length > 0) {
+      await db.batch(statements as any);
+    }
+
+    return c.json({ success: true, message: `Settings for category ${category} updated successfully` });
   }
 );
 

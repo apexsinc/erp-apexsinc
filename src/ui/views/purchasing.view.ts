@@ -5,12 +5,15 @@ export function renderPurchasingView(): string {
 export const PURCHASING_CLIENT_JS = `
 let npoLineItems = [];
 let npoSelectedProductId = null;
+let purchasingSearchQuery = '';
 
 async function loadPurchasing() {
   const container = document.getElementById('view-purchasing');
   container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading purchasing data...</div>';
 
   try {
+    purchasingSearchQuery = (typeof getUrlParam === 'function' ? getUrlParam('search') : '') || '';
+
     const [ordersRes, vendorsRes, productsRes] = await Promise.all([
       apiFetch('/api/purchasing/orders'),
       apiFetch('/api/purchasing/vendors'),
@@ -24,66 +27,110 @@ async function loadPurchasing() {
     state.vendors = vendorsJson.data || [];
     state.products = productsJson.data || [];
 
-    const poStatusBadgeClass = {
-      DRAFT: 'badge-neutral',
-      APPROVED: 'badge-primary',
-      DELIVERED: 'badge-warning',
-      PARTIALLY_RECEIVED: 'badge-warning',
-      RECEIVED: 'badge-success',
-      CANCELLED: 'badge-danger',
-    };
-
-    let rowsHtml = '';
-    state.purchaseOrders.forEach((po) => {
-      const itemsList = po.items.map((i) => \`\${i.product?.name || 'Product'} (\${i.quantityOrdered} ordered, \${i.quantityReceived} received)\`).join(', ');
-      rowsHtml += \`
-        <tr class="row-clickable" onclick="goToInboundForPO('\${po.id}')">
-          <td><strong>\${po.poNumber}</strong></td>
-          <td>\${po.vendor?.name || 'Unknown'}</td>
-          <td>
-            <span class="badge \${poStatusBadgeClass[po.status] || 'badge-neutral'}">
-              <span class="badge-dot"></span>
-              \${po.status.replace('_', ' ')}
-            </span>
-          </td>
-          <td><strong>\${formatCurrency(po.totalAmountCents, po.currency)}</strong></td>
-          <td style="font-size: 0.8rem; color: #64748b;">\${itemsList}</td>
-        </tr>
-      \`;
-    });
-
-    container.innerHTML = \`
-      <div class="panel-card">
-        <div class="panel-header">
-          <div class="panel-title">Purchase Orders & Procurement</div>
-          <div class="panel-actions">
-            <button class="btn btn-primary btn-sm" onclick="openNewPOModal()">Create Purchase Order</button>
-          </div>
-        </div>
-        <p style="padding: 0 1.35rem 1rem; font-size: 0.85rem; color: #64748b;">
-          Manage suppliers in the Business Directory. Click a purchase order to open it in Inbound Deliveries, where it's marked delivered and its arrived quantities are confirmed.
-        </p>
-        <div class="table-responsive">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>PO Number</th>
-                <th>Vendor</th>
-                <th>Status</th>
-                <th>Total Value</th>
-                <th>Ordered Items</th>
-              </tr>
-            </thead>
-            <tbody>
-              \${rowsHtml || '<tr><td colspan="5" style="text-align: center; color: #64748b;">No purchase orders found.</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    \`;
+    renderPurchasingContent(container);
   } catch (err) {
     container.innerHTML = \`<div class="panel-card" style="padding: 2rem; color: #dc2626;">Error loading purchasing: \${err.message}</div>\`;
   }
+}
+
+function handlePurchasingSearch(query) {
+  purchasingSearchQuery = query.toLowerCase();
+  if (typeof setUrlParam === 'function') {
+    setUrlParam('search', purchasingSearchQuery || null);
+  }
+  const container = document.getElementById('view-purchasing');
+  if (container) {
+    renderPurchasingContent(container);
+  }
+}
+
+function exportPurchasingCsv() {
+  const headers = ['PO Number', 'Vendor', 'Status', 'Currency', 'Total Amount', 'Ordered Items'];
+  const rows = (state.purchaseOrders || []).map((po) => [
+    po.poNumber,
+    po.vendor?.name || 'Unknown',
+    po.status,
+    po.currency || 'PHP',
+    (po.totalAmountCents / 100).toFixed(2),
+    (po.items || []).map((i) => \`\${i.product?.name || 'Product'} (\${i.quantityOrdered} ordered, \${i.quantityReceived} received)\`).join('; '),
+  ]);
+  exportToCsv('purchase_orders_' + new Date().toISOString().slice(0, 10), headers, rows);
+}
+
+function renderPurchasingContent(container) {
+  const poStatusBadgeClass = {
+    DRAFT: 'badge-neutral',
+    APPROVED: 'badge-primary',
+    DELIVERED: 'badge-warning',
+    PARTIALLY_RECEIVED: 'badge-warning',
+    RECEIVED: 'badge-success',
+    CANCELLED: 'badge-danger',
+  };
+
+  let filteredOrders = state.purchaseOrders || [];
+  if (purchasingSearchQuery) {
+    filteredOrders = filteredOrders.filter((po) => {
+      const num = (po.poNumber || '').toLowerCase();
+      const vend = (po.vendor?.name || '').toLowerCase();
+      const status = (po.status || '').toLowerCase();
+      return num.includes(purchasingSearchQuery) || vend.includes(purchasingSearchQuery) || status.includes(purchasingSearchQuery);
+    });
+  }
+
+  let rowsHtml = '';
+  filteredOrders.forEach((po) => {
+    const itemsList = (po.items || []).map((i) => \`\${i.product?.name || 'Product'} (\${i.quantityOrdered} ordered, \${i.quantityReceived} received)\`).join(', ');
+    rowsHtml += \`
+      <tr class="row-clickable" onclick="goToInboundForPO('\${po.id}')">
+        <td><strong>\${po.poNumber}</strong></td>
+        <td>\${po.vendor?.name || 'Unknown'}</td>
+        <td>
+          <span class="badge \${poStatusBadgeClass[po.status] || 'badge-neutral'}">
+            <span class="badge-dot"></span>
+            \${po.status.replace('_', ' ')}
+          </span>
+        </td>
+        <td><strong>\${formatCurrency(po.totalAmountCents, po.currency)}</strong></td>
+        <td style="font-size: 0.8rem; color: #64748b;">\${itemsList}</td>
+      </tr>
+    \`;
+  });
+
+  container.innerHTML = \`
+    <div class="panel-card">
+      <div class="panel-header">
+        <div class="panel-title">Purchase Orders & Procurement</div>
+        <div class="panel-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <button class="btn btn-secondary btn-sm" onclick="exportPurchasingCsv()">📥 Export CSV</button>
+          <button class="btn btn-primary btn-sm" onclick="openNewPOModal()">Create Purchase Order</button>
+        </div>
+      </div>
+      <div style="padding: 0 1.35rem 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+        <p style="font-size: 0.85rem; color: #64748b; margin: 0;">
+          Manage suppliers in the Business Directory. Click a purchase order to open it in Inbound Deliveries.
+        </p>
+        <div style="min-width: 260px;">
+          <input type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search PO #, vendor, status..." value="\${purchasingSearchQuery}" oninput="handlePurchasingSearch(this.value)" />
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>PO Number</th>
+              <th>Vendor</th>
+              <th>Status</th>
+              <th>Total Value</th>
+              <th>Ordered Items</th>
+            </tr>
+          </thead>
+          <tbody>
+            \${rowsHtml || '<tr><td colspan="5" style="text-align: center; color: #64748b; padding: 2rem;">No purchase orders found.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  \`;
 }
 
 function openNewPOModal() {

@@ -3,73 +3,124 @@ export function renderInventoryView(): string {
 }
 
 export const INVENTORY_CLIENT_JS = `
+let inventorySearchQuery = '';
+
 async function loadInventory() {
   const container = document.getElementById('view-inventory');
   container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading inventory...</div>';
 
   try {
+    inventorySearchQuery = (typeof getUrlParam === 'function' ? getUrlParam('search') : '') || '';
+
     const res = await apiFetch('/api/inventory/products');
     const json = await res.json();
     state.products = json.data || [];
 
-    let rowsHtml = '';
-    state.products.forEach((p) => {
-      rowsHtml += \`
-        <tr>
-          <td><strong>\${p.sku}</strong></td>
-          <td>\${p.name}</td>
-          <td>\${p.unitOfMeasure}</td>
-          <td>\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.75rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8;">Not purchased yet</span>'}</td>
-          <td>\${p.sellingPriceCents > 0 ? formatCurrency(p.sellingPriceCents, p.sellingPriceCurrency) : '<span style="color: #94a3b8;">Not set</span>'}</td>
-          <td>
-            <span class="badge \${p.onHandStock > 10 ? 'badge-success' : p.onHandStock > 0 ? 'badge-warning' : 'badge-danger'}">
-              <span class="badge-dot"></span>
-              \${p.onHandStock} \${p.unitOfMeasure}
-            </span>
-          </td>
-          <td><strong>\${formatCurrency(p.inventoryValuationCents)}</strong></td>
-          <td>
-            <button class="btn btn-secondary btn-sm" onclick="openProductHistoryModal('\${p.id}', '\${p.name}')">History</button>
-          </td>
-        </tr>
-      \`;
-    });
-
-    container.innerHTML = \`
-      <div class="panel-card">
-        <div class="panel-header">
-          <div class="panel-title">Product Catalog & Stock Levels</div>
-          <div class="panel-actions">
-            <button class="btn btn-secondary btn-sm" onclick="openStockAdjustmentModal()">Stock Adjustment</button>
-          </div>
-        </div>
-        <p style="padding: 0 1.35rem 1rem; font-size: 0.85rem; color: #64748b;">
-          Add new products from the Business Directory. This view tracks stock levels, valuation, and movement history.
-        </p>
-        <div class="table-responsive">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>SKU</th>
-                <th>Product Name</th>
-                <th>UOM</th>
-                <th>Cost Price</th>
-                <th>Selling Price</th>
-                <th>On-Hand Stock</th>
-                <th>Valuation</th>
-                <th>Audit</th>
-              </tr>
-            </thead>
-            <tbody>
-              \${rowsHtml || '<tr><td colspan="8" style="text-align: center; color: #64748b;">No products found.</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    \`;
+    renderInventoryContent(container);
   } catch (err) {
     container.innerHTML = \`<div class="panel-card" style="padding: 2rem; color: #dc2626;">Error loading inventory: \${err.message}</div>\`;
   }
+}
+
+function handleInventorySearch(query) {
+  inventorySearchQuery = query.toLowerCase();
+  if (typeof setUrlParam === 'function') {
+    setUrlParam('search', inventorySearchQuery || null);
+  }
+  const container = document.getElementById('view-inventory');
+  if (container) {
+    renderInventoryContent(container);
+  }
+}
+
+function exportInventoryCsv() {
+  const headers = ['SKU', 'Product Name', 'Category', 'UOM', 'Cost Price', 'Selling Price', 'On-Hand Stock', 'Valuation (PHP)'];
+  const rows = (state.products || []).map((p) => [
+    p.sku,
+    p.name,
+    p.category?.name || 'General',
+    p.unitOfMeasure,
+    p.costPriceCents ? (p.costPriceCents / 100).toFixed(2) + ' ' + (p.costPriceCurrency || 'PHP') : '0.00',
+    p.sellingPriceCents ? (p.sellingPriceCents / 100).toFixed(2) + ' ' + (p.sellingPriceCurrency || 'PHP') : '0.00',
+    p.onHandStock,
+    (p.inventoryValuationCents / 100).toFixed(2),
+  ]);
+  exportToCsv('inventory_catalog_' + new Date().toISOString().slice(0, 10), headers, rows);
+}
+
+function renderInventoryContent(container) {
+  let filteredProducts = state.products || [];
+  if (inventorySearchQuery) {
+    filteredProducts = filteredProducts.filter((p) => {
+      const sku = (p.sku || '').toLowerCase();
+      const name = (p.name || '').toLowerCase();
+      const uom = (p.unitOfMeasure || '').toLowerCase();
+      const cat = (p.category?.name || '').toLowerCase();
+      return sku.includes(inventorySearchQuery) || name.includes(inventorySearchQuery) || uom.includes(inventorySearchQuery) || cat.includes(inventorySearchQuery);
+    });
+  }
+
+  let rowsHtml = '';
+  filteredProducts.forEach((p) => {
+    rowsHtml += \`
+      <tr>
+        <td><strong style="font-family: 'JetBrains Mono', monospace;">\${p.sku}</strong></td>
+        <td><strong>\${p.name}</strong></td>
+        <td>\${p.unitOfMeasure}</td>
+        <td>\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.75rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8;">Not purchased yet</span>'}</td>
+        <td>\${p.sellingPriceCents > 0 ? formatCurrency(p.sellingPriceCents, p.sellingPriceCurrency) : '<span style="color: #94a3b8;">Not set</span>'}</td>
+        <td>
+          <span class="badge \${p.onHandStock > 10 ? 'badge-success' : p.onHandStock > 0 ? 'badge-warning' : 'badge-danger'}">
+            <span class="badge-dot"></span>
+            \${p.onHandStock} \${p.unitOfMeasure}
+          </span>
+        </td>
+        <td><strong>\${formatCurrency(p.inventoryValuationCents)}</strong></td>
+        <td>
+          <button class="btn btn-secondary btn-sm" onclick="openProductHistoryModal('\${p.id}', '\${p.name}')">History</button>
+        </td>
+      </tr>
+    \`;
+  });
+
+  container.innerHTML = \`
+    <div class="panel-card">
+      <div class="panel-header">
+        <div class="panel-title">Product Catalog & Stock Levels</div>
+        <div class="panel-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <button class="btn btn-secondary btn-sm" onclick="exportInventoryCsv()">📥 Export CSV</button>
+          <button class="btn btn-primary btn-sm" onclick="openStockAdjustmentModal()">Stock Adjustment</button>
+        </div>
+      </div>
+      <div style="padding: 0 1.35rem 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+        <p style="font-size: 0.85rem; color: #64748b; margin: 0;">
+          Add new products from the Business Directory. This view tracks stock levels, valuation, and movement history.
+        </p>
+        <div style="min-width: 260px;">
+          <input type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search SKU, product name..." value="\${inventorySearchQuery}" oninput="handleInventorySearch(this.value)" />
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>SKU</th>
+              <th>Product Name</th>
+              <th>UOM</th>
+              <th>Cost Price</th>
+              <th>Selling Price</th>
+              <th>On-Hand Stock</th>
+              <th>Valuation</th>
+              <th>Audit</th>
+            </tr>
+          </thead>
+          <tbody>
+            \${rowsHtml || '<tr><td colspan="8" style="text-align: center; color: #64748b; padding: 2rem;">No products matching search criteria.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  \`;
 }
 
 async function openProductHistoryModal(productId, productName) {

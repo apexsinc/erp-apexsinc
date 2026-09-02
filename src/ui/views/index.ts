@@ -9,3 +9,4 @@ export * from './outbound.view';
 export * from './accounting.view';
 export * from './payroll.view';
 export * from './admin.view';
+export * from './settings.view';

@@ -170,8 +170,10 @@ function showApp() {
 function applyRolePermissions() {
   const permissions = window.__ROLE_PERMISSIONS__ || {};
   const role = state.user && state.user.role;
-  const allowedTabs = (permissions[role] || []).slice();
-  if (role === 'ADMIN') allowedTabs.push('admin');
+  if (role === 'ADMIN') {
+    allowedTabs.push('admin');
+    allowedTabs.push('settings');
+  }
 
   document.querySelectorAll('.nav-item[data-tab]').forEach((item) => {
     const tab = item.dataset.tab;

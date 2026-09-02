@@ -6,31 +6,50 @@ export const ACCOUNTING_CLIENT_JS = `
 let accountingActiveTab = 'vouchers-all';
 let cachedAccounts = [];
 let cachedVouchers = [];
+let cachedLedgerEntries = [];
+let voucherSearchQuery = '';
 
 async function loadAccounting() {
   const container = document.getElementById('view-accounting');
   container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading vouchers & ledger...</div>';
 
   try {
-    const [tbRes, ledgerRes, vouchersRes, accountsRes] = await Promise.all([
+    const urlTab = typeof getUrlParam === 'function' ? getUrlParam('tab') : null;
+    if (urlTab) accountingActiveTab = urlTab;
+    voucherSearchQuery = (typeof getUrlParam === 'function' ? getUrlParam('search') : '') || '';
+
+    const [tbRes, ledgerRes, vouchersRes, accountsRes, settingsRes] = await Promise.all([
       apiFetch('/api/accounting/trial-balance'),
       apiFetch('/api/accounting/ledger'),
       apiFetch('/api/accounting/vouchers'),
       apiFetch('/api/accounting/accounts'),
+      apiFetch('/api/settings/vouchers').catch(() => null),
     ]);
 
     const tbJson = await tbRes.json();
     const ledgerJson = await ledgerRes.json();
     const vouchersJson = await vouchersRes.json();
     const accountsJson = await accountsRes.json();
+    if (settingsRes) {
+      try {
+        const settingsJson = await settingsRes.json();
+        window.cachedVoucherSettings = settingsJson.settings || {};
+      } catch (e) {}
+    }
 
     state.trialBalance = tbJson;
     cachedAccounts = accountsJson.data || [];
     cachedVouchers = vouchersJson.data || [];
+    cachedLedgerEntries = ledgerJson.data || [];
     const accounts = tbJson.accounts || [];
     const entries = ledgerJson.data || [];
 
     renderAccountingContent(container, tbJson, accounts, entries, cachedVouchers, cachedAccounts);
+
+    const urlSlip = typeof getUrlParam === 'function' ? getUrlParam('slip') : null;
+    if (urlSlip) {
+      openVoucherSlipModal(urlSlip);
+    }
   } catch (err) {
     container.innerHTML = \`<div class="panel-card" style="padding: 2rem; color: #dc2626;">Error loading accounting: \${err.message}</div>\`;
   }
@@ -38,13 +57,76 @@ async function loadAccounting() {
 
 function switchAccountingTab(tab) {
   accountingActiveTab = tab;
-  loadAccounting();
+  if (typeof setUrlParam === 'function') {
+    setUrlParam('tab', tab);
+  }
+  const container = document.getElementById('view-accounting');
+  if (container && state.trialBalance) {
+    renderAccountingContent(container, state.trialBalance, state.trialBalance.accounts || [], cachedLedgerEntries, cachedVouchers, cachedAccounts);
+  } else {
+    loadAccounting();
+  }
+}
+
+function handleVoucherSearch(query) {
+  voucherSearchQuery = query.toLowerCase();
+  if (typeof setUrlParam === 'function') {
+    setUrlParam('search', voucherSearchQuery || null);
+  }
+  const container = document.getElementById('view-accounting');
+  if (container && state.trialBalance) {
+    renderAccountingContent(container, state.trialBalance, state.trialBalance.accounts || [], cachedLedgerEntries, cachedVouchers, cachedAccounts);
+  }
+}
+
+function exportVouchersCsv() {
+  const headers = ['Voucher #', 'Date', 'Type', 'Payee / Recipient', 'Payment Method', 'Currency', 'Amount', 'Status', 'Notes'];
+  const rows = (cachedVouchers || []).map((v) => [
+    v.voucherNumber,
+    new Date(v.voucherDate || v.createdAt).toISOString().slice(0, 10),
+    v.voucherType,
+    v.recipient || v.recipientName || '',
+    v.paymentMethod || 'STANDARD',
+    v.currency || 'PHP',
+    (v.amountCents / 100).toFixed(2),
+    v.status || 'POSTED',
+    v.notes || '',
+  ]);
+  exportToCsv('vouchers_export_' + new Date().toISOString().slice(0, 10), headers, rows);
+}
+
+function exportLedgerCsv() {
+  const headers = ['Entry Date', 'Voucher Type', 'Account Code', 'Account Name', 'Debit (PHP)', 'Credit (PHP)', 'Description'];
+  const rows = (cachedLedgerEntries || []).map((e) => [
+    new Date(e.createdAt).toISOString().slice(0, 10),
+    e.voucherType,
+    e.account?.code || '',
+    e.account?.name || '',
+    (e.debitCents / 100).toFixed(2),
+    (e.creditCents / 100).toFixed(2),
+    e.description || '',
+  ]);
+  exportToCsv('general_ledger_' + new Date().toISOString().slice(0, 10), headers, rows);
+}
+
+function exportTrialBalanceCsv() {
+  const accounts = state.trialBalance?.accounts || cachedAccounts || [];
+  const headers = ['Account Code', 'Account Name', 'Type', 'Total Debits (PHP)', 'Total Credits (PHP)', 'Net Balance (PHP)'];
+  const rows = accounts.map((a) => [
+    a.code,
+    a.name,
+    a.type,
+    ((a.totalDebitCents || 0) / 100).toFixed(2),
+    ((a.totalCreditCents || 0) / 100).toFixed(2),
+    ((a.netBalanceCents || 0) / 100).toFixed(2),
+  ]);
+  exportToCsv('trial_balance_' + new Date().toISOString().slice(0, 10), headers, rows);
 }
 
 function renderAccountingContent(container, tbJson, accounts, entries, vouchers, rawAccounts) {
   const isBalanced = tbJson.isBalanced;
 
-  // Filter vouchers according to selected sub-tab
+  // Filter vouchers according to selected sub-tab and search query
   let filteredVouchers = vouchers;
   if (accountingActiveTab === 'vouchers-pv') {
     filteredVouchers = vouchers.filter((v) => v.voucherType === 'PAYMENT');
@@ -52,6 +134,16 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
     filteredVouchers = vouchers.filter((v) => v.voucherType === 'RECEIPT');
   } else if (accountingActiveTab === 'vouchers-jv') {
     filteredVouchers = vouchers.filter((v) => v.voucherType === 'JOURNAL');
+  }
+
+  if (voucherSearchQuery) {
+    filteredVouchers = filteredVouchers.filter((v) => {
+      const num = (v.voucherNumber || '').toLowerCase();
+      const rec = (v.recipient || v.recipientName || '').toLowerCase();
+      const notes = (v.notes || '').toLowerCase();
+      const method = (v.paymentMethod || '').toLowerCase();
+      return num.includes(voucherSearchQuery) || rec.includes(voucherSearchQuery) || notes.includes(voucherSearchQuery) || method.includes(voucherSearchQuery);
+    });
   }
 
   const voucherTypeBadges = {
@@ -99,7 +191,7 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
   });
 
   let ledgerRows = '';
-  entries.slice(0, 30).forEach((e) => {
+  entries.slice(0, 50).forEach((e) => {
     ledgerRows += \`
       <tr>
         <td>\${new Date(e.createdAt).toLocaleDateString()}</td>
@@ -130,10 +222,27 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
     \`;
   }).join('');
 
+  let exportButtonHtml = '';
+  if (accountingActiveTab.startsWith('vouchers')) {
+    exportButtonHtml = \`<button class="btn btn-secondary btn-sm" onclick="exportVouchersCsv()">📥 Export Vouchers CSV</button>\`;
+  } else if (accountingActiveTab === 'trial-balance') {
+    exportButtonHtml = \`<button class="btn btn-secondary btn-sm" onclick="exportTrialBalanceCsv()">📥 Export TB CSV</button>\`;
+  } else if (accountingActiveTab === 'general-ledger') {
+    exportButtonHtml = \`<button class="btn btn-secondary btn-sm" onclick="exportLedgerCsv()">📥 Export Ledger CSV</button>\`;
+  }
+
   let mainSectionHtml = '';
 
   if (accountingActiveTab.startsWith('vouchers')) {
     mainSectionHtml = \`
+      <div style="padding: 0.75rem 1.35rem 0.5rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+        <div style="flex: 1; max-width: 380px;">
+          <input type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search voucher #, payee, or notes..." value="\${voucherSearchQuery}" oninput="handleVoucherSearch(this.value)" />
+        </div>
+        <div>
+          \${exportButtonHtml}
+        </div>
+      </div>
       <div class="table-responsive">
         <table class="data-table">
           <thead>
@@ -156,6 +265,9 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
     \`;
   } else if (accountingActiveTab === 'trial-balance') {
     mainSectionHtml = \`
+      <div style="padding: 0.75rem 1.35rem 0.5rem; display: flex; justify-content: flex-end;">
+        \${exportButtonHtml}
+      </div>
       <div class="table-responsive">
         <table class="data-table">
           <thead>
@@ -176,6 +288,9 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
     \`;
   } else if (accountingActiveTab === 'general-ledger') {
     mainSectionHtml = \`
+      <div style="padding: 0.75rem 1.35rem 0.5rem; display: flex; justify-content: flex-end;">
+        \${exportButtonHtml}
+      </div>
       <div class="table-responsive">
         <table class="data-table">
           <thead>
@@ -239,6 +354,36 @@ function openNewPaymentVoucherModal() {
   const accountOptions = cachedAccounts.map((a) => \`<option value="\${a.code}">\${a.code} - \${a.name} (\${a.type})</option>\`).join('');
   const todayStr = new Date().toISOString().slice(0, 10);
 
+  const vSettings = window.cachedVoucherSettings || {};
+  const sign = vSettings['vouchers.signatories'] || {};
+  const prepVal = sign.preparedBy || 'Administrator';
+  const certVal = sign.certifiedBy || 'Joy/Admin';
+  const appVal = sign.approvedBy || 'Kenneth Brown/CEO';
+  const recVal = sign.receivedBy || 'Signature over printed name/Date';
+
+  const methods = (vSettings['vouchers.payment_methods'] && Array.isArray(vSettings['vouchers.payment_methods']))
+    ? vSettings['vouchers.payment_methods']
+    : [
+        { id: 'BANK_TRANSFER', name: 'Bank Wire / ACH', isActive: true },
+        { id: 'CHECK', name: 'Company Check', isActive: true },
+        { id: 'CASH', name: 'Petty Cash', isActive: true },
+        { id: 'CREDIT_CARD', name: 'Corporate Credit Card', isActive: true },
+        { id: 'ONLINE', name: 'Online / E-Wallet', isActive: true },
+      ];
+  const methodOptions = methods
+    .filter((m) => m.isActive !== false)
+    .map((m) => \`<option value="\${m.id}">\${m.name}</option>\`)
+    .join('');
+
+  const tags = (vSettings['vouchers.tags'] && Array.isArray(vSettings['vouchers.tags'])) ? vSettings['vouchers.tags'] : [];
+  const tagOptions = ['<option value="">-- No Tag / General --</option>']
+    .concat(tags.map((t) => \`<option value="\${t}">\${t}</option>\`))
+    .join('');
+
+  const defAccounts = vSettings['vouchers.default_accounts'] || {};
+  const defaultCash = defAccounts.cashAccountCode || '1010';
+  const defaultExp = defAccounts.salariesExpenseCode || '5020';
+
   const body = \`
     <form id="form-new-pv" onsubmit="submitNewPaymentVoucher(event)">
       <!-- Top Info Grid -->
@@ -264,13 +409,19 @@ function openNewPaymentVoucherModal() {
         </div>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; margin-bottom: 1.15rem;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.85rem; margin-bottom: 1.15rem;">
         <div class="form-group" style="margin-bottom: 0;">
           <label class="form-label">Voucher Date *</label>
           <input type="date" id="pv-date" class="form-input" value="\${todayStr}" required />
         </div>
         <div class="form-group" style="margin-bottom: 0;">
-          <label class="form-label">Voucher Number <span style="font-size: 0.75rem; color: #64748b;">(Auto-generated if blank)</span></label>
+          <label class="form-label">Expense Tag / Category</label>
+          <select id="pv-tag" class="form-input">
+            \${tagOptions}
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label class="form-label">Voucher Number <span style="font-size: 0.75rem; color: #64748b;">(Auto)</span></label>
           <input type="text" id="pv-voucher-number" class="form-input" placeholder="e.g. 26-000440 (Auto)" />
         </div>
       </div>
@@ -330,10 +481,7 @@ function openNewPaymentVoucherModal() {
         <div class="form-group" style="margin-bottom: 0;">
           <label class="form-label">Payment Method</label>
           <select id="pv-payment-method" class="form-input">
-            <option value="BANK_TRANSFER">Bank Wire / ACH</option>
-            <option value="CHECK">Company Check</option>
-            <option value="CASH">Petty Cash</option>
-            <option value="CREDIT_CARD">Corporate Credit Card</option>
+            \${methodOptions}
           </select>
         </div>
         <div class="form-group" style="margin-bottom: 0;">
@@ -350,19 +498,19 @@ function openNewPaymentVoucherModal() {
         <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem;">
           <div class="form-group" style="margin-bottom: 0;">
             <label class="form-label" style="font-size: 0.75rem;">Prepared by:</label>
-            <input type="text" id="pv-sig-prepared" class="form-input" value="Administrator" style="font-size: 0.82rem;" />
+            <input type="text" id="pv-sig-prepared" class="form-input" value="\${prepVal}" style="font-size: 0.82rem;" />
           </div>
           <div class="form-group" style="margin-bottom: 0;">
             <label class="form-label" style="font-size: 0.75rem;">Certified Correct by:</label>
-            <input type="text" id="pv-sig-certified" class="form-input" value="Joy/Admin" style="font-size: 0.82rem;" />
+            <input type="text" id="pv-sig-certified" class="form-input" value="\${certVal}" style="font-size: 0.82rem;" />
           </div>
           <div class="form-group" style="margin-bottom: 0;">
             <label class="form-label" style="font-size: 0.75rem;">Approved by:</label>
-            <input type="text" id="pv-sig-approved" class="form-input" value="Kenneth Brown/CEO" style="font-size: 0.82rem;" />
+            <input type="text" id="pv-sig-approved" class="form-input" value="\${appVal}" style="font-size: 0.82rem;" />
           </div>
           <div class="form-group" style="margin-bottom: 0;">
             <label class="form-label" style="font-size: 0.75rem;">Received Payment:</label>
-            <input type="text" id="pv-sig-received" class="form-input" value="Signature over printed name/Date" style="font-size: 0.82rem;" />
+            <input type="text" id="pv-sig-received" class="form-input" value="\${recVal}" style="font-size: 0.82rem;" />
           </div>
         </div>
       </div>
@@ -381,8 +529,8 @@ function openNewPaymentVoucherModal() {
     addPaymentVoucherItemRow('', '', '');
     const expSelect = document.getElementById('pv-exp-acc');
     const paySelect = document.getElementById('pv-pay-acc');
-    if (expSelect) expSelect.value = '5020'; // Operating Expense or AP
-    if (paySelect) paySelect.value = '1010'; // Cash / Bank
+    if (expSelect) expSelect.value = defaultExp;
+    if (paySelect) paySelect.value = defaultCash;
   }, 50);
 }
 
@@ -815,6 +963,10 @@ function openVoucherSlipModal(voucherId) {
     return;
   }
 
+  if (typeof setUrlParam === 'function') {
+    setUrlParam('slip', voucherId);
+  }
+
   const cur = v.currency || 'PHP';
   const curSymbol = cur === 'USD' ? '$' : '₱';
   const curLabel = cur === 'USD' ? 'USD' : 'Php';
@@ -825,11 +977,12 @@ function openVoucherSlipModal(voucherId) {
     day: 'numeric',
   });
 
+  const defaultSign = (window.cachedVoucherSettings && window.cachedVoucherSettings['vouchers.signatories']) || {};
   const sig = v.signatories || {
-    preparedBy: 'Administrator',
-    certifiedBy: 'Joy/Admin',
-    approvedBy: 'Kenneth Brown/CEO',
-    receivedBy: 'Signature over printed name/Date',
+    preparedBy: defaultSign.preparedBy || 'Administrator',
+    certifiedBy: defaultSign.certifiedBy || 'Joy/Admin',
+    approvedBy: defaultSign.approvedBy || 'Kenneth Brown/CEO',
+    receivedBy: defaultSign.receivedBy || 'Signature over printed name/Date',
   };
 
   let items = v.items || [];

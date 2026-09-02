@@ -12,6 +12,7 @@ import {
   renderAccountingView,
   renderPayrollView,
   renderAdminView,
+  renderSettingsView,
 } from './views';
 import { APP_CLIENT_JS } from './app.client';
 import type { Module, Role } from '../lib/permissions';
@@ -72,6 +73,7 @@ export function renderAppHtml(rolePermissions: Record<Role, Module[]>, options: 
         ${renderAccountingView()}
         ${renderPayrollView()}
         ${renderAdminView()}
+        ${renderSettingsView()}
       </div>
     </main>
   </div>

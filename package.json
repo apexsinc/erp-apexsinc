@@ -4,7 +4,7 @@
   "description": "Lightweight Cloudflare Workers ERP & Business Management System using Hono, Drizzle ORM, and Cloudflare D1",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --ip 0.0.0.0 --port 8787",
     "build": "wrangler deploy --dry-run",
     "deploy": "wrangler deploy",
     "db:generate": "drizzle-kit generate",

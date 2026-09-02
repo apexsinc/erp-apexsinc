@@ -5,6 +5,7 @@ export function renderDirectoryView(): string {
 export const DIRECTORY_CLIENT_JS = `
 let directoryActiveTab = 'customers';
 let directorySearch = '';
+let productsCategoryTab = 'all';
 
 // Directory reads/writes the same /api/sales, /api/inventory, /api/purchasing endpoints
 // those modules already use, so a sub-tab only appears if the signed-in role actually
@@ -49,6 +50,7 @@ async function loadDirectory() {
     }
     if (allowed.includes('products')) {
       fetches.push(apiFetch('/api/inventory/products').then((r) => r.json()).then((j) => { state.products = j.data || []; }));
+      fetches.push(apiFetch('/api/inventory/categories').then((r) => r.json()).then((j) => { state.productCategories = j.data || []; }));
     }
     if (allowed.includes('suppliers')) {
       fetches.push(apiFetch('/api/purchasing/vendors').then((r) => r.json()).then((j) => { state.vendors = j.data || []; }));
@@ -64,6 +66,7 @@ async function loadDirectory() {
 function switchDirectoryTab(tab) {
   directoryActiveTab = tab;
   directorySearch = '';
+  productsCategoryTab = 'all';
   renderDirectoryContent();
 }
 
@@ -106,10 +109,43 @@ function renderDirectoryContent() {
           oninput="directorySearch = this.value; renderDirectoryTable();"
         />
       </div>
+      \${directoryActiveTab === 'products' ? '<div id="directory-category-tabs" style="padding: 0 1.35rem 1rem;"></div>' : ''}
       <div id="directory-table-wrap"></div>
     </div>
   \`;
+  if (directoryActiveTab === 'products') renderProductCategoryTabs();
   renderDirectoryTable();
+}
+
+// Category sub-navigation for the Products tab — same pill styling as the
+// main Customers/Products/Price List/Suppliers tabs, one level down, so
+// browsing by category feels like the same UI the user already knows.
+function renderProductCategoryTabs() {
+  const wrap = document.getElementById('directory-category-tabs');
+  if (!wrap) return;
+
+  const countFor = (catName) => state.products.filter((p) => p.category === catName).length;
+
+  const pills = [
+    { key: 'all', label: 'All Products', count: state.products.length },
+    ...state.productCategories.map((c) => ({ key: c.name, label: c.name, count: countFor(c.name) })),
+  ];
+
+  const pillsHtml = pills.map((p) => {
+    const active = productsCategoryTab === p.key;
+    return \`
+      <button type="button" onclick="productsCategoryTab = '\${p.key.replace(/'/g, "\\\\'")}'; renderDirectoryTable();" style="padding: 0.4rem 0.9rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; border: 1px solid \${active ? 'var(--primary)' : 'var(--border-color)'}; background: \${active ? 'var(--primary)' : '#f8fafc'}; color: \${active ? '#ffffff' : 'var(--text-main)'}; cursor: pointer; transition: var(--transition);">
+        \${p.label} <span style="opacity: 0.75;">(\${p.count})</span>
+      </button>
+    \`;
+  }).join('');
+
+  wrap.innerHTML = \`
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; border-top: 1px dashed var(--border-color); padding-top: 1rem;">
+      \${pillsHtml}
+      <button type="button" onclick="openAddCategoryModal()" style="padding: 0.4rem 0.9rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; border: 1px dashed var(--border-color); background: transparent; color: #64748b; cursor: pointer;">+ Add Category</button>
+    </div>
+  \`;
 }
 
 function renderDirectoryTable() {
@@ -137,20 +173,31 @@ function renderDirectoryTable() {
       </div>
     \`;
   } else if (directoryActiveTab === 'products') {
-    const rows = state.products.filter((p) => !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q));
+    // renderProductCategoryTabs() may run after state.productCategories loads but
+    // before a tab that no longer exists is deselected — fall back to "all".
+    if (productsCategoryTab !== 'all' && !state.productCategories.some((c) => c.name === productsCategoryTab)) {
+      productsCategoryTab = 'all';
+    }
+    const rows = state.products.filter((p) => {
+      const matchesQuery = !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
+      const matchesCategory = productsCategoryTab === 'all' || p.category === productsCategoryTab;
+      return matchesQuery && matchesCategory;
+    });
     wrap.innerHTML = \`
       <div class="table-responsive">
         <table class="data-table">
-          <thead><tr><th>SKU</th><th>Product Name</th><th>UOM</th><th>Cost Price</th></tr></thead>
+          <thead><tr><th>SKU</th><th>Product Name</th><th>Category</th><th>UOM</th><th>Cost Price</th><th></th></tr></thead>
           <tbody>
             \${rows.map((p) => \`
               <tr>
                 <td><strong>\${p.sku}</strong></td>
                 <td>\${p.name}</td>
+                <td>\${p.category || '<span style="color: #94a3b8;">—</span>'}</td>
                 <td>\${p.unitOfMeasure}</td>
                 <td>\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.75rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8;">Not purchased yet</span>'}</td>
+                <td><button class="btn btn-secondary btn-sm" onclick="openChangeCategoryModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}', '\${(p.category || '').replace(/'/g, "\\\\'")}')">Change Category</button></td>
               </tr>
-            \`).join('') || '<tr><td colspan="4" style="text-align: center; color: #64748b;">No products found.</td></tr>'}
+            \`).join('') || '<tr><td colspan="6" style="text-align: center; color: #64748b;">No products found.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -251,6 +298,121 @@ async function submitNewCustomer(e) {
   }
 }
 
+// ---- Product Categories ----
+
+function productCategoryOptionsHtml(selectedName) {
+  return state.productCategories.map((c) => \`<option value="\${c.name}" \${c.name === selectedName ? 'selected' : ''}>\${c.name}</option>\`).join('');
+}
+
+// Lets the user add a category inline from within the Add Product / Change
+// Category modals without stacking a second modal on top of the first.
+async function quickAddCategory(selectElId) {
+  const name = (window.prompt('New category name:') || '').trim();
+  if (!name) return;
+
+  try {
+    const res = await apiFetch('/api/inventory/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to add category');
+
+    state.productCategories.push(json.data);
+    state.productCategories.sort((a, b) => a.name.localeCompare(b.name));
+
+    const select = document.getElementById(selectElId);
+    if (select) {
+      select.innerHTML = productCategoryOptionsHtml(json.data.name);
+    }
+    showToast('Category "' + json.data.name + '" added', 'success');
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
+}
+
+function openAddCategoryModal() {
+  const body = \`
+    <form id="form-add-category" onsubmit="submitAddCategory(event)">
+      <div class="form-group">
+        <label class="form-label">Category Name *</label>
+        <input type="text" id="ac-name" class="form-input" placeholder="e.g. Weather Station" required />
+      </div>
+    </form>
+  \`;
+  const footer = \`
+    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="document.getElementById('form-add-category').requestSubmit()">Save Category</button>
+  \`;
+  openModal('Add Product Category', body, footer);
+}
+
+async function submitAddCategory(e) {
+  e.preventDefault();
+  const payload = { name: document.getElementById('ac-name').value };
+
+  try {
+    const res = await apiFetch('/api/inventory/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to add category');
+
+    closeModal();
+    showToast('Category "' + json.data.name + '" added', 'success');
+    directoryActiveTab = 'products';
+    productsCategoryTab = json.data.name;
+    loadDirectory();
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
+}
+
+function openChangeCategoryModal(productId, name, currentCategory) {
+  const body = \`
+    <form id="form-change-category" onsubmit="submitChangeCategory(event, '\${productId}')">
+      <p style="margin-bottom: 1rem; font-size: 0.85rem; color: #64748b;">Category for <strong>\${name}</strong>.</p>
+      <div class="form-group">
+        <label class="form-label">Category *</label>
+        <div style="display: flex; gap: 0.5rem;">
+          <select id="cc-category" class="form-select" style="flex: 1;">\${productCategoryOptionsHtml(currentCategory)}</select>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="quickAddCategory('cc-category')">+ New</button>
+        </div>
+      </div>
+    </form>
+  \`;
+  const footer = \`
+    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="document.getElementById('form-change-category').requestSubmit()">Save Category</button>
+  \`;
+  openModal('Change Product Category', body, footer);
+}
+
+async function submitChangeCategory(e, productId) {
+  e.preventDefault();
+  const payload = { category: document.getElementById('cc-category').value };
+
+  try {
+    const res = await apiFetch('/api/inventory/products/' + productId + '/category', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to save category');
+
+    closeModal();
+    showToast('Category updated for ' + json.data.name, 'success');
+    directoryActiveTab = 'products';
+    loadDirectory();
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
+}
+
 // ---- Create Product (moved from Inventory) ----
 
 function openNewProductModal() {
@@ -263,6 +425,13 @@ function openNewProductModal() {
       <div class="form-group">
         <label class="form-label">Product Name *</label>
         <input type="text" id="np-name" class="form-input" placeholder="e.g. Industrial Widget" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category *</label>
+        <div style="display: flex; gap: 0.5rem;">
+          <select id="np-category" class="form-select" style="flex: 1;" required>\${productCategoryOptionsHtml(null)}</select>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="quickAddCategory('np-category')">+ New</button>
+        </div>
       </div>
       <p style="margin: -0.5rem 0 0; font-size: 0.78rem; color: #94a3b8;">
         Unit of measure, cost price, currency, and quantity are set when you order this product in Purchasing.
@@ -282,6 +451,7 @@ async function submitNewProduct(e) {
   const payload = {
     sku: document.getElementById('np-sku').value,
     name: document.getElementById('np-name').value,
+    category: document.getElementById('np-category').value,
   };
 
   try {

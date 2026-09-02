@@ -4,3 +4,4 @@ export * from './sales';
 export * from './vouchers';
 export * from './payroll';
 export * from './auth';
+export * from './settings';

@@ -3,11 +3,15 @@ export function renderSalesView(): string {
 }
 
 export const SALES_CLIENT_JS = `
+let salesSearchQuery = '';
+
 async function loadSales() {
   const container = document.getElementById('view-sales');
   container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading sales data...</div>';
 
   try {
+    salesSearchQuery = (typeof getUrlParam === 'function' ? getUrlParam('search') : '') || '';
+
     const [soRes, custRes] = await Promise.all([
       apiFetch('/api/sales/orders'),
       apiFetch('/api/sales/customers'),
@@ -18,76 +22,123 @@ async function loadSales() {
     state.salesOrders = soJson.data || [];
     state.customers = custJson.data || [];
 
-    const soStatusBadgeClass = {
-      DRAFT: 'badge-neutral',
-      CONFIRMED: 'badge-primary',
-      PACKED: 'badge-warning',
-      PARTIALLY_FULFILLED: 'badge-warning',
-      FULFILLED: 'badge-success',
-      CANCELLED: 'badge-danger',
-    };
+    renderSalesContent(container);
+  } catch (err) {
+    container.innerHTML = \`<div class="panel-card" style="padding: 2rem; color: #dc2626;">Error loading sales: \${err.message}</div>\`;
+  }
+}
 
-    let rowsHtml = '';
-    state.salesOrders.forEach((so) => {
-      const invoices = so.invoices || [];
-      const invoicesHtml = invoices.length
-        ? invoices.map((inv) => \`
-            <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem;">
-              <span class="badge \${inv.status === 'PAID' ? 'badge-success' : inv.status === 'PARTIALLY_PAID' ? 'badge-warning' : 'badge-primary'}" style="font-size: 0.68rem;">\${inv.invoiceNumber}</span>
-              \${inv.status !== 'PAID'
-                ? \`<button class="btn btn-success btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.72rem;" onclick="openRecordReceiptModal('\${inv.id}', '\${inv.invoiceNumber}', \${inv.totalAmountCents - inv.paidAmountCents})">Pay</button>\`
-                : ''
-              }
-            </div>
-          \`).join('')
-        : '<span style="color: #94a3b8; font-size: 0.78rem;">Not yet invoiced</span>';
+function handleSalesSearch(query) {
+  salesSearchQuery = query.toLowerCase();
+  if (typeof setUrlParam === 'function') {
+    setUrlParam('search', salesSearchQuery || null);
+  }
+  const container = document.getElementById('view-sales');
+  if (container) {
+    renderSalesContent(container);
+  }
+}
 
-      rowsHtml += \`
-        <tr>
-          <td><strong>\${so.soNumber}</strong></td>
-          <td>\${so.customer?.name || 'Customer'}</td>
-          <td>
-            <span class="badge \${soStatusBadgeClass[so.status] || 'badge-neutral'}">
-              <span class="badge-dot"></span>
-              \${so.status.replace('_', ' ')}
-            </span>
-          </td>
-          <td><strong>\${formatCurrency(so.totalAmountCents, so.currency)}</strong></td>
-          <td>\${invoicesHtml}</td>
-        </tr>
-      \`;
+function exportSalesCsv() {
+  const headers = ['SO Number', 'Customer', 'Status', 'Currency', 'Order Total', 'Invoices'];
+  const rows = (state.salesOrders || []).map((so) => [
+    so.soNumber,
+    so.customer?.name || 'Customer',
+    so.status,
+    so.currency || 'PHP',
+    (so.totalAmountCents / 100).toFixed(2),
+    (so.invoices || []).map((inv) => \`\${inv.invoiceNumber} (\${inv.status})\`).join('; ') || 'None',
+  ]);
+  exportToCsv('sales_orders_' + new Date().toISOString().slice(0, 10), headers, rows);
+}
+
+function renderSalesContent(container) {
+  const soStatusBadgeClass = {
+    DRAFT: 'badge-neutral',
+    CONFIRMED: 'badge-primary',
+    PACKED: 'badge-warning',
+    PARTIALLY_FULFILLED: 'badge-warning',
+    FULFILLED: 'badge-success',
+    CANCELLED: 'badge-danger',
+  };
+
+  let filteredOrders = state.salesOrders || [];
+  if (salesSearchQuery) {
+    filteredOrders = filteredOrders.filter((so) => {
+      const num = (so.soNumber || '').toLowerCase();
+      const cust = (so.customer?.name || '').toLowerCase();
+      const status = (so.status || '').toLowerCase();
+      return num.includes(salesSearchQuery) || cust.includes(salesSearchQuery) || status.includes(salesSearchQuery);
     });
+  }
 
-    container.innerHTML = \`
-      <div class="panel-card">
-        <div class="panel-header">
-          <div class="panel-title">Sales Orders & Invoicing</div>
-          <div class="panel-actions">
-            <button class="btn btn-primary btn-sm" onclick="openNewSalesOrderModal()">Create Sales Order</button>
+  let rowsHtml = '';
+  filteredOrders.forEach((so) => {
+    const invoices = so.invoices || [];
+    const invoicesHtml = invoices.length
+      ? invoices.map((inv) => \`
+          <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem;">
+            <span class="badge \${inv.status === 'PAID' ? 'badge-success' : inv.status === 'PARTIALLY_PAID' ? 'badge-warning' : 'badge-primary'}" style="font-size: 0.68rem;">\${inv.invoiceNumber}</span>
+            \${inv.status !== 'PAID'
+              ? \`<button class="btn btn-success btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.72rem;" onclick="openRecordReceiptModal('\${inv.id}', '\${inv.invoiceNumber}', \${inv.totalAmountCents - inv.paidAmountCents})">Pay</button>\`
+              : ''
+            }
           </div>
-        </div>
-        <p style="padding: 0 1.35rem 1rem; font-size: 0.85rem; color: #64748b;">
-          Manage customers in the Business Directory. Ship confirmed orders and issue their invoices from Outbound Deliveries.
-        </p>
-        <div class="table-responsive">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>SO Number</th>
-                <th>Customer</th>
-                <th>Status</th>
-                <th>Order Total</th>
-                <th>Invoices & Payment</th>
-              </tr>
-            </thead>
-            <tbody>
-              \${rowsHtml || '<tr><td colspan="5" style="text-align: center; color: #64748b;">No sales orders found.</td></tr>'}
-            </tbody>
-          </table>
+        \`).join('')
+      : '<span style="color: #94a3b8; font-size: 0.78rem;">Not yet invoiced</span>';
+
+    rowsHtml += \`
+      <tr>
+        <td><strong>\${so.soNumber}</strong></td>
+        <td>\${so.customer?.name || 'Customer'}</td>
+        <td>
+          <span class="badge \${soStatusBadgeClass[so.status] || 'badge-neutral'}">
+            <span class="badge-dot"></span>
+            \${so.status.replace('_', ' ')}
+          </span>
+        </td>
+        <td><strong>\${formatCurrency(so.totalAmountCents, so.currency)}</strong></td>
+        <td>\${invoicesHtml}</td>
+      </tr>
+    \`;
+  });
+
+  container.innerHTML = \`
+    <div class="panel-card">
+      <div class="panel-header">
+        <div class="panel-title">Sales Orders & Invoicing</div>
+        <div class="panel-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <button class="btn btn-secondary btn-sm" onclick="exportSalesCsv()">📥 Export CSV</button>
+          <button class="btn btn-primary btn-sm" onclick="openNewSalesOrderModal()">Create Sales Order</button>
         </div>
       </div>
-    \`;
-  } catch (err) {
+      <div style="padding: 0 1.35rem 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+        <p style="font-size: 0.85rem; color: #64748b; margin: 0;">
+          Manage customers in the Business Directory. Ship confirmed orders and issue invoices from Outbound Deliveries.
+        </p>
+        <div style="min-width: 260px;">
+          <input type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search SO #, customer, status..." value="\${salesSearchQuery}" oninput="handleSalesSearch(this.value)" />
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>SO Number</th>
+              <th>Customer</th>
+              <th>Status</th>
+              <th>Order Total</th>
+              <th>Invoices & Payment</th>
+            </tr>
+          </thead>
+          <tbody>
+            \${rowsHtml || '<tr><td colspan="5" style="text-align: center; color: #64748b;">No sales orders found.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  \`;
+}
     container.innerHTML = \`<div class="panel-card" style="padding: 2rem; color: #dc2626;">Error loading sales: \${err.message}</div>\`;
   }
 }

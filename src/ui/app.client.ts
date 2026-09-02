@@ -9,6 +9,7 @@ import { OUTBOUND_CLIENT_JS } from './views/outbound.view';
 import { ACCOUNTING_CLIENT_JS } from './views/accounting.view';
 import { PAYROLL_CLIENT_JS } from './views/payroll.view';
 import { ADMIN_CLIENT_JS } from './views/admin.view';
+import { SETTINGS_CLIENT_JS } from './views/settings.view';
 
 export const APP_CLIENT_JS = `
 // ============================================================================
@@ -87,6 +88,53 @@ function showToast(message, type = 'info') {
   }, 3500);
 }
 
+// URL Query Params Management
+function getUrlParam(name) {
+  const params = new URLSearchParams(window.location.search);
+  return params.get(name);
+}
+
+function setUrlParam(name, value, updateHistory = true) {
+  const url = new URL(window.location.href);
+  if (value === null || value === undefined || value === '') {
+    url.searchParams.delete(name);
+  } else {
+    url.searchParams.set(name, value);
+  }
+  if (updateHistory) {
+    window.history.replaceState({ tab: state.activeTab }, '', url.pathname + url.search);
+  }
+}
+
+function removeUrlParam(name, updateHistory = true) {
+  setUrlParam(name, null, updateHistory);
+}
+
+// Universal CSV Data Export
+function exportToCsv(filename, headers, rows) {
+  const escapeCell = (val) => {
+    if (val === null || val === undefined) return '""';
+    const str = String(val).replace(/"/g, '""');
+    return '"' + str + '"';
+  };
+  const csvContent = [
+    headers.map(escapeCell).join(','),
+    ...rows.map((row) => row.map(escapeCell).join(',')),
+  ].join('\\r\\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename.endsWith('.csv') ? filename : filename + '.csv');
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  showToast('Exported ' + filename, 'success');
+}
+
 // Modal Manager
 function openModal(title, bodyHtml, footerButtonsHtml = '', size = '') {
   const backdrop = document.getElementById('modal-backdrop');
@@ -105,6 +153,9 @@ function openModal(title, bodyHtml, footerButtonsHtml = '', size = '') {
 function closeModal() {
   const backdrop = document.getElementById('modal-backdrop');
   if (backdrop) backdrop.style.display = 'none';
+  if (typeof removeUrlParam === 'function' && typeof getUrlParam === 'function' && getUrlParam('slip')) {
+    removeUrlParam('slip');
+  }
 }
 
 const EYE_ICON_SVG =
@@ -133,6 +184,7 @@ ${OUTBOUND_CLIENT_JS}
 ${ACCOUNTING_CLIENT_JS}
 ${PAYROLL_CLIENT_JS}
 ${ADMIN_CLIENT_JS}
+${SETTINGS_CLIENT_JS}
 
 const ROUTE_TAB_MAP = {
   '': 'dashboard',
@@ -149,6 +201,7 @@ const ROUTE_TAB_MAP = {
   '/accounting': 'accounting',
   '/payroll': 'payroll',
   '/admin': 'admin',
+  '/settings': 'settings',
 };
 
 const TAB_ROUTE_MAP = {
@@ -162,6 +215,7 @@ const TAB_ROUTE_MAP = {
   accounting: '/vouchers',
   payroll: '/payroll',
   admin: '/admin',
+  settings: '/settings',
 };
 
 function getTabFromUrl() {
@@ -173,15 +227,19 @@ function getTabFromUrl() {
 }
 
 // Global Tab Router
-function switchTab(tabName, updateHistory = true) {
+function switchTab(tabName, updateHistory = true, keepQueryParams = true) {
   const permissions = window.__ROLE_PERMISSIONS__ || {};
   const allowedTabs = ((state.user && permissions[state.user.role]) || []).slice();
-  if (state.user && state.user.role === 'ADMIN') allowedTabs.push('admin');
+  if (state.user && state.user.role === 'ADMIN') {
+    allowedTabs.push('admin');
+    allowedTabs.push('settings');
+  }
   if (!allowedTabs.includes(tabName)) {
     showToast('You do not have access to that module', 'danger');
     tabName = allowedTabs[0] || 'dashboard';
   }
 
+  const prevTab = state.activeTab;
   state.activeTab = tabName;
 
   document.querySelectorAll('.nav-item').forEach((item) => {
@@ -204,6 +262,7 @@ function switchTab(tabName, updateHistory = true) {
     accounting: 'Vouchers',
     payroll: 'Payroll & Staff',
     admin: 'Roles & Permissions',
+    settings: 'System Settings',
   };
   const currentTitle = tabTitles[tabName] || tabName;
   if (breadcrumb) breadcrumb.innerText = currentTitle;
@@ -211,8 +270,11 @@ function switchTab(tabName, updateHistory = true) {
 
   // Synchronize browser URL bar and history state
   const targetPath = TAB_ROUTE_MAP[tabName] || ('/' + tabName);
-  if (updateHistory && window.location.pathname !== targetPath) {
-    window.history.pushState({ tab: tabName }, '', targetPath);
+  const targetQuery = (keepQueryParams && prevTab === tabName) ? window.location.search : '';
+  const fullTarget = targetPath + targetQuery;
+
+  if (updateHistory && (window.location.pathname !== targetPath || (targetQuery && window.location.search !== targetQuery))) {
+    window.history.pushState({ tab: tabName }, '', fullTarget);
   }
 
   document.querySelectorAll('.tab-view').forEach((el) => (el.style.display = 'none'));
@@ -232,6 +294,7 @@ function switchTab(tabName, updateHistory = true) {
   if (tabName === 'accounting') loadAccounting();
   if (tabName === 'payroll') loadPayroll();
   if (tabName === 'admin') loadAdmin();
+  if (tabName === 'settings') loadSettings();
 }
 
 // Browser back/forward navigation support
@@ -243,7 +306,11 @@ window.addEventListener('popstate', (e) => {
 });
 
 // Initial Boot
-document.addEventListener('DOMContentLoaded', () => {
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    checkAuth();
+  });
+} else {
   checkAuth();
-});
+}
 `;

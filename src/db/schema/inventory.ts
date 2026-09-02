@@ -2,6 +2,21 @@ import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 import { relations } from 'drizzle-orm';
 
 /**
+ * User-managed list of product categories (e.g. Weather Station, Spare Parts).
+ * Kept as its own table (rather than a fixed enum) so new categories can be
+ * added from the UI without a schema change.
+ */
+export const productCategories = sqliteTable('product_categories', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull().unique(),
+  createdAt: text('created_at')
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
+/**
  * Products master table
  * All monetary fields are in integer cents (e.g. $19.99 -> 1999)
  */
@@ -12,6 +27,7 @@ export const products = sqliteTable('products', {
   sku: text('sku').notNull().unique(),
   name: text('name').notNull(),
   description: text('description'),
+  category: text('category').notNull().default('Other'),
   unitOfMeasure: text('unit_of_measure').notNull().default('unit'),
   costPriceCents: integer('cost_price_cents').notNull().default(0),
   costPriceCurrency: text('cost_price_currency', { enum: ['USD', 'PHP'] }).notNull().default('PHP'),
@@ -66,3 +82,5 @@ export type Product = typeof products.$inferSelect;
 export type NewProduct = typeof products.$inferInsert;
 export type StockMovement = typeof stockMovements.$inferSelect;
 export type NewStockMovement = typeof stockMovements.$inferInsert;
+export type ProductCategory = typeof productCategories.$inferSelect;
+export type NewProductCategory = typeof productCategories.$inferInsert;

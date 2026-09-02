@@ -59,12 +59,44 @@ async function loadPayroll() {
       \`;
     });
 
+function exportEmployeesCsv() {
+  const headers = ['Employee Code', 'Full Name', 'Department', 'Position', 'Base Salary (PHP)', 'Allowances (PHP)', 'Deductions (PHP)', 'Net Salary (PHP)'];
+  const rows = (state.employees || []).map((emp) => {
+    const salary = emp.salaryStructures?.[0];
+    return [
+      emp.employeeCode,
+      \`\${emp.firstName} \${emp.lastName}\`,
+      emp.department,
+      emp.position,
+      salary ? (salary.baseSalaryCents / 100).toFixed(2) : '0.00',
+      salary ? (salary.allowancesCents / 100).toFixed(2) : '0.00',
+      salary ? (salary.deductionsCents / 100).toFixed(2) : '0.00',
+      salary ? (salary.netSalaryCents / 100).toFixed(2) : '0.00',
+    ];
+  });
+  exportToCsv('employees_payroll_' + new Date().toISOString().slice(0, 10), headers, rows);
+}
+
+function exportPayrollRunsCsv() {
+  const headers = ['Run ID', 'Period Start', 'Period End', 'Status', 'Total Net Payout (PHP)', 'Payment Voucher'];
+  const rows = (state.payrollRuns || []).map((run) => [
+    run.runNumber,
+    run.periodStartDate,
+    run.periodEndDate,
+    run.status,
+    (run.totalNetCents / 100).toFixed(2),
+    run.paymentVoucher?.voucherNumber || 'Pending',
+  ]);
+  exportToCsv('payroll_runs_' + new Date().toISOString().slice(0, 10), headers, rows);
+}
+
     container.innerHTML = \`
       <!-- Payroll Runs -->
       <div class="panel-card">
         <div class="panel-header">
           <div class="panel-title">Payroll Runs & Disbursements</div>
-          <div class="panel-actions">
+          <div class="panel-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn btn-secondary btn-sm" onclick="exportPayrollRunsCsv()">📥 Export Runs CSV</button>
             <button class="btn btn-secondary btn-sm" onclick="openNewEmployeeModal()">Add Employee</button>
             <button class="btn btn-primary btn-sm" onclick="openNewPayrollRunModal()">Calculate Payroll</button>
           </div>
@@ -92,6 +124,9 @@ async function loadPayroll() {
       <div class="panel-card">
         <div class="panel-header">
           <div class="panel-title">Active Employees & Compensation</div>
+          <div class="panel-actions">
+            <button class="btn btn-secondary btn-sm" onclick="exportEmployeesCsv()">📥 Export Staff CSV</button>
+          </div>
         </div>
         <div class="table-responsive">
           <table class="data-table">
