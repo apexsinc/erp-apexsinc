@@ -65,6 +65,19 @@ async function renderApp(c: { env: Bindings }) {
 app.get('/', async (c) => c.html(await renderApp(c)));
 app.get('/login', async (c) => c.html(await renderApp(c)));
 app.get('/app', async (c) => c.html(await renderApp(c)));
+app.get('/dashboard', async (c) => c.html(await renderApp(c)));
+app.get('/directory', async (c) => c.html(await renderApp(c)));
+app.get('/inventory', async (c) => c.html(await renderApp(c)));
+app.get('/purchasing', async (c) => c.html(await renderApp(c)));
+app.get('/inbound', async (c) => c.html(await renderApp(c)));
+app.get('/sales', async (c) => c.html(await renderApp(c)));
+app.get('/outbound', async (c) => c.html(await renderApp(c)));
+app.get('/vouchers', async (c) => c.html(await renderApp(c)));
+app.get('/accounting', async (c) => c.html(await renderApp(c)));
+app.get('/payroll', async (c) => c.html(await renderApp(c)));
+app.get('/admin', async (c) => c.html(await renderApp(c)));
+app.get('/settings', async (c) => c.html(await renderApp(c)));
+app.get('/settings/*', async (c) => c.html(await renderApp(c)));
 
 /* ========================================================================== */
 /* 0. AUTHENTICATION & ADMIN SYSTEM                                           */
@@ -255,8 +268,41 @@ async function getProductStockBalance(db: ReturnType<typeof createDbClient>, pro
   }, 0);
 }
 
+// GET /api/inventory/categories - List product categories
+app.get('/api/inventory/categories', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const categories = await db.query.productCategories.findMany({
+    orderBy: [schema.productCategories.name],
+  });
+  return c.json({ success: true, data: categories });
+});
+
+// POST /api/inventory/categories - Add a new product category
+app.post(
+  '/api/inventory/categories',
+  zValidator('json', z.object({ name: z.string().trim().min(1).max(60) })),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const body = c.req.valid('json');
+
+    const existing = await db.query.productCategories.findFirst({
+      where: eq(schema.productCategories.name, body.name),
+    });
+    if (existing) return c.json({ success: false, error: 'That category already exists' }, 409);
+
+    const categoryId = crypto.randomUUID();
+    await db.insert(schema.productCategories).values({ id: categoryId, name: body.name });
+
+    const created = await db.query.productCategories.findFirst({
+      where: eq(schema.productCategories.id, categoryId),
+    });
+
+    return c.json({ success: true, data: created }, 201);
+  }
+);
+
 // POST /api/inventory/products - Create Product
-// Identity only (SKU + name). Unit of measure, cost price/currency, and
+// Identity, category, and name only. Unit of measure, cost price/currency, and
 // quantity are captured later, per purchase, on the Purchasing PO form —
 // they sync back onto this product record when that PO is issued.
 app.post(
@@ -266,6 +312,7 @@ app.post(
     z.object({
       sku: z.string().min(2),
       name: z.string().min(1),
+      category: z.string().min(1),
       description: z.string().optional(),
     })
   ),
@@ -273,11 +320,17 @@ app.post(
     const db = createDbClient(c.env.DB);
     const body = c.req.valid('json');
 
+    const category = await db.query.productCategories.findFirst({
+      where: eq(schema.productCategories.name, body.category),
+    });
+    if (!category) return c.json({ success: false, error: 'Unknown category' }, 400);
+
     const productId = crypto.randomUUID();
     await db.insert(schema.products).values({
       id: productId,
       sku: body.sku.toUpperCase(),
       name: body.name,
+      category: body.category,
       description: body.description,
     });
 
@@ -355,6 +408,33 @@ app.patch(
     await db
       .update(schema.products)
       .set({ sellingPriceCents: body.sellingPriceCents, sellingPriceCurrency: body.sellingPriceCurrency, updatedAt: new Date().toISOString() })
+      .where(eq(schema.products.id, id));
+
+    const updated = await db.query.products.findFirst({ where: eq(schema.products.id, id) });
+    return c.json({ success: true, data: updated });
+  }
+);
+
+// PATCH /api/inventory/products/:id/category - Reclassify a product
+app.patch(
+  '/api/inventory/products/:id/category',
+  zValidator('json', z.object({ category: z.string().min(1) })),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const id = c.req.param('id');
+    const body = c.req.valid('json');
+
+    const product = await db.query.products.findFirst({ where: eq(schema.products.id, id) });
+    if (!product) return c.json({ success: false, error: 'Product not found' }, 404);
+
+    const category = await db.query.productCategories.findFirst({
+      where: eq(schema.productCategories.name, body.category),
+    });
+    if (!category) return c.json({ success: false, error: 'Unknown category' }, 400);
+
+    await db
+      .update(schema.products)
+      .set({ category: body.category, updatedAt: new Date().toISOString() })
       .where(eq(schema.products.id, id));
 
     const updated = await db.query.products.findFirst({ where: eq(schema.products.id, id) });
@@ -2169,5 +2249,11 @@ app.put(
     return c.json({ success: true, message: 'Permissions updated', matrix });
   }
 );
+
+// SPA wildcard fallback for all client routes and subpaths
+app.get('*', async (c, next) => {
+  if (c.req.path.startsWith('/api/')) return next();
+  return c.html(await renderApp(c));
+});
 
 export default app;

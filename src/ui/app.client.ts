@@ -19,6 +19,7 @@ const state = {
   user: null,
   activeTab: 'dashboard',
   products: [],
+  productCategories: [],
   vendors: [],
   purchaseOrders: [],
   inboundOrders: [],
@@ -133,14 +134,52 @@ ${ACCOUNTING_CLIENT_JS}
 ${PAYROLL_CLIENT_JS}
 ${ADMIN_CLIENT_JS}
 
+const ROUTE_TAB_MAP = {
+  '': 'dashboard',
+  '/': 'dashboard',
+  '/app': 'dashboard',
+  '/dashboard': 'dashboard',
+  '/directory': 'directory',
+  '/inventory': 'inventory',
+  '/purchasing': 'purchasing',
+  '/inbound': 'inbound',
+  '/sales': 'sales',
+  '/outbound': 'outbound',
+  '/vouchers': 'accounting',
+  '/accounting': 'accounting',
+  '/payroll': 'payroll',
+  '/admin': 'admin',
+};
+
+const TAB_ROUTE_MAP = {
+  dashboard: '/dashboard',
+  directory: '/directory',
+  inventory: '/inventory',
+  purchasing: '/purchasing',
+  inbound: '/inbound',
+  sales: '/sales',
+  outbound: '/outbound',
+  accounting: '/vouchers',
+  payroll: '/payroll',
+  admin: '/admin',
+};
+
+function getTabFromUrl() {
+  const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+  if (ROUTE_TAB_MAP[path]) return ROUTE_TAB_MAP[path];
+  const segment = path.split('/')[1];
+  if (segment && ROUTE_TAB_MAP['/' + segment]) return ROUTE_TAB_MAP['/' + segment];
+  return 'dashboard';
+}
+
 // Global Tab Router
-function switchTab(tabName) {
+function switchTab(tabName, updateHistory = true) {
   const permissions = window.__ROLE_PERMISSIONS__ || {};
   const allowedTabs = ((state.user && permissions[state.user.role]) || []).slice();
   if (state.user && state.user.role === 'ADMIN') allowedTabs.push('admin');
   if (!allowedTabs.includes(tabName)) {
     showToast('You do not have access to that module', 'danger');
-    tabName = allowedTabs[0] || tabName;
+    tabName = allowedTabs[0] || 'dashboard';
   }
 
   state.activeTab = tabName;
@@ -166,7 +205,15 @@ function switchTab(tabName) {
     payroll: 'Payroll & Staff',
     admin: 'Roles & Permissions',
   };
-  breadcrumb.innerText = tabTitles[tabName] || tabName;
+  const currentTitle = tabTitles[tabName] || tabName;
+  if (breadcrumb) breadcrumb.innerText = currentTitle;
+  document.title = currentTitle + ' — Apexs ERP';
+
+  // Synchronize browser URL bar and history state
+  const targetPath = TAB_ROUTE_MAP[tabName] || ('/' + tabName);
+  if (updateHistory && window.location.pathname !== targetPath) {
+    window.history.pushState({ tab: tabName }, '', targetPath);
+  }
 
   document.querySelectorAll('.tab-view').forEach((el) => (el.style.display = 'none'));
 
@@ -186,6 +233,14 @@ function switchTab(tabName) {
   if (tabName === 'payroll') loadPayroll();
   if (tabName === 'admin') loadAdmin();
 }
+
+// Browser back/forward navigation support
+window.addEventListener('popstate', (e) => {
+  if (state.user) {
+    const targetTab = (e.state && e.state.tab) || getTabFromUrl();
+    switchTab(targetTab, false);
+  }
+});
 
 // Initial Boot
 document.addEventListener('DOMContentLoaded', () => {

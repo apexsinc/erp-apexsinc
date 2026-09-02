@@ -155,8 +155,9 @@ function showApp() {
   }
 
   const allowedTabs = applyRolePermissions();
-  const initialTab = allowedTabs.includes(state.activeTab) ? state.activeTab : allowedTabs[0];
-  switchTab(initialTab || 'dashboard');
+  const urlTab = typeof getTabFromUrl === 'function' ? getTabFromUrl() : 'dashboard';
+  const initialTab = allowedTabs.includes(urlTab) ? urlTab : (allowedTabs.includes(state.activeTab) ? state.activeTab : allowedTabs[0]);
+  switchTab(initialTab || 'dashboard', true);
 }
 
 // Hides sidebar nav items the current user's role isn't permitted to view,
