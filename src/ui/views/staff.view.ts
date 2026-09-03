@@ -560,22 +560,24 @@ async function submitEditEmployee(e, empId) {
   }
 }
 
-async function handleDeleteEmployee(empId, empCode) {
-  if (!confirm('Are you sure you want to delete or deactivate employee ' + empCode + '?\\n\\nIf historical payroll records exist, the employee will be set to TERMINATED and system access revoked.')) {
-    return;
-  }
+function handleDeleteEmployee(empId, empCode) {
+  openConfirmModal({
+    title: 'Delete / Deactivate Employee',
+    message: 'Are you sure you want to delete employee <strong>' + (empCode || '') + '</strong>?',
+    subtext: 'If historical payroll records exist, status will automatically be set to TERMINATED and system access revoked.',
+    confirmText: 'Yes, Delete Employee',
+    cancelText: 'Cancel',
+    type: 'danger',
+    onConfirm: async () => {
+      const res = await apiFetch('/api/payroll/employees/' + empId, {
+        method: 'DELETE',
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Failed to delete employee');
 
-  try {
-    const res = await apiFetch('/api/payroll/employees/' + empId, {
-      method: 'DELETE',
-    });
-    const json = await res.json();
-    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to delete employee');
-
-    showToast(json.message || 'Employee deleted', json.softDeleted ? 'warning' : 'success');
-    loadStaff();
-  } catch (err) {
-    showToast(err.message, 'danger');
-  }
+      showToast(json.message || 'Employee deleted', json.softDeleted ? 'warning' : 'success');
+      loadStaff();
+    },
+  });
 }
 `;

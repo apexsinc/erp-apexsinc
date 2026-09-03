@@ -103,21 +103,30 @@ async function handleLogin(e) {
   }
 }
 
-async function handleLogout() {
-  const token = localStorage.getItem('apexs_token');
-  localStorage.removeItem('apexs_token');
-  localStorage.removeItem('apexs_user');
-  state.user = null;
-  showLogin();
-  showToast('Signed out', 'info');
+function handleLogout() {
+  openConfirmModal({
+    title: 'Sign Out',
+    message: 'Are you sure you want to end your current session and sign out of Apexs ERP?',
+    confirmText: 'Sign Out',
+    cancelText: 'Stay Signed In',
+    type: 'warning',
+    onConfirm: async () => {
+      const token = localStorage.getItem('apexs_token');
+      localStorage.removeItem('apexs_token');
+      localStorage.removeItem('apexs_user');
+      state.user = null;
+      showLogin();
+      showToast('Signed out successfully', 'info');
 
-  if (token) {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
-    } catch (_) {
-      // Local session is already cleared client-side; best-effort server revoke.
-    }
-  }
+      if (token) {
+        try {
+          await fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
+        } catch (_) {
+          // Local session is already cleared client-side
+        }
+      }
+    },
+  });
 }
 
 function checkAuth() {

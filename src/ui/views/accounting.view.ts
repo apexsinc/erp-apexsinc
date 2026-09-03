@@ -2073,21 +2073,25 @@ async function handleApproveVoucher(voucherId) {
   }
 }
 
-async function handleDeclineVoucher(voucherId) {
-  if (!confirm('Are you sure you want to decline this voucher? Its double-entry ledger impact will be removed.')) return;
-
-  try {
-    const res = await apiFetch('/api/accounting/vouchers/' + voucherId + '/decline', { method: 'POST' });
-    const json = await res.json();
-    if (!res.ok || !json.success) {
-      showToast(json.error || 'Failed to decline voucher', 'danger');
-      return;
-    }
-    showToast('Voucher declined and ledger adjusted', 'warning');
-    loadAccounting();
-  } catch (err) {
-    showToast('Network error: ' + err.message, 'danger');
-  }
+function handleDeclineVoucher(voucherId) {
+  openConfirmModal({
+    title: 'Decline & Void Voucher',
+    message: 'Are you sure you want to decline this voucher?',
+    subtext: 'Its double-entry ledger impact will be immediately removed from the General Ledger and financial statements.',
+    confirmText: 'Decline Voucher',
+    cancelText: 'Cancel',
+    type: 'warning',
+    onConfirm: async () => {
+      const res = await apiFetch('/api/accounting/vouchers/' + voucherId + '/decline', { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        showToast(json.error || 'Failed to decline voucher', 'danger');
+        return;
+      }
+      showToast('Voucher declined and ledger adjusted', 'warning');
+      loadAccounting();
+    },
+  });
 }
 
 async function handleRestoreVoucher(voucherId) {
@@ -2105,20 +2109,24 @@ async function handleRestoreVoucher(voucherId) {
   }
 }
 
-async function handleDeleteVoucher(voucherId, voucherNumber) {
-  if (!confirm('Are you sure you want to permanently delete voucher ' + (voucherNumber || '') + '? This action cannot be undone.')) return;
-
-  try {
-    const res = await apiFetch('/api/accounting/vouchers/' + voucherId, { method: 'DELETE' });
-    const json = await res.json();
-    if (!res.ok || !json.success) {
-      showToast(json.error || 'Failed to delete voucher', 'danger');
-      return;
-    }
-    showToast('Voucher deleted permanently', 'info');
-    loadAccounting();
-  } catch (err) {
-    showToast('Network error: ' + err.message, 'danger');
-  }
+function handleDeleteVoucher(voucherId, voucherNumber) {
+  openConfirmModal({
+    title: 'Permanently Delete Voucher',
+    message: 'Are you sure you want to permanently delete voucher <strong>' + (voucherNumber || '') + '</strong>?',
+    subtext: 'This action cannot be undone and will permanently remove this voucher record from the system.',
+    confirmText: 'Delete Permanently',
+    cancelText: 'Cancel',
+    type: 'danger',
+    onConfirm: async () => {
+      const res = await apiFetch('/api/accounting/vouchers/' + voucherId, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        showToast(json.error || 'Failed to delete voucher', 'danger');
+        return;
+      }
+      showToast('Voucher deleted permanently', 'info');
+      loadAccounting();
+    },
+  });
 }
 `;

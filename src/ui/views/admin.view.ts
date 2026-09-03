@@ -155,21 +155,47 @@ async function applyUserRoleChange(userId) {
   }
 }
 
-async function toggleUserActive(userId, makeActive) {
-  try {
-    const res = await apiFetch('/api/admin/users/' + userId, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isActive: makeActive }),
-    });
-    const json = await res.json();
-    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to update user');
+function toggleUserActive(userId, makeActive) {
+  if (!makeActive) {
+    openConfirmModal({
+      title: 'Deactivate User Account',
+      message: 'Are you sure you want to deactivate this user account?',
+      subtext: 'The user will be immediately signed out and blocked from accessing the system.',
+      confirmText: 'Deactivate User',
+      cancelText: 'Cancel',
+      type: 'danger',
+      onConfirm: async () => {
+        const res = await apiFetch('/api/admin/users/' + userId, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ isActive: false }),
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) throw new Error(json.error || 'Failed to update user');
 
-    showToast(makeActive ? 'User reactivated' : 'User deactivated', 'success');
-    loadAdmin();
-  } catch (err) {
-    showToast(err.message, 'danger');
+        showToast('User account deactivated', 'warning');
+        loadAdmin();
+      },
+    });
+    return;
   }
+
+  (async () => {
+    try {
+      const res = await apiFetch('/api/admin/users/' + userId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: true }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Failed to update user');
+
+      showToast('User account reactivated', 'success');
+      loadAdmin();
+    } catch (err) {
+      showToast(err.message, 'danger');
+    }
+  })();
 }
 
 async function savePermissionMatrix() {

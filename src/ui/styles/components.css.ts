@@ -578,6 +578,10 @@ export const COMPONENTS_CSS = `
   animation: slideUp 0.2s ease-out;
 }
 
+.modal-dialog-sm {
+  max-width: 440px;
+}
+
 .modal-dialog-lg {
   max-width: 760px;
 }

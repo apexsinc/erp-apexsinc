@@ -161,6 +161,99 @@ function closeModal() {
   }
 }
 
+function openConfirmModal(options) {
+  const title = options.title || 'Confirm Action';
+  const message = options.message || 'Are you sure you want to proceed?';
+  const subtext = options.subtext || '';
+  const confirmText = options.confirmText || 'Confirm';
+  const cancelText = options.cancelText || 'Cancel';
+  const type = options.type || 'danger';
+  const onConfirm = options.onConfirm;
+  const onCancel = options.onCancel;
+
+  let iconSvg = options.icon || '';
+  if (!iconSvg) {
+    if (type === 'danger') {
+      iconSvg =
+        '<div style="width: 48px; height: 48px; border-radius: 50%; background: #fee2e2; color: #dc2626; display: flex; align-items: center; justify-content: center; margin: 0 auto 0.85rem;">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 24px; height: 24px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>' +
+        '</div>';
+    } else if (type === 'warning') {
+      iconSvg =
+        '<div style="width: 48px; height: 48px; border-radius: 50%; background: #fef3c7; color: #d97706; display: flex; align-items: center; justify-content: center; margin: 0 auto 0.85rem;">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 24px; height: 24px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>' +
+        '</div>';
+    } else if (type === 'success') {
+      iconSvg =
+        '<div style="width: 48px; height: 48px; border-radius: 50%; background: #ccfbf1; color: #0f766e; display: flex; align-items: center; justify-content: center; margin: 0 auto 0.85rem;">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 24px; height: 24px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>' +
+        '</div>';
+    } else {
+      iconSvg =
+        '<div style="width: 48px; height: 48px; border-radius: 50%; background: #e0f2fe; color: #0284c7; display: flex; align-items: center; justify-content: center; margin: 0 auto 0.85rem;">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 24px; height: 24px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>' +
+        '</div>';
+    }
+  }
+
+  const confirmBtnClass =
+    type === 'danger'
+      ? 'btn btn-danger'
+      : type === 'warning'
+      ? 'btn btn-warning'
+      : type === 'success'
+      ? 'btn btn-success'
+      : 'btn btn-primary';
+
+  window.__confirmModalCallback = async () => {
+    closeModal();
+    if (typeof onConfirm === 'function') {
+      try {
+        await onConfirm();
+      } catch (err) {
+        showToast(err.message, 'danger');
+      }
+    }
+  };
+
+  window.__cancelModalCallback = () => {
+    closeModal();
+    if (typeof onCancel === 'function') {
+      onCancel();
+    }
+  };
+
+  const body =
+    '<div style="text-align: center; padding: 0.5rem 0.5rem 0.25rem;">' +
+    iconSvg +
+    '<h3 style="margin: 0 0 0.5rem; font-size: 1.15rem; color: #1e293b; font-weight: 700;">' +
+    title +
+    '</h3>' +
+    '<p style="margin: 0; color: #475569; font-size: 0.9rem; line-height: 1.5;">' +
+    message +
+    '</p>' +
+    (subtext
+      ? '<div style="margin-top: 0.75rem; padding: 0.5rem 0.75rem; background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-size: 0.8rem; color: #64748b;">' +
+        subtext +
+        '</div>'
+      : '') +
+    '</div>';
+
+  const footer =
+    '<div style="display: flex; gap: 0.75rem; width: 100%; justify-content: flex-end;">' +
+    '<button type="button" class="btn btn-secondary" onclick="window.__cancelModalCallback()">' +
+    cancelText +
+    '</button>' +
+    '<button type="button" class="' +
+    confirmBtnClass +
+    '" onclick="window.__confirmModalCallback()">' +
+    confirmText +
+    '</button>' +
+    '</div>';
+
+  openModal('', body, footer, 'sm');
+}
+
 const EYE_ICON_SVG =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
 const EYE_OFF_ICON_SVG =

@@ -132,18 +132,22 @@ async function submitNewPayrollRun(e) {
   }
 }
 
-async function finalizePayrollRun(runId, runNumber) {
-  if (!confirm('Finalize and disburse ' + runNumber + '? This will automatically generate a Payment Voucher.')) return;
+function finalizePayrollRun(runId, runNumber) {
+  openConfirmModal({
+    title: 'Finalize & Disburse Payroll',
+    message: 'Finalize and disburse payroll run <strong>' + (runNumber || '') + '</strong>?',
+    subtext: 'This will finalize all computed payslips, record staff disbursements, and automatically generate a corresponding Payment Voucher.',
+    confirmText: 'Finalize & Disburse',
+    cancelText: 'Cancel',
+    type: 'success',
+    onConfirm: async () => {
+      const res = await apiFetch('/api/payroll/runs/' + runId + '/finalize', { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Failed to finalize payroll');
 
-  try {
-    const res = await apiFetch('/api/payroll/runs/' + runId + '/finalize', { method: 'POST' });
-    const json = await res.json();
-    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to finalize payroll');
-
-    showToast('Payroll Run ' + runNumber + ' finalized and Payment Voucher created', 'success');
-    loadPayroll();
-  } catch (err) {
-    showToast(err.message, 'danger');
-  }
+      showToast('Payroll Run ' + runNumber + ' finalized and Payment Voucher created', 'success');
+      loadPayroll();
+    },
+  });
 }
 `;
