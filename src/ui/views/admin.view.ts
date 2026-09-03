@@ -45,11 +45,17 @@ const MODULE_CONFIG = {
     route: '/outbound',
     description: 'Warehouse dispatch, delivery receipts & inventory deduction on confirmed customer delivery',
   },
-  accounting: {
-    name: 'Vouchers',
+  vouchers: {
+    name: 'Payment Vouchers (PV)',
     category: 'Finance & HR',
     route: '/vouchers',
-    description: 'Payment & Receipt Vouchers, General Ledger, Trial Balance & Financial Statements',
+    description: 'Corporate disbursements, payment vouchers, official slips & approvals',
+  },
+  accounting: {
+    name: 'Accounting & Reports',
+    category: 'Finance & HR',
+    route: '/accounting',
+    description: 'Receipt Vouchers (RV), Journal Vouchers (JV), Void audit, Chart of Accounts, General Ledger, Profit & Loss, Balance Sheet & Cash Flow',
   },
   payroll: {
     name: 'Payroll',

@@ -6,6 +6,7 @@ import { PURCHASING_CLIENT_JS } from './views/purchasing.view';
 import { INBOUND_CLIENT_JS } from './views/inbound.view';
 import { SALES_CLIENT_JS } from './views/sales.view';
 import { OUTBOUND_CLIENT_JS } from './views/outbound.view';
+import { VOUCHERS_CLIENT_JS } from './views/vouchers.view';
 import { ACCOUNTING_CLIENT_JS } from './views/accounting.view';
 import { PAYROLL_CLIENT_JS } from './views/payroll.view';
 import { STAFF_CLIENT_JS } from './views/staff.view';
@@ -301,6 +302,7 @@ ${PURCHASING_CLIENT_JS}
 ${INBOUND_CLIENT_JS}
 ${SALES_CLIENT_JS}
 ${OUTBOUND_CLIENT_JS}
+${VOUCHERS_CLIENT_JS}
 ${ACCOUNTING_CLIENT_JS}
 ${PAYROLL_CLIENT_JS}
 ${STAFF_CLIENT_JS}
@@ -318,7 +320,7 @@ const ROUTE_TAB_MAP = {
   '/inbound': 'inbound',
   '/sales': 'sales',
   '/outbound': 'outbound',
-  '/vouchers': 'accounting',
+  '/vouchers': 'vouchers',
   '/accounting': 'accounting',
   '/payroll': 'payroll',
   '/staff': 'staff',
@@ -335,7 +337,8 @@ const TAB_ROUTE_MAP = {
   inbound: '/inbound',
   sales: '/sales',
   outbound: '/outbound',
-  accounting: '/vouchers',
+  vouchers: '/vouchers',
+  accounting: '/accounting',
   payroll: '/payroll',
   staff: '/staff',
   admin: '/permissions',
@@ -394,7 +397,8 @@ function switchTab(tabName, updateHistory = true, keepQueryParams = true) {
     inbound: 'Inbound Deliveries',
     sales: 'Sales (O2C Orders & Invoices)',
     outbound: 'Delivery Receipts (DR)',
-    accounting: 'Vouchers',
+    vouchers: 'Payment Vouchers (PV)',
+    accounting: 'Accounting & Financial Reports',
     payroll: 'Payroll & Compensation',
     staff: 'Staff & Human Resources',
     admin: 'Roles & Permissions',
@@ -427,6 +431,7 @@ function switchTab(tabName, updateHistory = true, keepQueryParams = true) {
   if (tabName === 'inbound') loadInbound();
   if (tabName === 'sales') loadSales();
   if (tabName === 'outbound') loadOutbound();
+  if (tabName === 'vouchers') loadVouchers();
   if (tabName === 'accounting') loadAccounting();
   if (tabName === 'payroll') loadPayroll();
   if (tabName === 'staff') loadStaff();

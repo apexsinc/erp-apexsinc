@@ -9,6 +9,7 @@ import {
   renderInboundView,
   renderSalesView,
   renderOutboundView,
+  renderVouchersView,
   renderAccountingView,
   renderPayrollView,
   renderStaffView,
@@ -80,6 +81,7 @@ export function renderAppHtml(
         ${renderInboundView()}
         ${renderSalesView()}
         ${renderOutboundView()}
+        ${renderVouchersView()}
         ${renderAccountingView()}
         ${renderPayrollView()}
         ${renderStaffView()}

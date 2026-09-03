@@ -3,7 +3,7 @@ export function renderAccountingView(): string {
 }
 
 export const ACCOUNTING_CLIENT_JS = `
-let accountingActiveTab = 'vouchers-all';
+let accountingActiveTab = 'vouchers-rv';
 let cachedAccounts = [];
 let cachedVouchers = [];
 let cachedLedgerEntries = [];
@@ -505,16 +505,14 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
   });
 
   const tabs = [
-    { id: 'vouchers-all', label: 'All Vouchers', count: vouchers.length },
-    { id: 'vouchers-pv', label: 'Payment (PV)', count: vouchers.filter((x) => x.voucherType === 'PAYMENT').length },
-    { id: 'vouchers-rv', label: 'Receipt (RV)', count: vouchers.filter((x) => x.voucherType === 'RECEIPT').length },
-    { id: 'vouchers-jv', label: 'Journal (JV)', count: vouchers.filter((x) => x.voucherType === 'JOURNAL').length },
-    { id: 'vouchers-declined', label: 'Declined (Void)', count: vouchers.filter((x) => x.status === 'VOID' || x.status === 'DECLINED').length },
-    { id: 'reports-pl', label: '📊 Profit & Loss', count: 'P&L' },
-    { id: 'reports-bs', label: '🏛️ Balance Sheet', count: 'BS' },
-    { id: 'reports-cf', label: '💵 Cash Flow', count: 'CF' },
-    { id: 'trial-balance', label: 'Chart of Accounts & TB', count: accounts.length },
-    { id: 'general-ledger', label: 'General Ledger Audit', count: entries.length },
+    { id: 'vouchers-rv', label: '📥 Receipts (RV)', count: vouchers.filter((x) => x.voucherType === 'RECEIPT').length },
+    { id: 'vouchers-jv', label: '⚖️ Journals (JV)', count: vouchers.filter((x) => x.voucherType === 'JOURNAL').length },
+    { id: 'vouchers-declined', label: '🚫 Declined (Void)', count: vouchers.filter((x) => x.status === 'VOID' || x.status === 'DECLINED').length },
+    { id: 'trial-balance', label: '📑 Chart of Accounts & TB', count: accounts.length },
+    { id: 'general-ledger', label: '📜 General Ledger Audit', count: entries.length },
+    { id: 'reports-pl', label: '📈 Profit & Loss (P&L)', count: 'P&L' },
+    { id: 'reports-bs', label: '🏛️ Balance Sheet (BS)', count: 'BS' },
+    { id: 'reports-cf', label: '💵 Cash Flow (CF)', count: 'CF' },
   ];
 
   const subNavHtml = tabs.map((t) => {
@@ -1012,13 +1010,13 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
   }
 
   container.innerHTML = \`
-    <!-- Vouchers Header Panel -->
+    <!-- Accounting Header Panel -->
     <div class="panel-card">
       <div class="panel-header">
         <div class="panel-title">
-          Vouchers
+          Accounting & Financial Reports
           <div style="font-size: 0.75rem; font-weight: 400; color: #64748b; margin-top: 0.3rem;">
-            Official double-entry voucher registry, payment disbursements, incoming receipts, and general ledger journal entries.
+            General ledger equilibrium, customer receipts (RV), journal adjustments (JV), chart of accounts, and financial statements.
           </div>
         </div>
         <div class="panel-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
@@ -1026,7 +1024,9 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
             <span class="badge-dot"></span>
             \${isBalanced ? 'Double-Entry Balanced' : 'Ledger Imbalance ($' + (Math.abs(tbJson.discrepancyCents || 0) / 100).toFixed(2) + ')'}
           </span>
-          \${can('accounting', 'create') ? '<button class="btn btn-primary btn-sm" onclick="openNewPaymentVoucherModal()">+ New Payment Voucher</button>' : ''}
+          \${can('accounting', 'create') && accountingActiveTab === 'vouchers-rv' ? '<button class="btn btn-primary btn-sm" onclick="openNewReceiptVoucherModal()">+ Create Receipt Voucher (RV)</button>' : ''}
+          \${can('accounting', 'create') && accountingActiveTab === 'vouchers-jv' ? '<button class="btn btn-primary btn-sm" onclick="openNewJournalVoucherModal()">+ Create Journal Voucher (JV)</button><button class="btn btn-secondary btn-sm" onclick="openNewContraVoucherModal()">+ Post Contra (CV)</button>' : ''}
+          \${can('accounting', 'create') && accountingActiveTab === 'vouchers-pv' ? '<button class="btn btn-primary btn-sm" onclick="openNewPaymentVoucherModal()">+ New Payment Voucher</button>' : ''}
         </div>
       </div>
 
@@ -2234,7 +2234,8 @@ async function handleSaveVoucherEdit(voucherId, voucherType) {
     }
     closeModal();
     showToast('Voucher and line items table updated successfully', 'success');
-    loadAccounting();
+    if (typeof loadAccounting === 'function') loadAccounting();
+    if (typeof loadVouchers === 'function') loadVouchers();
   } catch (err) {
     showToast('Network error: ' + err.message, 'danger');
   }
@@ -2249,7 +2250,8 @@ async function handleApproveVoucher(voucherId) {
       return;
     }
     showToast('Voucher approved and posted to General Ledger', 'success');
-    loadAccounting();
+    if (typeof loadAccounting === 'function') loadAccounting();
+    if (typeof loadVouchers === 'function') loadVouchers();
   } catch (err) {
     showToast('Network error: ' + err.message, 'danger');
   }
@@ -2271,7 +2273,8 @@ function handleDeclineVoucher(voucherId) {
         return;
       }
       showToast('Voucher declined and ledger adjusted', 'warning');
-      loadAccounting();
+      if (typeof loadAccounting === 'function') loadAccounting();
+      if (typeof loadVouchers === 'function') loadVouchers();
     },
   });
 }
@@ -2285,7 +2288,8 @@ async function handleRestoreVoucher(voucherId) {
       return;
     }
     showToast('Voucher restored and re-posted to General Ledger', 'success');
-    loadAccounting();
+    if (typeof loadAccounting === 'function') loadAccounting();
+    if (typeof loadVouchers === 'function') loadVouchers();
   } catch (err) {
     showToast('Network error: ' + err.message, 'danger');
   }
@@ -2307,8 +2311,17 @@ function handleDeleteVoucher(voucherId, voucherNumber) {
         return;
       }
       showToast('Voucher deleted permanently', 'info');
-      loadAccounting();
+      if (typeof loadAccounting === 'function') loadAccounting();
+      if (typeof loadVouchers === 'function') loadVouchers();
     },
   });
 }
+
+// Global aliases for interoperability across vouchers and accounting views
+window.openOfficialVoucherSlipModal = openVoucherSlipModal;
+window.openNewJournalVoucherModal = openNewJVModal;
+window.openNewContraVoucherModal = openNewContraModal;
+window.declineVoucher = handleDeclineVoucher;
+window.restoreVoucher = handleRestoreVoucher;
+window.deleteVoucherPermanent = handleDeleteVoucher;
 `;

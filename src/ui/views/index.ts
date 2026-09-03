@@ -6,6 +6,7 @@ export * from './purchasing.view';
 export * from './inbound.view';
 export * from './sales.view';
 export * from './outbound.view';
+export * from './vouchers.view';
 export * from './accounting.view';
 export * from './payroll.view';
 export * from './staff.view';
