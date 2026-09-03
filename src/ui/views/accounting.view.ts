@@ -1889,7 +1889,7 @@ function openVoucherSlipModal(voucherId) {
       <div style="display: flex; justify-content: center; align-items: center; gap: 1.5rem; margin-bottom: 0.75rem;">
         <img src="/assets/logo.png" alt="APEXS, INC. Logo" style="height: 78px; width: auto; object-fit: contain; flex-shrink: 0;" />
         <div>
-          <div style="font-size: 1.55rem; font-weight: 900; color: #15803d; font-family: Arial, Helvetica, sans-serif; letter-spacing: 0.5px; line-height: 1.1;">APEXS, INC.</div>
+          <div style="font-size: 1.55rem; font-weight: 900; color: #dc2626; font-family: Arial, Helvetica, sans-serif; letter-spacing: 0.5px; line-height: 1.1;">APEXS, INC.</div>
           <div style="font-size: 0.88rem; font-weight: 700; font-style: italic; color: #0f172a; line-height: 1.2;">Applied Expert Systems & Software, Inc.</div>
           <div style="font-size: 0.82rem; font-style: italic; color: #0284c7; font-weight: 600; font-family: 'Georgia', serif;">“We put technology to work for you”</div>
         </div>
