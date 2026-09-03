@@ -702,7 +702,7 @@ function openAddPaymentMethodModal() {
     '<div style="display: flex; flex-direction: column; gap: 1.15rem;">' +
     '<div class="form-group" style="margin-bottom: 0;">' +
     '<label class="form-label" for="modal-pm-id" style="font-weight: 600;">Method Code / Identifier *</label>' +
-    '<input type="text" id="modal-pm-id" class="form-input" placeholder="e.g. GCASH, STRIPE, WIRE" style="text-transform: uppercase; font-family: monospace; font-weight: 600;" oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, \'_\')" />' +
+    '<input type="text" id="modal-pm-id" class="form-input" placeholder="e.g. GCASH, STRIPE, WIRE" style="text-transform: uppercase; font-family: monospace; font-weight: 600;" oninput="this.value = this.value.toUpperCase()" />' +
     '<p style="font-size: 0.74rem; color: #64748b; margin-top: 4px; margin-bottom: 0;">Uppercase alphanumeric code stored in voucher databases.</p>' +
     '</div>' +
     '<div class="form-group" style="margin-bottom: 0;">' +
