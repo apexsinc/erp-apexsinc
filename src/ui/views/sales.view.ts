@@ -12,15 +12,18 @@ async function loadSales() {
   try {
     salesSearchQuery = (typeof getUrlParam === 'function' ? getUrlParam('search') : '') || '';
 
-    const [soRes, custRes] = await Promise.all([
+    const [soRes, custRes, prodRes] = await Promise.all([
       apiFetch('/api/sales/orders'),
       apiFetch('/api/sales/customers'),
+      apiFetch('/api/inventory/products'),
     ]);
     const soJson = await soRes.json();
     const custJson = await custRes.json();
+    const prodJson = await prodRes.json();
 
     state.salesOrders = soJson.data || [];
     state.customers = custJson.data || [];
+    state.products = prodJson.data || [];
 
     renderSalesContent(container);
   } catch (err) {
@@ -183,7 +186,7 @@ function openNewSalesOrderModal() {
       <p style="margin: -0.6rem 0 1rem; font-size: 0.76rem; color: #94a3b8;">All line items on this order are priced in the currency selected here.</p>
       <div class="form-group">
         <label class="form-label">Product *</label>
-        <select id="nso-product" class="form-select">\${prodOptions}</select>
+        <select id="nso-product" class="form-select" onchange="handleNewSoProductChange()">\${prodOptions}</select>
       </div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
         <div class="form-group">
@@ -191,7 +194,7 @@ function openNewSalesOrderModal() {
           <input type="number" id="nso-qty" class="form-input" value="10" min="1" required />
         </div>
         <div class="form-group">
-          <label class="form-label">Unit Price *</label>
+          <label class="form-label">Unit Price * <span id="nso-price-hint" style="color: #94a3b8; font-weight: normal;"></span></label>
           <input type="number" id="nso-price" class="form-input" placeholder="e.g. 90.00" step="0.01" min="0" required />
         </div>
       </div>
@@ -206,6 +209,31 @@ function openNewSalesOrderModal() {
     <button class="btn btn-primary" onclick="document.getElementById('form-new-so').requestSubmit()">Confirm Order</button>
   \`;
   openModal('Create Sales Order', body, footer);
+  handleNewSoProductChange();
+}
+
+// Unit Price defaults to the product's Business Directory Price List entry
+// (set on the Price List tab) so sales orders quote what was decided there
+// instead of being retyped by hand each time. Still editable — this is a
+// starting point, not a lock.
+function handleNewSoProductChange() {
+  const productSelect = document.getElementById('nso-product');
+  const currencySelect = document.getElementById('nso-currency');
+  const priceInput = document.getElementById('nso-price');
+  const hint = document.getElementById('nso-price-hint');
+  if (!productSelect || !currencySelect || !priceInput || !hint) return;
+
+  const product = (state.products || []).find((p) => p.id === productSelect.value);
+  if (!product) return;
+
+  if (product.sellingPriceCents > 0) {
+    currencySelect.value = product.sellingPriceCurrency || 'USD';
+    priceInput.value = (product.sellingPriceCents / 100).toFixed(2);
+    hint.textContent = '(from Price List)';
+  } else {
+    priceInput.value = '';
+    hint.textContent = '(not in Price List yet — set it in Business Directory)';
+  }
 }
 
 async function submitNewSalesOrder(e) {
