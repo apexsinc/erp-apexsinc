@@ -1037,7 +1037,7 @@ export const COMPONENTS_CSS = `
 @media print {
   @page {
     size: auto;
-    margin: 4mm 6mm;
+    margin: 4mm 18mm;
   }
 
   html, body {
@@ -1116,7 +1116,7 @@ export const COMPONENTS_CSS = `
   .official-voucher-sheet {
     border: none !important;
     box-shadow: none !important;
-    padding: 6px 10px !important;
+    padding: 0 !important;
     margin: 0 auto !important;
     width: 100% !important;
     max-width: 100% !important;
