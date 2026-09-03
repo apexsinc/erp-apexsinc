@@ -5,7 +5,7 @@ export function renderOutboundView(): string {
 export const OUTBOUND_CLIENT_JS = `
 async function loadOutbound() {
   const container = document.getElementById('view-outbound');
-  container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading outbound deliveries...</div>';
+  beginViewLoad(container, '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading outbound deliveries...</div>');
 
   try {
     const [ordersRes, productsRes] = await Promise.all([

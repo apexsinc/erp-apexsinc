@@ -9,7 +9,7 @@ let staffStatusFilter = 'ALL';
 async function loadStaff() {
   const container = document.getElementById('view-staff');
   if (!container) return;
-  container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading staff directory...</div>';
+  beginViewLoad(container, '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading staff directory...</div>');
 
   try {
     const res = await apiFetch('/api/payroll/employees');

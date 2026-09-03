@@ -17,7 +17,7 @@ let voucherSearchQuery = '';
 
 async function loadAccounting() {
   const container = document.getElementById('view-accounting');
-  container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading vouchers, ledger & financial reports...</div>';
+  beginViewLoad(container, '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading vouchers, ledger & financial reports...</div>');
 
   try {
     const urlTab = typeof getUrlParam === 'function' ? getUrlParam('tab') : null;

@@ -15,7 +15,7 @@ function goToInboundForPO(poId) {
 
 async function loadInbound() {
   const container = document.getElementById('view-inbound');
-  container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading inbound deliveries...</div>';
+  beginViewLoad(container, '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading inbound deliveries...</div>');
 
   try {
     const res = await apiFetch('/api/inbound/orders');

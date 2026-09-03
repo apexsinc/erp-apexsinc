@@ -7,7 +7,7 @@ let salesSearchQuery = '';
 
 async function loadSales() {
   const container = document.getElementById('view-sales');
-  container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading sales data...</div>';
+  beginViewLoad(container, '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading sales data...</div>');
 
   try {
     salesSearchQuery = (typeof getUrlParam === 'function' ? getUrlParam('search') : '') || '';

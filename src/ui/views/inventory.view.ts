@@ -8,7 +8,7 @@ let inventoryCategoryTab = 'all';
 
 async function loadInventory() {
   const container = document.getElementById('view-inventory');
-  container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading inventory...</div>';
+  beginViewLoad(container, '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading inventory...</div>');
 
   try {
     inventorySearchQuery = (typeof getUrlParam === 'function' ? getUrlParam('search') : '') || '';

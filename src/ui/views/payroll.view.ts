@@ -6,7 +6,7 @@ export const PAYROLL_CLIENT_JS = `
 async function loadPayroll() {
   const container = document.getElementById('view-payroll');
   if (!container) return;
-  container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading payroll runs...</div>';
+  beginViewLoad(container, '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading payroll runs...</div>');
 
   try {
     const runsRes = await apiFetch('/api/payroll/runs');

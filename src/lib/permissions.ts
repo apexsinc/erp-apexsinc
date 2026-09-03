@@ -18,8 +18,86 @@ export const ALL_MODULES = [
   'accounting',
   'payroll',
   'staff',
+  'settings',
 ] as const;
 export type Module = (typeof ALL_MODULES)[number];
+
+export const MODULE_METADATA: Record<
+  Module,
+  {
+    name: string;
+    category: 'Operations' | 'Finance & HR' | 'Administration';
+    route: string;
+    description: string;
+  }
+> = {
+  dashboard: {
+    name: 'Dashboard',
+    category: 'Operations',
+    route: '/dashboard',
+    description: 'Executive KPIs, business performance charts, and real-time operational feeds',
+  },
+  directory: {
+    name: 'Business Directory',
+    category: 'Operations',
+    route: '/directory',
+    description: 'Company entities, branches, departments, job titles, customers & vendor accounts',
+  },
+  inventory: {
+    name: 'Inventory & Stock',
+    category: 'Operations',
+    route: '/inventory',
+    description: 'Product master catalog, stock levels, warehouse ledger & inventory adjustments',
+  },
+  purchasing: {
+    name: 'Purchasing (P2P)',
+    category: 'Operations',
+    route: '/purchasing',
+    description: 'Purchase Orders (PO), procurement management & vendor purchase commitments',
+  },
+  inbound: {
+    name: 'Inbound Deliveries',
+    category: 'Operations',
+    route: '/inbound',
+    description: 'Goods Receipt Notes (GRN), shipment receiving & warehouse physical check-in',
+  },
+  sales: {
+    name: 'Sales & Invoicing',
+    category: 'Operations',
+    route: '/sales',
+    description: 'Customer Sales Orders (SO), commercial billing invoices & revenue receipts',
+  },
+  outbound: {
+    name: 'Outbound Deliveries',
+    category: 'Operations',
+    route: '/outbound',
+    description: 'Warehouse dispatch, order shipments, delivery notes & customer fulfillment',
+  },
+  accounting: {
+    name: 'Vouchers',
+    category: 'Finance & HR',
+    route: '/vouchers',
+    description: 'Payment & Receipt Vouchers, General Ledger, Trial Balance & Financial Statements',
+  },
+  payroll: {
+    name: 'Payroll',
+    category: 'Finance & HR',
+    route: '/payroll',
+    description: 'Payroll processing runs, compensation computation, payslips & payment disbursement',
+  },
+  staff: {
+    name: 'Staff & HR',
+    category: 'Finance & HR',
+    route: '/staff',
+    description: 'Employee directory, salary compensation packages & ERP login account management',
+  },
+  settings: {
+    name: 'System Settings',
+    category: 'Administration',
+    route: '/settings',
+    description: 'Company profiles, voucher signatories, default currencies & system configuration',
+  },
+};
 
 export type Role = string;
 
@@ -53,6 +131,7 @@ export const DEFAULT_CRUD_MATRIX: Record<string, Record<Module, ModuleCrudPermis
     accounting:  { create: true,  read: true,  update: true,  delete: false },
     payroll:     { create: true,  read: true,  update: true,  delete: false },
     staff:       { create: true,  read: true,  update: true,  delete: true  },
+    settings:    { create: false, read: true,  update: true,  delete: false },
   },
   STAFF: {
     dashboard:   { create: false, read: true,  update: false, delete: false },
@@ -65,6 +144,7 @@ export const DEFAULT_CRUD_MATRIX: Record<string, Record<Module, ModuleCrudPermis
     accounting:  { create: false, read: false, update: false, delete: false },
     payroll:     { create: false, read: false, update: false, delete: false },
     staff:       { create: false, read: false, update: false, delete: false },
+    settings:    { create: false, read: false, update: false, delete: false },
   },
 };
 

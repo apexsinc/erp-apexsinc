@@ -5,7 +5,7 @@ export function renderDashboardView(): string {
 export const DASHBOARD_CLIENT_JS = `
 async function loadDashboard() {
   const container = document.getElementById('view-dashboard');
-  container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading metrics...</div>';
+  beginViewLoad(container, '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading metrics...</div>');
 
   try {
     const [dashRes, tbRes] = await Promise.all([

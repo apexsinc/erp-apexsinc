@@ -115,6 +115,7 @@ function handleLogout() {
       localStorage.removeItem('apexs_token');
       localStorage.removeItem('apexs_user');
       state.user = null;
+      resetAllViewLoads();
       showLogin();
       showToast('Signed out successfully', 'info');
 

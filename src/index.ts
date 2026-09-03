@@ -51,10 +51,9 @@ app.onError((err, c) => {
 
 // Role-Based Route Access Control Middlewares
 app.use('/api/auth/me', authMiddleware);
-app.use('/api/auth/logout', authMiddleware);
 app.use('/api/admin/*', authMiddleware, requireAdmin);
-app.use('/api/settings/*', authMiddleware, requireAdmin);
-app.use('/api/settings', authMiddleware, requireAdmin);
+app.use('/api/settings/*', authMiddleware, requireModule('settings'));
+app.use('/api/settings', authMiddleware, requireModule('settings'));
 app.use('/api/dashboard/*', authMiddleware, requireModule('dashboard'));
 app.use('/api/directory/*', authMiddleware, requireModule('directory'));
 app.use('/api/inventory/*', authMiddleware, requireModule('inventory'));
@@ -63,6 +62,8 @@ app.use('/api/inbound/*', authMiddleware, requireModule('inbound'));
 app.use('/api/sales/*', authMiddleware, requireModule('sales'));
 app.use('/api/outbound/*', authMiddleware, requireModule('outbound'));
 app.use('/api/accounting/*', authMiddleware, requireModule('accounting'));
+app.use('/api/payroll/employees/*', authMiddleware, requireModule('staff'));
+app.use('/api/payroll/employees', authMiddleware, requireModule('staff'));
 app.use('/api/payroll/*', authMiddleware, requireModule('payroll'));
 
 // UI Web Application Entrypoint (Served directly at edge)

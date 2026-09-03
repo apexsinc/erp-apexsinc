@@ -34,7 +34,7 @@ function directoryTabCount(tab) {
 
 async function loadDirectory() {
   const container = document.getElementById('view-directory');
-  container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading business directory...</div>';
+  beginViewLoad(container, '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading business directory...</div>');
 
   const allowed = directoryAllowedTabs();
   if (!allowed.length) {

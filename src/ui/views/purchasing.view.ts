@@ -9,7 +9,7 @@ let purchasingSearchQuery = '';
 
 async function loadPurchasing() {
   const container = document.getElementById('view-purchasing');
-  container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading purchasing data...</div>';
+  beginViewLoad(container, '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading purchasing data...</div>');
 
   try {
     purchasingSearchQuery = (typeof getUrlParam === 'function' ? getUrlParam('search') : '') || '';

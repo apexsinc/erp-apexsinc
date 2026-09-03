@@ -65,11 +65,35 @@ async function apiFetch(url, options = {}) {
     localStorage.removeItem('apexs_token');
     localStorage.removeItem('apexs_user');
     state.user = null;
+    resetAllViewLoads();
     showLogin();
     showToast('Your session has expired. Please sign in again.', 'danger');
   }
 
   return res;
+}
+
+// Every tab view's loadX() blanks its container to a "Loading..." placeholder
+// before fetching, then rebuilds it once data arrives. That's fine the first
+// time a tab is opened, but doing it again on every reload (e.g. after a
+// modal form saves) tears down the whole panel and reads like a hard page
+// refresh: the table disappears, then pops back in. beginViewLoad() shows the
+// placeholder only once per container so a reload keeps the existing content
+// on screen until the fresh render is ready to swap in.
+function beginViewLoad(container, loadingHtml) {
+  if (!container.dataset.loaded) {
+    container.innerHTML = loadingHtml;
+  }
+  container.dataset.loaded = '1';
+}
+
+// Clears the "already loaded" flag on every tab view so a new sign-in (after
+// a logout or an expired session) can't briefly flash the previous user's
+// cached table before its own fetch completes.
+function resetAllViewLoads() {
+  document.querySelectorAll('.tab-view').forEach((el) => {
+    delete el.dataset.loaded;
+  });
 }
 
 function showToast(message, type = 'info') {

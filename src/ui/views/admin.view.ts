@@ -2,26 +2,82 @@ export function renderAdminView(): string {
   return `<div id="view-admin" class="tab-view" style="display: none;"></div>`;
 }
 
-const MODULE_LABELS = {
-  dashboard: 'Dashboard',
-  directory: 'Business Directory',
-  inventory: 'Inventory & Stock',
-  purchasing: 'Purchasing (P2P)',
-  inbound: 'Inbound Deliveries',
-  sales: 'Sales & Invoicing',
-  outbound: 'Outbound Deliveries',
-  accounting: 'Vouchers',
-  payroll: 'Payroll & Compensation',
-  staff: 'Staff & Human Resources',
+const MODULE_CONFIG = {
+  dashboard: {
+    name: 'Dashboard',
+    category: 'Operations',
+    route: '/dashboard',
+    description: 'Executive KPIs, operational summaries, business metrics, and recent activity',
+  },
+  directory: {
+    name: 'Business Directory',
+    category: 'Operations',
+    route: '/directory',
+    description: 'Company entities, branches, departments, job titles, customers & vendor accounts',
+  },
+  inventory: {
+    name: 'Inventory & Stock',
+    category: 'Operations',
+    route: '/inventory',
+    description: 'Product master catalog, stock levels, warehouse ledger & inventory adjustments',
+  },
+  purchasing: {
+    name: 'Purchasing (P2P)',
+    category: 'Operations',
+    route: '/purchasing',
+    description: 'Purchase Orders (PO), procurement management & vendor purchase commitments',
+  },
+  inbound: {
+    name: 'Inbound Deliveries',
+    category: 'Operations',
+    route: '/inbound',
+    description: 'Goods Receipt Notes (GRN), shipment receiving & warehouse physical check-in',
+  },
+  sales: {
+    name: 'Sales & Invoicing',
+    category: 'Operations',
+    route: '/sales',
+    description: 'Customer Sales Orders (SO), commercial billing invoices & revenue receipts',
+  },
+  outbound: {
+    name: 'Outbound Deliveries',
+    category: 'Operations',
+    route: '/outbound',
+    description: 'Warehouse dispatch, order shipments, delivery notes & customer fulfillment',
+  },
+  accounting: {
+    name: 'Vouchers',
+    category: 'Finance & HR',
+    route: '/vouchers',
+    description: 'Payment & Receipt Vouchers, General Ledger, Trial Balance & Financial Statements',
+  },
+  payroll: {
+    name: 'Payroll',
+    category: 'Finance & HR',
+    route: '/payroll',
+    description: 'Payroll processing runs, compensation computation, payslips & payment disbursement',
+  },
+  staff: {
+    name: 'Staff & HR',
+    category: 'Finance & HR',
+    route: '/staff',
+    description: 'Employee directory, salary compensation packages & ERP login account management',
+  },
+  settings: {
+    name: 'System Settings',
+    category: 'Administration',
+    route: '/settings',
+    description: 'Company profiles, voucher signatories, default currencies & system configuration',
+  },
 };
 
 export const ADMIN_CLIENT_JS = `
-const MODULE_LABELS = ${JSON.stringify(MODULE_LABELS)};
+const MODULE_CONFIG = ${JSON.stringify(MODULE_CONFIG)};
 let adminActiveRoleTab = 'MANAGER';
 
 async function loadAdmin() {
   const container = document.getElementById('view-admin');
-  container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading users, roles & permissions...</div>';
+  beginViewLoad(container, '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading users, roles & permissions...</div>');
 
   try {
     const [usersRes, rolesRes, permsRes] = await Promise.all([
@@ -142,51 +198,73 @@ function renderAdminPanel(container) {
     \`;
   }).join('');
 
-  // 4. Matrix Rows for Active Role
+  // 4. Matrix Rows for Active Role (Grouped by Category)
   const activeRoleObj = (state.roles || []).find((r) => r.code === adminActiveRoleTab) || { code: adminActiveRoleTab, name: adminActiveRoleTab, isSystem: false };
   const isAdminTab = activeRoleObj.code === 'ADMIN';
   const roleCrudMap = (state.adminCrudMatrix || {})[adminActiveRoleTab] || {};
 
+  const categories = ['Operations', 'Finance & HR', 'Administration'];
   let matrixRows = '';
-  state.adminModules.forEach((mod) => {
-    const p = roleCrudMap[mod] || { create: false, read: false, update: false, delete: false };
 
-    if (isAdminTab) {
-      matrixRows += \`
-        <tr>
-          <td>
-            <div style="font-weight: 700; color: #1e293b;">\${MODULE_LABELS[mod] || mod}</div>
-            <div style="font-size: 0.72rem; color: #64748b; font-family: monospace;">/\${mod}</div>
-          </td>
-          <td style="text-align: center; background: #f8fafc;" colspan="4">
-            <span class="badge badge-success" style="font-size: 0.75rem; letter-spacing: 0.04em;">
-              C • R • U • D (Full Access Permanently Enabled)
-            </span>
-          </td>
-        </tr>
-      \`;
-    } else {
-      matrixRows += \`
-        <tr>
-          <td>
-            <div style="font-weight: 700; color: #1e293b;">\${MODULE_LABELS[mod] || mod}</div>
-            <div style="font-size: 0.72rem; color: #64748b; font-family: monospace;">/\${mod}</div>
-          </td>
-          <td style="text-align: center;">
-            <input type="checkbox" id="perm-\${adminActiveRoleTab}-\${mod}-create" \${p.create ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" />
-          </td>
-          <td style="text-align: center;">
-            <input type="checkbox" id="perm-\${adminActiveRoleTab}-\${mod}-read" \${p.read ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" />
-          </td>
-          <td style="text-align: center;">
-            <input type="checkbox" id="perm-\${adminActiveRoleTab}-\${mod}-update" \${p.update ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" />
-          </td>
-          <td style="text-align: center;">
-            <input type="checkbox" id="perm-\${adminActiveRoleTab}-\${mod}-delete" \${p.delete ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" />
-          </td>
-        </tr>
-      \`;
-    }
+  categories.forEach((cat) => {
+    const catModules = (state.adminModules || []).filter((m) => (MODULE_CONFIG[m]?.category || 'Operations') === cat);
+    if (catModules.length === 0) return;
+
+    matrixRows += \`
+      <tr style="background: #f8fafc;">
+        <td colspan="5" style="padding: 0.5rem 1rem; font-weight: 700; font-size: 0.75rem; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color);">
+          \${cat}
+        </td>
+      </tr>
+    \`;
+
+    catModules.forEach((mod) => {
+      const info = MODULE_CONFIG[mod] || { name: mod, route: '/' + mod, description: '' };
+      const p = roleCrudMap[mod] || { create: false, read: false, update: false, delete: false };
+
+      if (isAdminTab) {
+        matrixRows += \`
+          <tr>
+            <td style="padding: 0.75rem 1rem;">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="font-weight: 700; color: #1e293b; font-size: 0.9rem;">\${info.name}</span>
+                <span class="badge badge-neutral" style="font-family: monospace; font-size: 0.72rem; padding: 0.15rem 0.4rem;">\${info.route}</span>
+              </div>
+              <div style="font-size: 0.75rem; color: #64748b; margin-top: 0.2rem; line-height: 1.35;">\${info.description}</div>
+            </td>
+            <td style="text-align: center; background: #f8fafc;" colspan="4">
+              <span class="badge badge-success" style="font-size: 0.75rem; letter-spacing: 0.04em;">
+                C • R • U • D (Full Access Permanently Enabled)
+              </span>
+            </td>
+          </tr>
+        \`;
+      } else {
+        matrixRows += \`
+          <tr>
+            <td style="padding: 0.75rem 1rem;">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="font-weight: 700; color: #1e293b; font-size: 0.9rem;">\${info.name}</span>
+                <span class="badge badge-neutral" style="font-family: monospace; font-size: 0.72rem; padding: 0.15rem 0.4rem;">\${info.route}</span>
+              </div>
+              <div style="font-size: 0.75rem; color: #64748b; margin-top: 0.2rem; line-height: 1.35;">\${info.description}</div>
+            </td>
+            <td style="text-align: center; vertical-align: middle;">
+              <input type="checkbox" id="perm-\${adminActiveRoleTab}-\${mod}-create" \${p.create ? 'checked' : ''} style="cursor: pointer; width: 17px; height: 17px; accent-color: var(--primary);" />
+            </td>
+            <td style="text-align: center; vertical-align: middle;">
+              <input type="checkbox" id="perm-\${adminActiveRoleTab}-\${mod}-read" \${p.read ? 'checked' : ''} style="cursor: pointer; width: 17px; height: 17px; accent-color: var(--primary);" />
+            </td>
+            <td style="text-align: center; vertical-align: middle;">
+              <input type="checkbox" id="perm-\${adminActiveRoleTab}-\${mod}-update" \${p.update ? 'checked' : ''} style="cursor: pointer; width: 17px; height: 17px; accent-color: var(--primary);" />
+            </td>
+            <td style="text-align: center; vertical-align: middle;">
+              <input type="checkbox" id="perm-\${adminActiveRoleTab}-\${mod}-delete" \${p.delete ? 'checked' : ''} style="cursor: pointer; width: 17px; height: 17px; accent-color: var(--primary);" />
+            </td>
+          </tr>
+        \`;
+      }
+    });
   });
 
   container.innerHTML = \`
@@ -277,7 +355,7 @@ function renderAdminPanel(container) {
         <table class="data-table">
           <thead>
             <tr>
-              <th style="min-width: 220px;">Module</th>
+              <th style="min-width: 280px;">Module & Description</th>
               \${isAdminTab ? '<th style="text-align: center;" colspan="4">Access Authority</th>' : \`
                 <th style="text-align: center; width: 100px;">Create (C)</th>
                 <th style="text-align: center; width: 100px;">Read (R)</th>
@@ -368,17 +446,35 @@ async function saveActiveRolePermissions() {
 
 // Open New Role Modal
 function openNewRoleModal() {
+  const categories = ['Operations', 'Finance & HR', 'Administration'];
   let moduleCheckboxes = '';
-  state.adminModules.forEach((mod) => {
+
+  categories.forEach((cat) => {
+    const catModules = (state.adminModules || []).filter((m) => (MODULE_CONFIG[m]?.category || 'Operations') === cat);
+    if (catModules.length === 0) return;
+
     moduleCheckboxes += \`
-      <tr>
-        <td style="font-weight: 600; font-size: 0.82rem;">\${MODULE_LABELS[mod] || mod}</td>
-        <td style="text-align: center;"><input type="checkbox" id="newrole-mod-\${mod}-c" /></td>
-        <td style="text-align: center;"><input type="checkbox" id="newrole-mod-\${mod}-r" checked /></td>
-        <td style="text-align: center;"><input type="checkbox" id="newrole-mod-\${mod}-u" /></td>
-        <td style="text-align: center;"><input type="checkbox" id="newrole-mod-\${mod}-d" /></td>
+      <tr style="background: #f8fafc;">
+        <td colspan="5" style="padding: 0.35rem 0.65rem; font-weight: 700; font-size: 0.72rem; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color);">
+          \${cat}
+        </td>
       </tr>
     \`;
+
+    catModules.forEach((mod) => {
+      const info = MODULE_CONFIG[mod] || { name: mod, route: '/' + mod, description: '' };
+      moduleCheckboxes += \`
+        <tr>
+          <td style="padding: 0.45rem 0.65rem;">
+            <div style="font-weight: 600; font-size: 0.82rem; color: #1e293b;">\${info.name} <span style="font-family: monospace; font-size: 0.7rem; color: #64748b;">(\${info.route})</span></div>
+          </td>
+          <td style="text-align: center;"><input type="checkbox" id="newrole-mod-\${mod}-c" /></td>
+          <td style="text-align: center;"><input type="checkbox" id="newrole-mod-\${mod}-r" checked /></td>
+          <td style="text-align: center;"><input type="checkbox" id="newrole-mod-\${mod}-u" /></td>
+          <td style="text-align: center;"><input type="checkbox" id="newrole-mod-\${mod}-d" /></td>
+        </tr>
+      \`;
+    });
   });
 
   const body = \`
@@ -406,7 +502,7 @@ function openNewRoleModal() {
           <button type="button" class="btn btn-secondary btn-sm" style="font-size: 0.72rem; padding: 0.2rem 0.5rem;" onclick="bulkSetNewRoleModal(false)">None</button>
         </div>
       </div>
-      <div class="table-responsive" style="max-height: 240px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-sm);">
+      <div class="table-responsive" style="max-height: 280px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-sm);">
         <table class="data-table" style="font-size: 0.8rem;">
           <thead>
             <tr>
