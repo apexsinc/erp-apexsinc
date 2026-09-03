@@ -21,6 +21,21 @@ async function loadStaff() {
   }
 }
 
+function getStaffRoleOptionsHtml(selectedRole = 'STAFF') {
+  const roles = (window.__ROLES__ && window.__ROLES__.length > 0)
+    ? window.__ROLES__
+    : [
+        { code: 'STAFF', name: 'General Staff' },
+        { code: 'MANAGER', name: 'Operations Manager' },
+        { code: 'ADMIN', name: 'System Administrator' },
+      ];
+
+  return roles.map((r) => {
+    const isSel = r.code === selectedRole;
+    return '<option value="' + r.code + '"' + (isSel ? ' selected' : '') + '>' + r.name + ' (' + r.code + ')</option>';
+  }).join('');
+}
+
 function handleStaffSearch(query) {
   staffSearchQuery = (query || '').toLowerCase().trim();
   const container = document.getElementById('view-staff');
@@ -277,9 +292,7 @@ function openNewEmployeeModal() {
     '<div class="form-group" style="margin-bottom: 0;">' +
     '<label class="form-label">System Role *</label>' +
     '<select id="nemp-role" class="form-select">' +
-    '<option value="STAFF" selected>Staff (restricted ops view)</option>' +
-    '<option value="MANAGER">Manager (full operations access)</option>' +
-    '<option value="ADMIN">System Administrator (all modules)</option>' +
+    getStaffRoleOptionsHtml('STAFF') +
     '</select>' +
     '</div>' +
     '</div>' +
@@ -630,9 +643,7 @@ function openEmployeeAccountModal(empId) {
       '<div class="form-group" style="margin-bottom: 0;">' +
       '<label class="form-label" for="empacc-role">System Access Role *</label>' +
       '<select id="empacc-role" class="form-select">' +
-      '<option value="STAFF"' + (emp.user.role === 'STAFF' ? ' selected' : '') + '>STAFF (Assigned modules only)</option>' +
-      '<option value="MANAGER"' + (emp.user.role === 'MANAGER' ? ' selected' : '') + '>MANAGER (Approval & Ops access)</option>' +
-      '<option value="ADMIN"' + (emp.user.role === 'ADMIN' ? ' selected' : '') + '>ADMIN (Full System Administrator)</option>' +
+      getStaffRoleOptionsHtml(emp.user.role || 'STAFF') +
       '</select>' +
       '</div>' +
       '</div>' +
@@ -678,9 +689,7 @@ function openEmployeeAccountModal(empId) {
       '<div class="form-group" style="margin-bottom: 0;">' +
       '<label class="form-label" for="newacc-role">System Access Role *</label>' +
       '<select id="newacc-role" class="form-select">' +
-      '<option value="STAFF" selected>STAFF (Assigned modules only)</option>' +
-      '<option value="MANAGER">MANAGER (Approval & Ops access)</option>' +
-      '<option value="ADMIN">ADMIN (Full System Administrator)</option>' +
+      getStaffRoleOptionsHtml('STAFF') +
       '</select>' +
       '</div>' +
       '</div>' +

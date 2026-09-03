@@ -2,6 +2,29 @@ import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core
 import { relations } from 'drizzle-orm';
 
 /**
+ * Roles & Permission Groups table
+ * Defines system and custom roles with display names, descriptions, and system flags.
+ */
+export const roles = sqliteTable('roles', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  code: text('code').notNull().unique(),
+  name: text('name').notNull(),
+  description: text('description'),
+  isSystem: integer('is_system', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at')
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+  updatedAt: text('updated_at')
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
+export type RoleItem = typeof roles.$inferSelect;
+export type NewRoleItem = typeof roles.$inferInsert;
+
+/**
  * Users & Administrators table
  */
 export const users = sqliteTable('users', {
@@ -11,7 +34,7 @@ export const users = sqliteTable('users', {
   email: text('email').notNull().unique(),
   name: text('name').notNull(),
   passwordHash: text('password_hash').notNull(),
-  role: text('role', { enum: ['ADMIN', 'MANAGER', 'STAFF'] }).notNull().default('ADMIN'),
+  role: text('role').notNull().default('STAFF'),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at')
     .notNull()
@@ -51,11 +74,8 @@ export const sessionsRelations = relations(sessions, ({ one }) => ({
 }));
 
 /**
- * Editable role -> module visibility matrix. Drives both the sidebar
- * (which nav items render) and API route access (which endpoints a
- * role's session may call). ADMIN is intentionally not stored here —
- * it always has full access, enforced in code, so the matrix can never
- * be edited into locking out every admin.
+ * Dynamic role -> module CRUD permission matrix. Drives sidebar visibility,
+ * UI action rendering, and server-side route authorization.
  */
 export const rolePermissions = sqliteTable(
   'role_permissions',
@@ -63,7 +83,7 @@ export const rolePermissions = sqliteTable(
     id: text('id')
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
-    role: text('role', { enum: ['MANAGER', 'STAFF'] }).notNull(),
+    role: text('role').notNull(),
     module: text('module', {
       enum: ['dashboard', 'directory', 'inventory', 'purchasing', 'inbound', 'sales', 'outbound', 'accounting', 'payroll', 'staff'],
     }).notNull(),

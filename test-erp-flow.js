@@ -513,7 +513,91 @@ async function runTests() {
   const updatedSign = verifySettingsData.settings?.['vouchers.signatories'];
   console.log('Verified Updated Signatories in DB:', updatedSign?.preparedBy, '|', updatedSign?.approvedBy);
 
-  console.log('\n=== 10.1 ROLE CRUD PERMISSIONS MATRIX AUDIT ===');
+  console.log('\n=== 10.1 DYNAMIC ROLES & CRUD PERMISSIONS MATRIX AUDIT ===');
+  // 1. Get all roles
+  const getRolesRes = await fetch(`${baseUrl}/api/admin/roles`, { headers: authHeaders });
+  const rolesData = await getRolesRes.json();
+  if (!rolesData.success || !Array.isArray(rolesData.roles)) {
+    console.error('Failed to get roles list:', rolesData);
+    process.exit(1);
+  }
+  console.log('Retrieved Roles:', rolesData.roles.map((r) => `${r.code} (${r.userCount} users)`).join(', '));
+
+  // 2. Create custom role / permission group: ACCOUNTANT
+  const customRoleCode = `ACCOUNTANT_${suffix}`;
+  const createRoleRes = await fetch(`${baseUrl}/api/admin/roles`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      code: customRoleCode,
+      name: 'Finance & Accounting Specialist',
+      description: 'Full accounting, vouchers, ledger, and payroll access',
+      permissions: {
+        accounting: { create: true, read: true, update: true, delete: true },
+        payroll: { create: true, read: true, update: true, delete: false },
+        directory: { create: false, read: true, update: false, delete: false },
+        dashboard: { create: false, read: true, update: false, delete: false },
+      },
+    }),
+  });
+  const createRoleData = await createRoleRes.json();
+  if (!createRoleData.success || !createRoleData.role) {
+    console.error('Failed to create custom role:', createRoleData);
+    process.exit(1);
+  }
+  const customRoleId = createRoleData.role.id;
+  console.log('Created Custom Role:', createRoleData.role.name, 'Code:', createRoleData.role.code);
+
+  // 3. Update role details
+  const updateRoleRes = await fetch(`${baseUrl}/api/admin/roles/${customRoleId}`, {
+    method: 'PUT',
+    headers: authHeaders,
+    body: JSON.stringify({
+      name: 'Senior Finance & Accounts Lead',
+      description: 'Supervises financial books, vouchers, trial balance, and disbursement runs',
+    }),
+  });
+  const updateRoleData = await updateRoleRes.json();
+  console.log('Updated Custom Role Name:', updateRoleData.role?.name);
+
+  // 4. Update custom role's CRUD permissions
+  const updateRolePermsRes = await fetch(`${baseUrl}/api/admin/role-permissions`, {
+    method: 'PUT',
+    headers: authHeaders,
+    body: JSON.stringify({
+      role: customRoleCode,
+      permissions: {
+        accounting: { create: true, read: true, update: true, delete: true },
+        payroll: { create: true, read: true, update: true, delete: true },
+        sales: { create: false, read: true, update: false, delete: false },
+      },
+    }),
+  });
+  const updateRolePermsData = await updateRolePermsRes.json();
+  console.log('Updated Custom Role Permissions:', updateRolePermsData.message);
+
+  // 5. Create temporary role & test deletion
+  const tempRoleCode = `TEMP_ROLE_${suffix}`;
+  const createTempRes = await fetch(`${baseUrl}/api/admin/roles`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      code: tempRoleCode,
+      name: 'Temporary Ops Group',
+      description: 'Test group to be deleted',
+    }),
+  });
+  const createTempData = await createTempRes.json();
+  const tempRoleId = createTempData.role.id;
+
+  const deleteTempRes = await fetch(`${baseUrl}/api/admin/roles/${tempRoleId}`, {
+    method: 'DELETE',
+    headers: authHeaders,
+  });
+  const deleteTempData = await deleteTempRes.json();
+  console.log('Deleted Temporary Custom Role:', deleteTempData.message);
+
+  // 6. Verify CRUD Permissions Matrix across all roles
   const getPermsRes = await fetch(`${baseUrl}/api/admin/role-permissions`, { headers: authHeaders });
   const permsData = await getPermsRes.json();
   if (!permsData.success || !permsData.crudMatrix) {
@@ -523,25 +607,7 @@ async function runTests() {
   console.log('Admin Full Access Modules:', Object.keys(permsData.crudMatrix.ADMIN).length);
   console.log('Manager Inventory CRUD:', JSON.stringify(permsData.crudMatrix.MANAGER.inventory));
   console.log('Staff Inventory CRUD:', JSON.stringify(permsData.crudMatrix.STAFF.inventory));
-
-  // Update permissions for STAFF to have custom CRUD on inventory
-  const updatePermsRes = await fetch(`${baseUrl}/api/admin/role-permissions`, {
-    method: 'PUT',
-    headers: authHeaders,
-    body: JSON.stringify({
-      role: 'STAFF',
-      permissions: {
-        inventory: { create: false, read: true, update: true, delete: false },
-        sales: { create: true, read: true, update: true, delete: false },
-      },
-    }),
-  });
-  const updatePermsData = await updatePermsRes.json();
-  if (!updatePermsData.success) {
-    console.error('Failed to update CRUD permissions:', updatePermsData);
-    process.exit(1);
-  }
-  console.log('Updated Staff CRUD Permissions Successfully. Message:', updatePermsData.message);
+  console.log('Custom Role Accounting CRUD:', JSON.stringify(permsData.crudMatrix[customRoleCode]?.accounting));
   // 1. Profit & Loss (Income Statement)
   const plRes = await fetch(`${baseUrl}/api/accounting/reports/profit-loss`, { headers: authHeaders });
   const plData = await plRes.json();

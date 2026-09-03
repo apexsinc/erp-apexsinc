@@ -17,6 +17,7 @@ import {
 } from './views';
 import { APP_CLIENT_JS } from './app.client';
 import type { Module, Role, RoleCrudMatrix } from '../lib/permissions';
+import type { RoleItem } from '../db/schema/auth';
 
 export * from './styles';
 export * from './components';
@@ -27,14 +28,13 @@ export * from './app.client';
  * Renders the complete Single Page Application HTML markup
  * directly for Cloudflare Workers edge delivery.
  *
- * `rolePermissions` (role -> visible module list) and `crudMatrix`
- * (role -> module -> { create, read, update, delete }) are computed
- * server-side from the DB-backed permission matrix (src/lib/permissions.ts)
- * and serialized here so the client can gate UI components and tabs.
+ * `rolePermissions` (role -> visible module list), `crudMatrix`
+ * (role -> module -> { create, read, update, delete }), and `roles`
+ * are computed server-side from the DB and serialized here.
  */
 export function renderAppHtml(
   rolePermissions: Record<Role, Module[]>,
-  options: { turnstileSiteKey?: string; crudMatrix?: RoleCrudMatrix } = {}
+  options: { turnstileSiteKey?: string; crudMatrix?: RoleCrudMatrix; roles?: RoleItem[] } = {}
 ): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -53,6 +53,7 @@ export function renderAppHtml(
   <script>
     window.__ROLE_PERMISSIONS__ = ${JSON.stringify(rolePermissions)};
     window.__ROLE_PERMISSIONS_CRUD__ = ${JSON.stringify(options.crudMatrix || {})};
+    window.__ROLES__ = ${JSON.stringify(options.roles || [])};
   </script>
 </head>
 <body>

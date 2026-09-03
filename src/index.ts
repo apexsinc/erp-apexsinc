@@ -14,8 +14,9 @@ import {
   isAdminRole,
   loadPermissionMatrix,
   loadCrudPermissionMatrix,
+  loadAllRoles,
   seedDefaultPermissions,
-  type EditableRole,
+  SYSTEM_ROLES,
   type Module,
   type RoleCrudMatrix,
 } from './lib/permissions';
@@ -48,19 +49,14 @@ app.onError((err, c) => {
   );
 });
 
-/* ========================================================================== */
-/* ROUTE PROTECTION — registered before any handlers so every matching       */
-/* request passes through auth/role checks first. Session role/isActive is   */
-/* re-read from the DB on every request, so permission or account changes    */
-/* made via /api/admin take effect immediately, without waiting for token    */
-/* expiry.                                                                    */
-/* ========================================================================== */
+// Role-Based Route Access Control Middlewares
 app.use('/api/auth/me', authMiddleware);
 app.use('/api/auth/logout', authMiddleware);
 app.use('/api/admin/*', authMiddleware, requireAdmin);
-app.use('/api/settings/*', authMiddleware);
-app.use('/api/settings', authMiddleware);
-app.use('/api/dashboard', authMiddleware, requireModule('dashboard'));
+app.use('/api/settings/*', authMiddleware, requireAdmin);
+app.use('/api/settings', authMiddleware, requireAdmin);
+app.use('/api/dashboard/*', authMiddleware, requireModule('dashboard'));
+app.use('/api/directory/*', authMiddleware, requireModule('directory'));
 app.use('/api/inventory/*', authMiddleware, requireModule('inventory'));
 app.use('/api/purchasing/*', authMiddleware, requireModule('purchasing'));
 app.use('/api/inbound/*', authMiddleware, requireModule('inbound'));
@@ -74,10 +70,11 @@ async function renderApp(c: { req: any; env: Bindings }) {
   const db = createDbClient(c.env.DB);
   const rolePermissions = await loadPermissionMatrix(db);
   const crudMatrix = await loadCrudPermissionMatrix(db);
+  const allRoles = await loadAllRoles(db);
   const host = (c.req.header('host') || '').toLowerCase();
   const isProduction = host.startsWith('app.apexsinc.com');
   const turnstileSiteKey = isProduction ? c.env.TURNSTILE_SITE_KEY : undefined;
-  return renderAppHtml(rolePermissions, { turnstileSiteKey, crudMatrix });
+  return renderAppHtml(rolePermissions, { turnstileSiteKey, crudMatrix, roles: allRoles });
 }
 app.get('/', async (c) => c.html(await renderApp(c)));
 app.get('/login', async (c) => c.html(await renderApp(c)));
@@ -2446,8 +2443,8 @@ app.post(
       deductionsCents: z.number().int().nonnegative().optional(),
       createUserAccount: z.boolean().optional(),
       createAccount: z.boolean().optional(),
-      userRole: z.enum(['ADMIN', 'MANAGER', 'STAFF']).optional(),
-      role: z.enum(['ADMIN', 'MANAGER', 'STAFF']).optional(),
+      userRole: z.string().min(1).optional(),
+      role: z.string().min(1).optional(),
       password: z.string().min(8).optional(),
     })
   ),
@@ -2760,7 +2757,7 @@ app.post(
     'json',
     z.object({
       email: z.string().email(),
-      role: z.enum(['ADMIN', 'MANAGER', 'STAFF']).default('STAFF'),
+      role: z.string().min(1).default('STAFF'),
       password: z.string().min(8),
     })
   ),
@@ -2828,7 +2825,7 @@ app.put(
     z.object({
       email: z.string().email().optional(),
       name: z.string().min(1).optional(),
-      role: z.enum(['ADMIN', 'MANAGER', 'STAFF']).optional(),
+      role: z.string().min(1).optional(),
       password: z.string().min(8).optional(),
       isActive: z.boolean().optional(),
     })
@@ -3192,7 +3189,7 @@ app.patch(
     'json',
     z.object({
       name: z.string().min(1).optional(),
-      role: z.enum(['ADMIN', 'MANAGER', 'STAFF']).optional(),
+      role: z.string().min(1).optional(),
       isActive: z.boolean().optional(),
       password: z.string().min(8).optional(),
     })
@@ -3257,26 +3254,209 @@ app.delete('/api/admin/users/:id', async (c) => {
   return c.json({ success: true, message: 'User deactivated' });
 });
 
-// GET /api/admin/role-permissions - Current role -> module visibility & CRUD matrix
-app.get('/api/admin/role-permissions', async (c) => {
+// GET /api/admin/roles - List all roles & permission groups with assigned user count
+app.get('/api/admin/roles', async (c) => {
   const db = createDbClient(c.env.DB);
-  const matrix = await loadPermissionMatrix(db);
-  const crudMatrix = await loadCrudPermissionMatrix(db);
+  const [allRoles, allUsers] = await Promise.all([
+    loadAllRoles(db),
+    db.query.users.findMany({ columns: { id: true, role: true, isActive: true } }),
+  ]);
+
+  const userCountByRole: Record<string, number> = {};
+  for (const u of allUsers) {
+    userCountByRole[u.role] = (userCountByRole[u.role] || 0) + 1;
+  }
+
+  const formattedRoles = allRoles.map((r) => ({
+    ...r,
+    userCount: userCountByRole[r.code] || 0,
+  }));
+
   return c.json({
     success: true,
-    modules: ALL_MODULES,
-    matrix, // { ADMIN: [...always all], MANAGER: [...], STAFF: [...] }
-    crudMatrix, // { ADMIN: { ... }, MANAGER: { ... }, STAFF: { ... } }
+    roles: formattedRoles,
   });
 });
 
-// PUT /api/admin/role-permissions - Bulk-update one editable role's module CRUD access
+// POST /api/admin/roles - Create a new custom role / permission group
+app.post(
+  '/api/admin/roles',
+  zValidator(
+    'json',
+    z.object({
+      code: z.string().min(2).max(50),
+      name: z.string().min(2).max(100),
+      description: z.string().optional(),
+      permissions: z
+        .record(
+          z.enum(ALL_MODULES),
+          z.object({
+            create: z.boolean(),
+            read: z.boolean(),
+            update: z.boolean(),
+            delete: z.boolean(),
+          })
+        )
+        .optional(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const body = c.req.valid('json');
+    const cleanCode = body.code.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+
+    if (!cleanCode || cleanCode.length < 2) {
+      return c.json({ success: false, error: 'Role code must contain at least 2 alphanumeric characters' }, 400);
+    }
+
+    const existing = await db.query.roles.findFirst({ where: eq(schema.roles.code, cleanCode) });
+    if (existing) {
+      return c.json({ success: false, error: `A role with code "${cleanCode}" already exists` }, 400);
+    }
+
+    const roleId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const newRole: schema.NewRoleItem = {
+      id: roleId,
+      code: cleanCode,
+      name: body.name.trim(),
+      description: body.description?.trim() || null,
+      isSystem: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const statements: any[] = [db.insert(schema.roles).values(newRole)];
+
+    if (body.permissions) {
+      for (const mod of ALL_MODULES) {
+        const p = body.permissions[mod];
+        if (!p) continue;
+        statements.push(
+          db.insert(schema.rolePermissions).values({
+            id: crypto.randomUUID(),
+            role: cleanCode,
+            module: mod,
+            canView: Boolean(p.read),
+            canRead: Boolean(p.read),
+            canCreate: Boolean(p.create),
+            canUpdate: Boolean(p.update),
+            canDelete: Boolean(p.delete),
+            updatedAt: now,
+          })
+        );
+      }
+    }
+
+    await db.batch(statements as any);
+
+    return c.json(
+      {
+        success: true,
+        message: `Role "${newRole.name}" (${cleanCode}) created successfully`,
+        role: { ...newRole, userCount: 0 },
+      },
+      201
+    );
+  }
+);
+
+// PUT /api/admin/roles/:id - Update custom role name and description
+app.put(
+  '/api/admin/roles/:id',
+  zValidator(
+    'json',
+    z.object({
+      name: z.string().min(2).max(100).optional(),
+      description: z.string().optional(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const roleId = c.req.param('id');
+    const body = c.req.valid('json');
+
+    const existing = await db.query.roles.findFirst({ where: eq(schema.roles.id, roleId) });
+    if (!existing) {
+      return c.json({ success: false, error: 'Role not found' }, 404);
+    }
+
+    const now = new Date().toISOString();
+    await db
+      .update(schema.roles)
+      .set({
+        ...(body.name ? { name: body.name.trim() } : {}),
+        ...(body.description !== undefined ? { description: body.description.trim() || null } : {}),
+        updatedAt: now,
+      })
+      .where(eq(schema.roles.id, roleId));
+
+    const updated = await db.query.roles.findFirst({ where: eq(schema.roles.id, roleId) });
+    return c.json({ success: true, message: 'Role updated successfully', role: updated });
+  }
+);
+
+// DELETE /api/admin/roles/:id - Delete a custom role / permission group
+app.delete('/api/admin/roles/:id', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const roleId = c.req.param('id');
+
+  const existing = await db.query.roles.findFirst({ where: eq(schema.roles.id, roleId) });
+  if (!existing) {
+    return c.json({ success: false, error: 'Role not found' }, 404);
+  }
+
+  if (existing.isSystem || ['ADMIN', 'MANAGER', 'STAFF'].includes(existing.code)) {
+    return c.json({ success: false, error: 'System default roles are protected and cannot be deleted' }, 400);
+  }
+
+  const assignedUsers = await db.query.users.findMany({ where: eq(schema.users.role, existing.code) });
+  if (assignedUsers.length > 0) {
+    return c.json(
+      {
+        success: false,
+        error: `Cannot delete role "${existing.name}" because it is currently assigned to ${assignedUsers.length} user(s). Please reassign their roles in Staff or Admin first.`,
+      },
+      400
+    );
+  }
+
+  await db.batch([
+    db.delete(schema.rolePermissions).where(eq(schema.rolePermissions.role, existing.code)),
+    db.delete(schema.roles).where(eq(schema.roles.id, roleId)),
+  ] as any);
+
+  return c.json({
+    success: true,
+    message: `Role "${existing.name}" successfully deleted`,
+  });
+});
+
+// GET /api/admin/role-permissions - Current role -> module visibility & CRUD matrix
+app.get('/api/admin/role-permissions', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const [allRoles, matrix, crudMatrix] = await Promise.all([
+    loadAllRoles(db),
+    loadPermissionMatrix(db),
+    loadCrudPermissionMatrix(db),
+  ]);
+  return c.json({
+    success: true,
+    modules: ALL_MODULES,
+    roles: allRoles,
+    matrix, // { ADMIN: [...always all], MANAGER: [...], STAFF: [...], ... }
+    crudMatrix, // { ADMIN: { ... }, MANAGER: { ... }, STAFF: { ... }, ... }
+  });
+});
+
+// PUT /api/admin/role-permissions - Bulk-update any editable role's module CRUD access
 app.put(
   '/api/admin/role-permissions',
   zValidator(
     'json',
     z.object({
-      role: z.enum(['MANAGER', 'STAFF']),
+      role: z.string().min(1),
       permissions: z.record(
         z.enum(ALL_MODULES),
         z.union([
@@ -3294,7 +3474,11 @@ app.put(
   async (c) => {
     const db = createDbClient(c.env.DB);
     const body = c.req.valid('json');
-    const role = body.role as EditableRole;
+    const role = body.role.trim().toUpperCase();
+
+    if (isAdminRole(role)) {
+      return c.json({ success: false, error: 'System Administrator permissions are permanently full access and cannot be modified' }, 400);
+    }
 
     const statements = ALL_MODULES.filter((mod) => body.permissions[mod] !== undefined).map((mod) => {
       const p = body.permissions[mod as Module];

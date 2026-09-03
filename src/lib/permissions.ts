@@ -1,7 +1,7 @@
 import { AbilityBuilder, createMongoAbility, type MongoAbility } from '@casl/ability';
 import type { Database } from '../db/client';
 import * as schema from '../db/schema';
-import type { User } from '../db/schema/auth';
+import type { RoleItem } from '../db/schema/auth';
 
 /**
  * Sidebar modules gated by role. Keys match the `data-tab` values
@@ -21,9 +21,7 @@ export const ALL_MODULES = [
 ] as const;
 export type Module = (typeof ALL_MODULES)[number];
 
-export type Role = User['role'];
-/** Roles whose access is editable via the role_permissions table (everyone except ADMIN). */
-export type EditableRole = 'MANAGER' | 'STAFF';
+export type Role = string;
 
 export type CrudAction = 'create' | 'read' | 'update' | 'delete';
 export type AppAction = 'create' | 'read' | 'update' | 'delete' | 'view';
@@ -35,15 +33,15 @@ export interface ModuleCrudPermissions {
   delete: boolean;
 }
 
-export type RoleCrudMatrix = Record<Role, Record<Module, ModuleCrudPermissions>>;
+export type RoleCrudMatrix = Record<string, Record<Module, ModuleCrudPermissions>>;
 
 type AppAbility = MongoAbility<[AppAction, Module]>;
 
 /**
  * Default CRUD permissions matrix used to seed role_permissions on first run
- * and as a fallback if rows are missing.
+ * and as a fallback if rows are missing for standard roles.
  */
-export const DEFAULT_CRUD_MATRIX: Record<EditableRole, Record<Module, ModuleCrudPermissions>> = {
+export const DEFAULT_CRUD_MATRIX: Record<string, Record<Module, ModuleCrudPermissions>> = {
   MANAGER: {
     dashboard:   { create: false, read: true,  update: false, delete: false },
     directory:   { create: true,  read: true,  update: true,  delete: true  },
@@ -70,14 +68,39 @@ export const DEFAULT_CRUD_MATRIX: Record<EditableRole, Record<Module, ModuleCrud
   },
 };
 
-export const DEFAULT_PERMISSION_MATRIX: Record<EditableRole, Module[]> = {
+export const DEFAULT_PERMISSION_MATRIX: Record<string, Module[]> = {
   MANAGER: ALL_MODULES.filter((m) => DEFAULT_CRUD_MATRIX.MANAGER[m].read),
   STAFF: ALL_MODULES.filter((m) => DEFAULT_CRUD_MATRIX.STAFF[m].read),
 };
 
+/** Standard system roles that are permanently protected from deletion. */
+export const SYSTEM_ROLES = [
+  {
+    id: 'role-admin-sys-0001',
+    code: 'ADMIN',
+    name: 'System Administrator',
+    description: 'Full, unrestricted administrative authority across all modules and settings.',
+    isSystem: true,
+  },
+  {
+    id: 'role-manager-sys-0002',
+    code: 'MANAGER',
+    name: 'Operations Manager',
+    description: 'Full CRUD management over daily operations, inventory, sales, purchasing, and staff.',
+    isSystem: true,
+  },
+  {
+    id: 'role-staff-sys-0003',
+    code: 'STAFF',
+    name: 'General Staff',
+    description: 'Standard operational access for order processing, deliveries, and fulfillment.',
+    isSystem: true,
+  },
+];
+
 /** ADMIN always has full access across all CRUD actions — enforced in code, never stored/editable. */
 export function isAdminRole(role: Role): boolean {
-  return role === 'ADMIN';
+  return (role || '').toUpperCase() === 'ADMIN';
 }
 
 export function getFullAdminCrudMap(): Record<Module, ModuleCrudPermissions> {
@@ -88,54 +111,84 @@ export function getFullAdminCrudMap(): Record<Module, ModuleCrudPermissions> {
   return result;
 }
 
+export function getEmptyCrudMap(): Record<Module, ModuleCrudPermissions> {
+  const result = {} as Record<Module, ModuleCrudPermissions>;
+  for (const mod of ALL_MODULES) {
+    result[mod] = { create: false, read: false, update: false, delete: false };
+  }
+  return result;
+}
+
+/** Loads all defined roles from the database. */
+export async function loadAllRoles(db: Database): Promise<RoleItem[]> {
+  try {
+    return await db.query.roles.findMany({
+      orderBy: (roles, { asc }) => [asc(roles.createdAt)],
+    });
+  } catch (err) {
+    // If table not yet queryable, fallback to system roles
+    return SYSTEM_ROLES.map((r) => ({
+      ...r,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+}
+
 /** Loads the complete role -> module -> { create, read, update, delete } matrix from the DB. */
 export async function loadCrudPermissionMatrix(db: Database): Promise<RoleCrudMatrix> {
-  const rows = await db.query.rolePermissions.findMany();
+  const [allRoles, rows] = await Promise.all([
+    loadAllRoles(db),
+    db.query.rolePermissions.findMany(),
+  ]);
 
-  const managerMap = {} as Record<Module, ModuleCrudPermissions>;
-  const staffMap = {} as Record<Module, ModuleCrudPermissions>;
+  const matrix: RoleCrudMatrix = {
+    ADMIN: getFullAdminCrudMap(),
+  };
 
-  for (const mod of ALL_MODULES) {
-    const mgrRow = rows.find((r) => r.role === 'MANAGER' && r.module === mod);
-    if (mgrRow) {
-      managerMap[mod] = {
-        create: Boolean(mgrRow.canCreate),
-        read: Boolean(mgrRow.canRead ?? mgrRow.canView),
-        update: Boolean(mgrRow.canUpdate),
-        delete: Boolean(mgrRow.canDelete),
-      };
-    } else {
-      managerMap[mod] = DEFAULT_CRUD_MATRIX.MANAGER[mod];
+  const roleCodes = new Set<string>();
+  allRoles.forEach((r) => roleCodes.add(r.code));
+  rows.forEach((r) => roleCodes.add(r.role));
+  roleCodes.add('MANAGER');
+  roleCodes.add('STAFF');
+
+  for (const roleCode of roleCodes) {
+    if (roleCode === 'ADMIN') continue;
+
+    const modMap = {} as Record<Module, ModuleCrudPermissions>;
+    for (const mod of ALL_MODULES) {
+      const row = rows.find((r) => r.role === roleCode && r.module === mod);
+      if (row) {
+        modMap[mod] = {
+          create: Boolean(row.canCreate),
+          read: Boolean(row.canRead ?? row.canView),
+          update: Boolean(row.canUpdate),
+          delete: Boolean(row.canDelete),
+        };
+      } else if (DEFAULT_CRUD_MATRIX[roleCode]?.[mod]) {
+        modMap[mod] = DEFAULT_CRUD_MATRIX[roleCode][mod];
+      } else {
+        modMap[mod] = { create: false, read: false, update: false, delete: false };
+      }
     }
-
-    const staffRow = rows.find((r) => r.role === 'STAFF' && r.module === mod);
-    if (staffRow) {
-      staffMap[mod] = {
-        create: Boolean(staffRow.canCreate),
-        read: Boolean(staffRow.canRead ?? staffRow.canView),
-        update: Boolean(staffRow.canUpdate),
-        delete: Boolean(staffRow.canDelete),
-      };
-    } else {
-      staffMap[mod] = DEFAULT_CRUD_MATRIX.STAFF[mod];
-    }
+    matrix[roleCode] = modMap;
   }
 
-  return {
-    ADMIN: getFullAdminCrudMap(),
-    MANAGER: managerMap,
-    STAFF: staffMap,
-  };
+  return matrix;
 }
 
 /** Loads the visible module list per role (where read === true) for sidebar and routing. */
 export async function loadPermissionMatrix(db: Database): Promise<Record<Role, Module[]>> {
   const crud = await loadCrudPermissionMatrix(db);
-  return {
+  const result: Record<Role, Module[]> = {
     ADMIN: [...ALL_MODULES],
-    MANAGER: ALL_MODULES.filter((m) => crud.MANAGER[m]?.read),
-    STAFF: ALL_MODULES.filter((m) => crud.STAFF[m]?.read),
   };
+
+  for (const [roleCode, modMap] of Object.entries(crud)) {
+    result[roleCode] = ALL_MODULES.filter((m) => modMap[m]?.read);
+  }
+
+  return result;
 }
 
 export async function getVisibleModules(db: Database, role: Role): Promise<Module[]> {
@@ -160,31 +213,66 @@ export async function canPerformAction(
   return Boolean(crud[role]?.[mod]?.[action]);
 }
 
-/** Idempotently inserts default rows for any (role, module) pair not yet present. */
+/** Idempotently inserts default roles and default permission rows. */
 export async function seedDefaultPermissions(db: Database): Promise<void> {
-  const existing = await db.query.rolePermissions.findMany();
-  const existingKeys = new Set(existing.map((r) => `${r.role}:${r.module}`));
+  // 1. Seed system roles in roles table
+  try {
+    const existingRoles = await db.query.roles.findMany();
+    const existingRoleCodes = new Set(existingRoles.map((r) => r.code));
 
-  const toInsert: schema.NewRolePermission[] = [];
-  for (const role of ['MANAGER', 'STAFF'] as EditableRole[]) {
-    for (const mod of ALL_MODULES) {
-      const key = `${role}:${mod}`;
-      if (existingKeys.has(key)) continue;
-      const def = DEFAULT_CRUD_MATRIX[role][mod];
-      toInsert.push({
-        id: crypto.randomUUID(),
-        role,
-        module: mod,
-        canView: def.read,
-        canRead: def.read,
-        canCreate: def.create,
-        canUpdate: def.update,
-        canDelete: def.delete,
-      });
+    const rolesToInsert: schema.NewRoleItem[] = [];
+    const now = new Date().toISOString();
+    for (const sysRole of SYSTEM_ROLES) {
+      if (!existingRoleCodes.has(sysRole.code)) {
+        rolesToInsert.push({
+          id: sysRole.id,
+          code: sysRole.code,
+          name: sysRole.name,
+          description: sysRole.description,
+          isSystem: sysRole.isSystem,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
     }
+
+    if (rolesToInsert.length > 0) {
+      await db.insert(schema.roles).values(rolesToInsert);
+    }
+  } catch (err) {
+    console.error('Error seeding roles table:', err);
   }
 
-  if (toInsert.length > 0) {
-    await db.insert(schema.rolePermissions).values(toInsert);
+  // 2. Seed default permissions in role_permissions table
+  try {
+    const existingPerms = await db.query.rolePermissions.findMany();
+    const existingKeys = new Set(existingPerms.map((r) => `${r.role}:${r.module}`));
+
+    const permsToInsert: schema.NewRolePermission[] = [];
+    const now = new Date().toISOString();
+    for (const role of ['MANAGER', 'STAFF']) {
+      for (const mod of ALL_MODULES) {
+        const key = `${role}:${mod}`;
+        if (existingKeys.has(key)) continue;
+        const def = DEFAULT_CRUD_MATRIX[role][mod];
+        permsToInsert.push({
+          id: crypto.randomUUID(),
+          role,
+          module: mod,
+          canView: def.read,
+          canRead: def.read,
+          canCreate: def.create,
+          canUpdate: def.update,
+          canDelete: def.delete,
+          updatedAt: now,
+        });
+      }
+    }
+
+    if (permsToInsert.length > 0) {
+      await db.insert(schema.rolePermissions).values(permsToInsert);
+    }
+  } catch (err) {
+    console.error('Error seeding role_permissions table:', err);
   }
 }
