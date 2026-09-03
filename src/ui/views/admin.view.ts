@@ -51,19 +51,22 @@ function renderAdminPanel(container) {
         <td><strong>\${u.name}</strong></td>
         <td>\${u.email}</td>
         <td>
-          <select class="form-input" style="padding: 0.35rem 0.5rem; font-size: 0.8rem;" id="role-select-\${u.id}" \${u.id === state.user.id ? 'disabled title="You cannot change your own role"' : ''}>
-            <option value="ADMIN" \${u.role === 'ADMIN' ? 'selected' : ''}>ADMIN</option>
-            <option value="MANAGER" \${u.role === 'MANAGER' ? 'selected' : ''}>MANAGER</option>
-            <option value="STAFF" \${u.role === 'STAFF' ? 'selected' : ''}>STAFF</option>
-          </select>
+          <span class="badge \${u.role === 'ADMIN' ? 'badge-primary' : u.role === 'MANAGER' ? 'badge-warning' : 'badge-secondary'}">
+            \${u.role}
+          </span>
         </td>
         <td><span class="badge \${u.isActive ? 'badge-success' : 'badge-danger'}"><span class="badge-dot"></span>\${u.isActive ? 'Active' : 'Deactivated'}</span></td>
         <td>
-          <button class="btn btn-secondary btn-sm" onclick="applyUserRoleChange('\${u.id}')" \${u.id === state.user.id ? 'disabled' : ''}>Save Role</button>
-          \${u.isActive
-            ? \`<button class="btn btn-danger btn-sm" onclick="toggleUserActive('\${u.id}', false)" \${u.id === state.user.id ? 'disabled' : ''}>Deactivate</button>\`
-            : \`<button class="btn btn-secondary btn-sm" onclick="toggleUserActive('\${u.id}', true)">Reactivate</button>\`
-          }
+          <div style="display: inline-flex; gap: 0.35rem;">
+            <button class="btn btn-secondary btn-sm" onclick="openAdminEditUserModal('\${u.id}')" title="Edit Role & Reset Password">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+              Edit / Password
+            </button>
+            \${u.isActive
+              ? \`<button class="btn btn-danger btn-sm" onclick="toggleUserActive('\${u.id}', false)" \${u.id === state.user.id ? 'disabled title=\"You cannot deactivate yourself\"' : ''}>Deactivate</button>\`
+              : \`<button class="btn btn-secondary btn-sm" onclick="toggleUserActive('\${u.id}', true)">Reactivate</button>\`
+            }
+          </div>
         </td>
       </tr>
     \`;
@@ -225,6 +228,96 @@ async function savePermissionMatrix() {
       window.__ROLE_PERMISSIONS__ = { ADMIN: refreshed.matrix.ADMIN, MANAGER: refreshed.matrix.MANAGER, STAFF: refreshed.matrix.STAFF };
       applyRolePermissions();
     }
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
+}
+
+function openAdminEditUserModal(userId) {
+  const u = (state.adminUsers || []).find((x) => x.id === userId);
+  if (!u) {
+    showToast('User not found', 'warning');
+    return;
+  }
+
+  const isSelf = u.id === state.user?.id;
+
+  const body =
+    '<form id="form-admin-edit-user" onsubmit="submitAdminEditUser(event, \\\'' + u.id + '\\\')">' +
+    '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 0.85rem;">' +
+    '<div class="form-group" style="margin-bottom: 0;">' +
+    '<label class="form-label" for="admin-user-name">Full Name *</label>' +
+    '<input type="text" id="admin-user-name" class="form-input" value="' + u.name + '" required />' +
+    '</div>' +
+    '<div class="form-group" style="margin-bottom: 0;">' +
+    '<label class="form-label" for="admin-user-email">Email / Username</label>' +
+    '<input type="email" id="admin-user-email" class="form-input" value="' + u.email + '" disabled style="background: #f1f5f9; cursor: not-allowed;" />' +
+    '</div>' +
+    '</div>' +
+    '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 0.85rem;">' +
+    '<div class="form-group" style="margin-bottom: 0;">' +
+    '<label class="form-label" for="admin-user-role">System Role *</label>' +
+    '<select id="admin-user-role" class="form-select"' + (isSelf ? ' disabled title="You cannot change your own role"' : '') + '>' +
+    '<option value="ADMIN"' + (u.role === 'ADMIN' ? ' selected' : '') + '>ADMIN (Full System Administrator)</option>' +
+    '<option value="MANAGER"' + (u.role === 'MANAGER' ? ' selected' : '') + '>MANAGER (Approval & Operations)</option>' +
+    '<option value="STAFF"' + (u.role === 'STAFF' ? ' selected' : '') + '>STAFF (Assigned modules only)</option>' +
+    '</select>' +
+    '</div>' +
+    '<div class="form-group" style="margin-bottom: 0;">' +
+    '<label class="form-label" for="admin-user-active">Account Status *</label>' +
+    '<select id="admin-user-active" class="form-select"' + (isSelf ? ' disabled title="You cannot deactivate your own account"' : '') + '>' +
+    '<option value="true"' + (u.isActive ? ' selected' : '') + '>Active (Can log in)</option>' +
+    '<option value="false"' + (!u.isActive ? ' selected' : '') + '>Deactivated (Locked out)</option>' +
+    '</select>' +
+    '</div>' +
+    '</div>' +
+    '<div class="form-group" style="margin-bottom: 0.25rem;">' +
+    '<label class="form-label" for="admin-user-pwd">Reset Password</label>' +
+    '<div style="position: relative;">' +
+    '<input type="password" id="admin-user-pwd" class="form-input" placeholder="Leave empty to keep existing password" minlength="8" style="padding-right: 2.5rem;" />' +
+    '<button type="button" class="btn btn-secondary btn-sm" style="position: absolute; right: 4px; top: 4px; bottom: 4px; padding: 0 0.5rem; display: flex; align-items: center;" onclick="togglePasswordVisibility(\\\'admin-user-pwd\\\', this)">' +
+    EYE_ICON_SVG +
+    '</button>' +
+    '</div>' +
+    '<div style="font-size: 0.72rem; color: #64748b; margin-top: 0.35rem;">Enter a new password (min. 8 characters) to reset credentials for this account.</div>' +
+    '</div>' +
+    '</form>';
+
+  const footer =
+    '<div style="display: flex; gap: 0.5rem; justify-content: flex-end; width: 100%;">' +
+    '<button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>' +
+    '<button type="submit" form="form-admin-edit-user" class="btn btn-primary">Save User Changes</button>' +
+    '</div>';
+
+  openModal('Edit User Account — ' + u.name, body, footer, 'md');
+}
+
+async function submitAdminEditUser(e, userId) {
+  e.preventDefault();
+  const name = document.getElementById('admin-user-name').value.trim();
+  const roleEl = document.getElementById('admin-user-role');
+  const activeEl = document.getElementById('admin-user-active');
+  const pwd = document.getElementById('admin-user-pwd')?.value || undefined;
+
+  const payload = {
+    name,
+    ...(roleEl && !roleEl.disabled ? { role: roleEl.value } : {}),
+    ...(activeEl && !activeEl.disabled ? { isActive: activeEl.value === 'true' } : {}),
+    ...(pwd && pwd.trim().length >= 8 ? { password: pwd.trim() } : {}),
+  };
+
+  try {
+    const res = await apiFetch('/api/admin/users/' + userId, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to update user');
+
+    closeModal();
+    showToast('User account updated successfully', 'success');
+    loadAdmin();
   } catch (err) {
     showToast(err.message, 'danger');
   }

@@ -2749,6 +2749,194 @@ app.delete('/api/payroll/employees/:id', async (c) => {
   });
 });
 
+// POST /api/payroll/employees/:id/account - Provision a Login Account for an Employee
+app.post(
+  '/api/payroll/employees/:id/account',
+  zValidator(
+    'json',
+    z.object({
+      email: z.string().email(),
+      role: z.enum(['ADMIN', 'MANAGER', 'STAFF']).default('STAFF'),
+      password: z.string().min(8),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const empId = c.req.param('id');
+    const body = c.req.valid('json');
+
+    const employee = await db.query.employees.findFirst({
+      where: eq(schema.employees.id, empId),
+      with: { user: true },
+    });
+    if (!employee) {
+      return c.json({ success: false, error: 'Employee not found' }, 404);
+    }
+    if (employee.userId) {
+      return c.json({ success: false, error: 'Employee already has a linked login account. Use edit account instead.' }, 400);
+    }
+
+    const emailTaken = await db.query.users.findFirst({
+      where: eq(schema.users.email, body.email),
+    });
+    if (emailTaken) {
+      return c.json({ success: false, error: 'A login account with that email already exists' }, 400);
+    }
+
+    const userId = crypto.randomUUID();
+    const passwordHash = await hashPassword(body.password);
+    const fullName = `${employee.firstName} ${employee.lastName}`.trim();
+
+    await db.batch([
+      db.insert(schema.users).values({
+        id: userId,
+        email: body.email,
+        name: fullName,
+        role: body.role,
+        passwordHash,
+        isActive: true,
+      }),
+      db
+        .update(schema.employees)
+        .set({
+          userId,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(schema.employees.id, empId)),
+    ] as any);
+
+    return c.json(
+      {
+        success: true,
+        message: `Login account created for ${fullName} with role ${body.role}`,
+        data: { id: userId, email: body.email, name: fullName, role: body.role, isActive: true },
+      },
+      201
+    );
+  }
+);
+
+// PUT /api/payroll/employees/:id/account - Update / Edit Employee's Login Account (Role, Email, Password, Active Status)
+app.put(
+  '/api/payroll/employees/:id/account',
+  zValidator(
+    'json',
+    z.object({
+      email: z.string().email().optional(),
+      name: z.string().min(1).optional(),
+      role: z.enum(['ADMIN', 'MANAGER', 'STAFF']).optional(),
+      password: z.string().min(8).optional(),
+      isActive: z.boolean().optional(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const empId = c.req.param('id');
+    const body = c.req.valid('json');
+
+    const employee = await db.query.employees.findFirst({
+      where: eq(schema.employees.id, empId),
+      with: { user: true },
+    });
+    if (!employee) {
+      return c.json({ success: false, error: 'Employee not found' }, 404);
+    }
+    if (!employee.userId || !employee.user) {
+      return c.json({ success: false, error: 'Employee does not have a linked login account' }, 400);
+    }
+
+    const userId = employee.userId;
+    const targetUser = employee.user;
+
+    // Check if email changed and taken
+    if (body.email && body.email !== targetUser.email) {
+      const emailTaken = await db.query.users.findFirst({
+        where: eq(schema.users.email, body.email),
+      });
+      if (emailTaken && emailTaken.id !== userId) {
+        return c.json({ success: false, error: 'A login account with that email already exists' }, 400);
+      }
+    }
+
+    // Protection against removing last admin
+    const losingAdminStatus =
+      isAdminRole(targetUser.role) && ((body.role && !isAdminRole(body.role)) || body.isActive === false);
+    if (losingAdminStatus) {
+      const otherActiveAdmins = await db.query.users.findMany({
+        where: eq(schema.users.role, 'ADMIN'),
+      });
+      const remaining = otherActiveAdmins.filter((u) => u.id !== userId && u.isActive);
+      if (remaining.length === 0) {
+        return c.json({ success: false, error: 'Cannot remove or deactivate the last active administrator' }, 400);
+      }
+    }
+
+    const updateFields: any = {
+      updatedAt: new Date().toISOString(),
+    };
+    if (body.name !== undefined) updateFields.name = body.name;
+    if (body.email !== undefined) updateFields.email = body.email;
+    if (body.role !== undefined) updateFields.role = body.role;
+    if (body.isActive !== undefined) updateFields.isActive = body.isActive;
+    if (body.password !== undefined && body.password.trim().length >= 8) {
+      updateFields.passwordHash = await hashPassword(body.password.trim());
+    }
+
+    await db.update(schema.users).set(updateFields).where(eq(schema.users.id, userId));
+
+    // Invalidate existing sessions if role, active status, or password changed
+    if (body.isActive === false || body.role !== undefined || (body.password !== undefined && body.password.trim().length >= 8)) {
+      await db.delete(schema.sessions).where(eq(schema.sessions.userId, userId));
+    }
+
+    const updatedUser = await db.query.users.findFirst({ where: eq(schema.users.id, userId) });
+    const { passwordHash, ...safe } = updatedUser!;
+
+    return c.json({
+      success: true,
+      message: 'Login account updated successfully',
+      data: safe,
+    });
+  }
+);
+
+// DELETE /api/payroll/employees/:id/account - Unlink / Revoke Login Account
+app.delete('/api/payroll/employees/:id/account', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const empId = c.req.param('id');
+
+  const employee = await db.query.employees.findFirst({
+    where: eq(schema.employees.id, empId),
+    with: { user: true },
+  });
+  if (!employee) {
+    return c.json({ success: false, error: 'Employee not found' }, 404);
+  }
+  if (!employee.userId) {
+    return c.json({ success: false, error: 'Employee has no linked login account' }, 400);
+  }
+
+  const userId = employee.userId;
+  if (employee.user && isAdminRole(employee.user.role)) {
+    const admins = await db.query.users.findMany({ where: eq(schema.users.role, 'ADMIN') });
+    const remaining = admins.filter((u) => u.id !== userId && u.isActive);
+    if (remaining.length === 0) {
+      return c.json({ success: false, error: 'Cannot revoke account of the last active administrator' }, 400);
+    }
+  }
+
+  await db.batch([
+    db.update(schema.employees).set({ userId: null, updatedAt: new Date().toISOString() }).where(eq(schema.employees.id, empId)),
+    db.update(schema.users).set({ isActive: false }).where(eq(schema.users.id, userId)),
+    db.delete(schema.sessions).where(eq(schema.sessions.userId, userId)),
+  ] as any);
+
+  return c.json({
+    success: true,
+    message: `Login account unlinked from employee ${employee.employeeCode} and login access revoked.`,
+  });
+});
+
 // POST /api/payroll/runs - Create Payroll Run Batch
 app.post(
   '/api/payroll/runs',

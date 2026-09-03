@@ -80,8 +80,11 @@ function renderStaffContent(container) {
       '<button type="button" class="btn btn-secondary btn-sm" style="padding: 0.3rem 0.5rem;" title="View Profile" onclick="openViewEmployeeModal(\\\'' + emp.id + '\\\')">' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' +
       '</button>' +
-      '<button type="button" class="btn btn-secondary btn-sm" style="padding: 0.3rem 0.5rem;" title="Edit Employee" onclick="openEditEmployeeModal(\\\'' + emp.id + '\\\')">' +
+      '<button type="button" class="btn btn-secondary btn-sm" style="padding: 0.3rem 0.5rem;" title="Edit Employee Profile" onclick="openEditEmployeeModal(\\\'' + emp.id + '\\\')">' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>' +
+      '</button>' +
+      '<button type="button" class="btn ' + (hasUser ? 'btn-secondary' : 'btn-outline-primary') + ' btn-sm" style="padding: 0.3rem 0.5rem;' + (hasUser ? '' : ' border: 1px dashed #3b82f6;') + '" title="' + (hasUser ? 'Edit Login Account & Reset Password (' + emp.user.role + ')' : '+ Provision Login Account') + '" onclick="openEmployeeAccountModal(\\\'' + emp.id + '\\\')">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>' +
       '</button>' +
       '<button type="button" class="btn btn-danger btn-sm" style="padding: 0.3rem 0.5rem;" title="Delete / Deactivate" onclick="handleDeleteEmployee(\\\'' + emp.id + '\\\', \\\'' + emp.employeeCode + '\\\')">' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>' +
@@ -411,8 +414,13 @@ function openViewEmployeeModal(empId) {
     '</div>';
 
   const footer =
+    '<div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">' +
+    '<button type="button" class="btn btn-secondary btn-sm" onclick="closeModal(); openEmployeeAccountModal(\\\'' + emp.id + '\\\')">🔐 ' + (hasUser ? 'Manage Login Account (' + emp.user.role + ')' : '+ Provision Login Account') + '</button>' +
+    '<div style="display: flex; gap: 0.5rem;">' +
     '<button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>' +
-    '<button type="button" class="btn btn-primary" onclick="closeModal(); openEditEmployeeModal(\\\'' + emp.id + '\\\')">Edit Employee Profile</button>';
+    '<button type="button" class="btn btn-primary" onclick="closeModal(); openEditEmployeeModal(\\\'' + emp.id + '\\\')">Edit Profile</button>' +
+    '</div>' +
+    '</div>';
 
   openModal('Employee Profile — ' + emp.employeeCode, body, footer, 'lg');
 }
@@ -577,6 +585,189 @@ function handleDeleteEmployee(empId, empCode) {
       if (!res.ok || !json.success) throw new Error(json.error || 'Failed to delete employee');
 
       showToast(json.message || 'Employee deleted', json.softDeleted ? 'warning' : 'success');
+      loadStaff();
+    },
+  });
+}
+
+function openEmployeeAccountModal(empId) {
+  const emp = (state.employees || []).find((x) => x.id === empId);
+  if (!emp) {
+    showToast('Employee record not found', 'warning');
+    return;
+  }
+
+  const hasUser = !!emp.user;
+  let body = '';
+  let footer = '';
+
+  if (hasUser) {
+    body =
+      '<form id="form-edit-emp-acc" onsubmit="submitEditEmployeeAccount(event, \\\'' + emp.id + '\\\')">' +
+      '<div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.85rem; margin-bottom: 1rem;">' +
+      '<div style="display: flex; align-items: center; justify-content: space-between;">' +
+      '<div>' +
+      '<div style="font-weight: 700; color: #1e293b; font-size: 0.95rem;">' + emp.firstName + ' ' + emp.lastName + '</div>' +
+      '<div style="font-size: 0.78rem; color: #64748b; font-family: monospace;">' + emp.employeeCode + ' • ' + (emp.department || '') + '</div>' +
+      '</div>' +
+      '<span class="badge ' + (emp.user.isActive ? 'badge-success' : 'badge-danger') + '">' +
+      '<span class="badge-dot"></span>' + (emp.user.isActive ? 'Account Active' : 'Account Disabled') +
+      '</span>' +
+      '</div>' +
+      '</div>' +
+      '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 0.85rem;">' +
+      '<div class="form-group" style="margin-bottom: 0;">' +
+      '<label class="form-label" for="empacc-email">Login Email / Username *</label>' +
+      '<input type="email" id="empacc-email" class="form-input" value="' + (emp.user.email || emp.email) + '" required />' +
+      '</div>' +
+      '<div class="form-group" style="margin-bottom: 0;">' +
+      '<label class="form-label" for="empacc-role">System Access Role *</label>' +
+      '<select id="empacc-role" class="form-select">' +
+      '<option value="STAFF"' + (emp.user.role === 'STAFF' ? ' selected' : '') + '>STAFF (Assigned modules only)</option>' +
+      '<option value="MANAGER"' + (emp.user.role === 'MANAGER' ? ' selected' : '') + '>MANAGER (Approval & Ops access)</option>' +
+      '<option value="ADMIN"' + (emp.user.role === 'ADMIN' ? ' selected' : '') + '>ADMIN (Full System Administrator)</option>' +
+      '</select>' +
+      '</div>' +
+      '</div>' +
+      '<div class="form-group" style="margin-bottom: 0.85rem;">' +
+      '<label class="form-label" for="empacc-active">Account Status *</label>' +
+      '<select id="empacc-active" class="form-select">' +
+      '<option value="true"' + (emp.user.isActive ? ' selected' : '') + '>Active (Can log into ERP)</option>' +
+      '<option value="false"' + (!emp.user.isActive ? ' selected' : '') + '>Disabled (Locked out immediately)</option>' +
+      '</select>' +
+      '</div>' +
+      '<div class="form-group" style="margin-bottom: 0.25rem;">' +
+      '<label class="form-label" for="empacc-password">Reset Password</label>' +
+      '<div style="position: relative;">' +
+      '<input type="password" id="empacc-password" class="form-input" placeholder="Leave empty to keep existing password" minlength="8" style="padding-right: 2.5rem;" />' +
+      '<button type="button" class="btn btn-secondary btn-sm" style="position: absolute; right: 4px; top: 4px; bottom: 4px; padding: 0 0.5rem; display: flex; align-items: center;" onclick="togglePasswordVisibility(\\\'empacc-password\\\', this)">' +
+      EYE_ICON_SVG +
+      '</button>' +
+      '</div>' +
+      '<div style="font-size: 0.72rem; color: #64748b; margin-top: 0.35rem;">Enter a new password (min. 8 characters) to reset login access, or leave blank to keep current password.</div>' +
+      '</div>' +
+      '</form>';
+
+    footer =
+      '<div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">' +
+      '<button type="button" class="btn btn-danger btn-sm" onclick="handleUnlinkEmployeeAccount(\\\'' + emp.id + '\\\', \\\'' + emp.employeeCode + '\\\')">Unlink / Revoke Access</button>' +
+      '<div style="display: flex; gap: 0.5rem;">' +
+      '<button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>' +
+      '<button type="submit" form="form-edit-emp-acc" class="btn btn-primary">Save Account Changes</button>' +
+      '</div>' +
+      '</div>';
+  } else {
+    body =
+      '<form id="form-create-emp-acc" onsubmit="submitCreateEmployeeAccount(event, \\\'' + emp.id + '\\\')">' +
+      '<div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.85rem; margin-bottom: 1rem;">' +
+      '<div style="font-weight: 700; color: #1e293b; font-size: 0.95rem;">' + emp.firstName + ' ' + emp.lastName + '</div>' +
+      '<div style="font-size: 0.78rem; color: #64748b; font-family: monospace;">' + emp.employeeCode + ' • ' + (emp.department || '') + '</div>' +
+      '</div>' +
+      '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 0.85rem;">' +
+      '<div class="form-group" style="margin-bottom: 0;">' +
+      '<label class="form-label" for="newacc-email">Login Email *</label>' +
+      '<input type="email" id="newacc-email" class="form-input" value="' + emp.email + '" required />' +
+      '</div>' +
+      '<div class="form-group" style="margin-bottom: 0;">' +
+      '<label class="form-label" for="newacc-role">System Access Role *</label>' +
+      '<select id="newacc-role" class="form-select">' +
+      '<option value="STAFF" selected>STAFF (Assigned modules only)</option>' +
+      '<option value="MANAGER">MANAGER (Approval & Ops access)</option>' +
+      '<option value="ADMIN">ADMIN (Full System Administrator)</option>' +
+      '</select>' +
+      '</div>' +
+      '</div>' +
+      '<div class="form-group" style="margin-bottom: 0.25rem;">' +
+      '<label class="form-label" for="newacc-password">Initial Password * (min. 8 characters)</label>' +
+      '<div style="position: relative;">' +
+      '<input type="password" id="newacc-password" class="form-input" placeholder="Create strong temporary password" minlength="8" required style="padding-right: 2.5rem;" />' +
+      '<button type="button" class="btn btn-secondary btn-sm" style="position: absolute; right: 4px; top: 4px; bottom: 4px; padding: 0 0.5rem; display: flex; align-items: center;" onclick="togglePasswordVisibility(\\\'newacc-password\\\', this)">' +
+      EYE_ICON_SVG +
+      '</button>' +
+      '</div>' +
+      '<div style="font-size: 0.72rem; color: #64748b; margin-top: 0.35rem;">This will create an active login account and link it to this employee record.</div>' +
+      '</div>' +
+      '</form>';
+
+    footer =
+      '<button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>' +
+      '<button type="submit" form="form-create-emp-acc" class="btn btn-primary">+ Provision Login Account</button>';
+  }
+
+  openModal((hasUser ? 'Manage Login Account — ' : 'Provision Login Account — ') + emp.employeeCode, body, footer, 'md');
+}
+
+async function submitCreateEmployeeAccount(e, empId) {
+  e.preventDefault();
+  const email = document.getElementById('newacc-email').value.trim();
+  const role = document.getElementById('newacc-role').value;
+  const password = document.getElementById('newacc-password').value;
+
+  try {
+    const res = await apiFetch('/api/payroll/employees/' + empId + '/account', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, role, password }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to create account');
+
+    closeModal();
+    showToast(json.message || 'Login account created successfully', 'success');
+    loadStaff();
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
+}
+
+async function submitEditEmployeeAccount(e, empId) {
+  e.preventDefault();
+  const email = document.getElementById('empacc-email').value.trim();
+  const role = document.getElementById('empacc-role').value;
+  const isActive = document.getElementById('empacc-active').value === 'true';
+  const password = document.getElementById('empacc-password')?.value || undefined;
+
+  const payload = {
+    email,
+    role,
+    isActive,
+    ...(password && password.trim().length >= 8 ? { password: password.trim() } : {}),
+  };
+
+  try {
+    const res = await apiFetch('/api/payroll/employees/' + empId + '/account', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to update account');
+
+    closeModal();
+    showToast('Login account updated successfully', 'success');
+    loadStaff();
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
+}
+
+function handleUnlinkEmployeeAccount(empId, empCode) {
+  openConfirmModal({
+    title: 'Unlink / Revoke Login Account',
+    message: 'Are you sure you want to revoke and unlink the login account for employee <strong>' + (empCode || '') + '</strong>?',
+    subtext: 'The user account will be deactivated and blocked from logging into the platform.',
+    confirmText: 'Revoke Access',
+    cancelText: 'Cancel',
+    type: 'danger',
+    onConfirm: async () => {
+      const res = await apiFetch('/api/payroll/employees/' + empId + '/account', {
+        method: 'DELETE',
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Failed to unlink account');
+
+      closeModal();
+      showToast(json.message || 'Login account revoked', 'warning');
       loadStaff();
     },
   });

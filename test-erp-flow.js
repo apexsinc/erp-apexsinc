@@ -309,6 +309,32 @@ async function runTests() {
   const getEmpData = await getEmpRes.json();
   console.log('Fetched Employee Details:', getEmpData.data.employeeCode, getEmpData.data.department);
 
+  // Test Provision Employee Login Account (POST :id/account)
+  const createAccRes = await fetch(`${baseUrl}/api/payroll/employees/${empId}/account`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      email: `sarah-${suffix}@apexsinc.com`,
+      role: 'MANAGER',
+      password: 'InitialPassword123!',
+    }),
+  });
+  const createAccData = await createAccRes.json();
+  console.log('Provisioned Employee Login Account:', createAccData.data.email, 'Role:', createAccData.data.role);
+
+  // Test Update Employee Login Account & Reset Password (PUT :id/account)
+  const updateAccRes = await fetch(`${baseUrl}/api/payroll/employees/${empId}/account`, {
+    method: 'PUT',
+    headers: authHeaders,
+    body: JSON.stringify({
+      role: 'ADMIN',
+      password: 'NewStrongPassword456!',
+      isActive: true,
+    }),
+  });
+  const updateAccData = await updateAccRes.json();
+  console.log('Updated Employee Login Account Role & Password:', updateAccData.data.role, 'Active:', updateAccData.data.isActive);
+
   // Test Delete Temporary Employee
   const tempEmpRes = await fetch(`${baseUrl}/api/payroll/employees`, {
     method: 'POST',
