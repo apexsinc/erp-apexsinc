@@ -39,6 +39,16 @@ const state = {
 };
 
 // Global Utilities
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function formatCurrency(cents, currency) {
   const symbol = currency === 'USD' ? '$' : '₱';
   if (cents === undefined || cents === null) return symbol + '0.00';
