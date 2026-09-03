@@ -442,8 +442,8 @@ function openEditEmployeeModal(empId) {
     '<form id="form-edit-emp" onsubmit="submitEditEmployee(event, \\\'' + emp.id + '\\\')">' +
     '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 0.85rem;">' +
     '<div class="form-group" style="margin-bottom: 0;">' +
-    '<label class="form-label" for="editemp-code">Employee Code *</label>' +
-    '<input type="text" id="editemp-code" class="form-input" value="' + emp.employeeCode + '" required style="font-weight: 700; font-family: monospace;" />' +
+    '<label class="form-label">Employee Code <span style="font-weight: normal; color: #94a3b8; font-size: 0.72rem;">(Permanent)</span></label>' +
+    '<input type="text" class="form-input" value="' + emp.employeeCode + '" disabled style="background: #f1f5f9; cursor: not-allowed; font-weight: 700; font-family: monospace; color: #475569;" title="Employee Code cannot be modified once created" />' +
     '</div>' +
     '<div class="form-group" style="margin-bottom: 0;">' +
     '<label class="form-label">Employment Status *</label>' +
@@ -536,7 +536,6 @@ async function submitEditEmployee(e, empId) {
   const deductPesos = parseFloat(document.getElementById('editemp-deduct').value || '0');
 
   const payload = {
-    employeeCode: document.getElementById('editemp-code').value.trim(),
     firstName: document.getElementById('editemp-first').value.trim(),
     lastName: document.getElementById('editemp-last').value.trim(),
     email: document.getElementById('editemp-email').value.trim(),

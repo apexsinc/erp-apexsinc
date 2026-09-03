@@ -2594,15 +2594,9 @@ app.put(
       return c.json({ success: false, error: 'Employee not found' }, 404);
     }
 
-    // Check code collision if modified
-    const newCode = body.employeeCode ? body.employeeCode.toUpperCase().trim() : existing.employeeCode;
-    if (newCode !== existing.employeeCode) {
-      const codeTaken = await db.query.employees.findFirst({
-        where: eq(schema.employees.employeeCode, newCode),
-      });
-      if (codeTaken && codeTaken.id !== id) {
-        return c.json({ success: false, error: 'An employee with that employee code already exists' }, 400);
-      }
+    // Disallow employee code changes once created
+    if (body.employeeCode && body.employeeCode.toUpperCase().trim() !== existing.employeeCode) {
+      return c.json({ success: false, error: 'Employee code is permanent and cannot be modified once created' }, 400);
     }
 
     // Check email collision
@@ -2622,7 +2616,6 @@ app.put(
       db
         .update(schema.employees)
         .set({
-          employeeCode: newCode,
           firstName: body.firstName,
           lastName: body.lastName,
           email: body.email,
