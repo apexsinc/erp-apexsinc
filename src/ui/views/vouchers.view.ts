@@ -506,7 +506,7 @@ function handleVoucherCsvSelected(input) {
 }
 
 function parseVoucherCsvText(csvText, filename) {
-  const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  const lines = (csvText || '').replace(new RegExp('\\r', 'g'), '').split(String.fromCharCode(10)).filter((l) => l.trim().length > 0);
   if (lines.length < 2) {
     showToast('CSV file is empty or missing data rows', 'warning');
     return;

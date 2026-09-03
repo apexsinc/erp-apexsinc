@@ -1828,10 +1828,10 @@ function renderOfficialVoucherSlipMarkup(v) {
     const amtStr = (((it.amountCents || 0) / 100)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     itemRowsHtml +=
       '<tr style="height: 20px;">' +
-      '<td style="border: 1px solid #000000; padding: 2px 6px; font-size: 0.78rem; font-family: \'Inter\', sans-serif;">' + escapeHtml(it.invoiceNo || '') + '</td>' +
-      '<td style="border: 1px solid #000000; padding: 2px 6px; font-size: 0.78rem; font-family: \'Inter\', sans-serif;">' + escapeHtml(it.description || '') + '</td>' +
+      '<td style="border: 1px solid #000000; padding: 2px 6px; font-size: 0.78rem; font-family: Inter, sans-serif;">' + escapeHtml(it.invoiceNo || '') + '</td>' +
+      '<td style="border: 1px solid #000000; padding: 2px 6px; font-size: 0.78rem; font-family: Inter, sans-serif;">' + escapeHtml(it.description || '') + '</td>' +
       '<td style="border: 1px solid #000000; padding: 2px 6px; text-align: center; font-size: 0.78rem; font-weight: 600;">' + curSymbol + '</td>' +
-      '<td style="border: 1px solid #000000; padding: 2px 6px; text-align: right; font-size: 0.78rem; font-family: \'JetBrains Mono\', monospace;">' + amtStr + '</td>' +
+      '<td style="border: 1px solid #000000; padding: 2px 6px; text-align: right; font-size: 0.78rem; font-family: JetBrains Mono, monospace;">' + amtStr + '</td>' +
       '</tr>';
   }
 
@@ -1872,14 +1872,14 @@ function renderOfficialVoucherSlipMarkup(v) {
   });
 
   return (
-    '<div class="official-voucher-sheet" style="background: #ffffff; color: #000000; padding: 1rem 1.25rem; font-family: \'Inter\', Arial, sans-serif; border: none; max-width: 760px; margin: 0 auto; box-shadow: none;">' +
+    '<div class="official-voucher-sheet" style="background: #ffffff; color: #000000; padding: 1rem 1.25rem; font-family: Inter, Arial, sans-serif; border: none; max-width: 760px; margin: 0 auto; box-shadow: none;">' +
     '<!-- APEXS Header with Official Brand Logo -->' +
     '<div style="display: flex; justify-content: center; align-items: center; gap: 1.15rem; margin-bottom: 0.35rem;">' +
     '<img src="/assets/logo.png" alt="APEXS, INC. Logo" style="height: 48px; width: auto; object-fit: contain; flex-shrink: 0;" />' +
     '<div>' +
     '<div style="font-size: 1.28rem; font-weight: 900; color: #dc2626; font-family: Arial, Helvetica, sans-serif; letter-spacing: 0.5px; line-height: 1.1;">APEXS, INC.</div>' +
     '<div style="font-size: 0.76rem; font-weight: 700; font-style: italic; color: #0f172a; line-height: 1.15;">Applied Expert Systems & Software, Inc.</div>' +
-    '<div style="font-size: 0.7rem; font-style: italic; color: #0284c7; font-weight: 600; font-family: \'Georgia\', serif; line-height: 1.15;">“We put technology to work for you”</div>' +
+    '<div style="font-size: 0.7rem; font-style: italic; color: #0284c7; font-weight: 600; font-family: Georgia, serif; line-height: 1.15;">“We put technology to work for you”</div>' +
     '</div>' +
     '</div>' +
     '<!-- Address & Contact -->' +
@@ -1897,7 +1897,7 @@ function renderOfficialVoucherSlipMarkup(v) {
     '<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">' +
     '<div style="display: flex; align-items: baseline;">' +
     '<span style="font-weight: 700; font-size: 0.8rem; margin-right: 0.4rem;">No.</span>' +
-    '<span style="border-bottom: 1.5px solid #000000; min-width: 140px; text-align: center; font-weight: 800; font-size: 0.9rem; font-family: \'JetBrains Mono\', Arial, monospace;">' +
+    '<span style="border-bottom: 1.5px solid #000000; min-width: 140px; text-align: center; font-weight: 800; font-size: 0.9rem; font-family: JetBrains Mono, Arial, monospace;">' +
     escapeHtml(v.voucherNumber || '') +
     '</span>' +
     '</div>' +
@@ -1928,7 +1928,7 @@ function renderOfficialVoucherSlipMarkup(v) {
     '<tr style="height: 22px; font-weight: 700; border-top: 1.5px solid #000000;">' +
     '<td colspan="2" style="border: 1px solid #000000; border-right: none; padding: 2px 6px;"></td>' +
     '<td style="border: 1px solid #000000; border-left: 1px solid #000000; padding: 2px 6px; text-align: center; font-size: 0.8rem;">' + curLabel + '</td>' +
-    '<td style="border: 1px solid #000000; padding: 2px 6px; text-align: right; font-size: 0.84rem; font-family: \'JetBrains Mono\', monospace;">' + totalFormatted + '</td>' +
+    '<td style="border: 1px solid #000000; padding: 2px 6px; text-align: right; font-size: 0.84rem; font-family: JetBrains Mono, monospace;">' + totalFormatted + '</td>' +
     '</tr>' +
     '</tbody>' +
     '</table>' +

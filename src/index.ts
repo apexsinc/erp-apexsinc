@@ -67,6 +67,7 @@ app.use('/api/inventory/*', authMiddleware, requireModule('inventory'));
 app.use('/api/purchasing/*', authMiddleware, requireModule('purchasing'));
 app.use('/api/inbound/*', authMiddleware, requireModule('inbound'));
 app.use('/api/sales/*', authMiddleware, requireModule('sales'));
+app.use('/api/outbound/*', authMiddleware, requireModule('outbound'));
 app.use('/api/accounting/vouchers/*', authMiddleware, async (c, next) => {
   const user = c.get('authUser');
   if (!user) return c.json({ success: false, error: 'Authentication required' }, 401);

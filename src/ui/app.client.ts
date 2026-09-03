@@ -156,7 +156,7 @@ function generateCsvString(headers, rows) {
   return [
     headers.map(escapeCell).join(','),
     ...rows.map((row) => row.map(escapeCell).join(',')),
-  ].join('\r\n');
+  ].join(String.fromCharCode(13, 10));
 }
 
 function exportToCsv(filename, headers, rows) {
