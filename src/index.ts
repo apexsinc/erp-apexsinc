@@ -1840,10 +1840,9 @@ app.post(
 /* VOUCHER CRUD & ADMIN APPROVAL / DECLINE / RESTORE WORKFLOW                 */
 /* ========================================================================== */
 
-// PATCH /api/accounting/vouchers/:id - Edit Voucher (Admin only)
+// PATCH /api/accounting/vouchers/:id - Edit Voucher
 app.patch(
   '/api/accounting/vouchers/:id',
-  requireAdmin,
   zValidator(
     'json',
     z.object({
@@ -1960,8 +1959,8 @@ app.patch(
   }
 );
 
-// POST /api/accounting/vouchers/:id/approve - Approve Voucher (Admin only)
-app.post('/api/accounting/vouchers/:id/approve', requireAdmin, async (c) => {
+// POST /api/accounting/vouchers/:id/approve - Approve Voucher
+app.post('/api/accounting/vouchers/:id/approve', requireModule('accounting', 'update'), async (c) => {
   const db = createDbClient(c.env.DB);
   const id = c.req.param('id');
 
@@ -2051,8 +2050,8 @@ app.post('/api/accounting/vouchers/:id/approve', requireAdmin, async (c) => {
   }
 });
 
-// POST /api/accounting/vouchers/:id/decline - Decline / Void Voucher (Admin only)
-app.post('/api/accounting/vouchers/:id/decline', requireAdmin, async (c) => {
+// POST /api/accounting/vouchers/:id/decline - Decline / Void Voucher
+app.post('/api/accounting/vouchers/:id/decline', requireModule('accounting', 'update'), async (c) => {
   const db = createDbClient(c.env.DB);
   const id = c.req.param('id');
 
@@ -2081,8 +2080,8 @@ app.post('/api/accounting/vouchers/:id/decline', requireAdmin, async (c) => {
   return c.json({ success: true, message: 'Voucher declined and voided. Ledger balance adjusted.' });
 });
 
-// POST /api/accounting/vouchers/:id/restore - Restore Declined / Voided Voucher (Admin only)
-app.post('/api/accounting/vouchers/:id/restore', requireAdmin, async (c) => {
+// POST /api/accounting/vouchers/:id/restore - Restore Declined / Voided Voucher
+app.post('/api/accounting/vouchers/:id/restore', requireModule('accounting', 'update'), async (c) => {
   const db = createDbClient(c.env.DB);
   const id = c.req.param('id');
 
@@ -2169,8 +2168,8 @@ app.post('/api/accounting/vouchers/:id/restore', requireAdmin, async (c) => {
   }
 });
 
-// DELETE /api/accounting/vouchers/:id - Delete Voucher Permanently (Admin only)
-app.delete('/api/accounting/vouchers/:id', requireAdmin, async (c) => {
+// DELETE /api/accounting/vouchers/:id - Delete Voucher Permanently
+app.delete('/api/accounting/vouchers/:id', requireModule('accounting', 'delete'), async (c) => {
   const db = createDbClient(c.env.DB);
   const id = c.req.param('id');
 
@@ -3736,10 +3735,10 @@ app.get('/api/settings/:category', async (c) => {
   return c.json({ success: true, category, settings: categorySettings });
 });
 
-// PUT /api/settings/:key - Update a specific system setting (Admin only)
+// PUT /api/settings/:key - Update a specific system setting
 app.put(
   '/api/settings/:key',
-  requireAdmin,
+  requireModule('settings', 'update'),
   zValidator(
     'json',
     z.object({
@@ -3781,10 +3780,10 @@ app.put(
   }
 );
 
-// PUT /api/settings/category/:category - Bulk update settings in a category (Admin only)
+// PUT /api/settings/category/:category - Bulk update settings in a category
 app.put(
   '/api/settings/category/:category',
-  requireAdmin,
+  requireModule('settings', 'update'),
   zValidator(
     'json',
     z.object({
