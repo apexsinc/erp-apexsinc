@@ -1114,9 +1114,9 @@ export const COMPONENTS_CSS = `
   }
 
   .official-voucher-sheet {
-    border: 1.5px solid #000000 !important;
+    border: none !important;
     box-shadow: none !important;
-    padding: 8px 12px !important;
+    padding: 6px 10px !important;
     margin: 0 auto !important;
     width: 100% !important;
     max-width: 100% !important;

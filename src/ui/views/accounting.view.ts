@@ -1883,7 +1883,7 @@ function openVoucherSlipModal(voucherId) {
   });
 
   const body = \`
-    <div class="official-voucher-sheet" style="background: #ffffff; color: #000000; padding: 1rem 1.25rem; font-family: 'Inter', Arial, sans-serif; border: 1.5px solid #000000; border-radius: 4px; max-width: 760px; margin: 0 auto; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+    <div class="official-voucher-sheet" style="background: #ffffff; color: #000000; padding: 1rem 1.25rem; font-family: 'Inter', Arial, sans-serif; border: none; max-width: 760px; margin: 0 auto; box-shadow: none;">
       
       <!-- APEXS Header with Official Brand Logo -->
       <div style="display: flex; justify-content: center; align-items: center; gap: 1.15rem; margin-bottom: 0.35rem;">
