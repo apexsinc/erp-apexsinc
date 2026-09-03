@@ -1036,14 +1036,14 @@ export const COMPONENTS_CSS = `
 
 @media print {
   @page {
-    size: A4 portrait;
-    margin: 8mm 10mm;
+    size: auto;
+    margin: 4mm 6mm;
   }
 
   html, body {
     background: #ffffff !important;
     color: #000000 !important;
-    font-size: 11pt !important;
+    font-size: 10pt !important;
     margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
@@ -1114,13 +1114,29 @@ export const COMPONENTS_CSS = `
   }
 
   .official-voucher-sheet {
-    border: none !important;
+    border: 1.5px solid #000000 !important;
     box-shadow: none !important;
-    padding: 0 !important;
+    padding: 8px 12px !important;
     margin: 0 auto !important;
     width: 100% !important;
     max-width: 100% !important;
     page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    font-size: 8.5pt !important;
+    box-sizing: border-box !important;
+  }
+
+  .official-voucher-sheet table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .official-voucher-sheet th,
+  .official-voucher-sheet td {
+    border: 1px solid #000000 !important;
+    padding: 2px 5px !important;
   }
 
   /* When printing financial reports directly from the main view (no modal) */

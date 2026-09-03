@@ -1827,11 +1827,11 @@ function openVoucherSlipModal(voucherId) {
   const itemRowsHtml = items
     .map(
       (it) => \`
-      <tr style="height: 26px;">
-        <td style="border: 1px solid #000000; padding: 4px 8px; font-size: 0.88rem; font-family: 'Inter', sans-serif;">\${it.invoiceNo || ''}</td>
-        <td style="border: 1px solid #000000; padding: 4px 8px; font-size: 0.88rem; font-family: 'Inter', sans-serif;">\${it.description || ''}</td>
-        <td style="border: 1px solid #000000; padding: 4px 8px; text-align: center; font-size: 0.88rem; font-weight: 600;">\${curSymbol}</td>
-        <td style="border: 1px solid #000000; padding: 4px 8px; text-align: right; font-size: 0.88rem; font-family: 'JetBrains Mono', monospace;">
+      <tr style="height: 20px;">
+        <td style="border: 1px solid #000000; padding: 2px 6px; font-size: 0.78rem; font-family: 'Inter', sans-serif;">\${it.invoiceNo || ''}</td>
+        <td style="border: 1px solid #000000; padding: 2px 6px; font-size: 0.78rem; font-family: 'Inter', sans-serif;">\${it.description || ''}</td>
+        <td style="border: 1px solid #000000; padding: 2px 6px; text-align: center; font-size: 0.78rem; font-weight: 600;">\${curSymbol}</td>
+        <td style="border: 1px solid #000000; padding: 2px 6px; text-align: right; font-size: 0.78rem; font-family: 'JetBrains Mono', monospace;">
           \${(it.amountCents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </td>
       </tr>
@@ -1841,11 +1841,11 @@ function openVoucherSlipModal(voucherId) {
 
   // End delimiter row
   const delimiterRowHtml = \`
-    <tr style="height: 24px;">
-      <td style="border: 1px solid #000000; padding: 3px 8px;"></td>
-      <td style="border: 1px solid #000000; padding: 3px 8px; text-align: center; font-size: 0.82rem; font-style: italic; color: #1e293b;">-- End Nothing else --</td>
-      <td style="border: 1px solid #000000; padding: 3px 8px;"></td>
-      <td style="border: 1px solid #000000; padding: 3px 8px;"></td>
+    <tr style="height: 18px;">
+      <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
+      <td style="border: 1px solid #000000; padding: 2px 6px; text-align: center; font-size: 0.72rem; font-style: italic; color: #1e293b;">-- End Nothing else --</td>
+      <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
+      <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
     </tr>
   \`;
 
@@ -1853,26 +1853,26 @@ function openVoucherSlipModal(voucherId) {
   const remarks = v.notes ? \`(\${v.notes.toUpperCase()})\` : v.paymentMethod === 'CREDIT_CARD' ? '(CORPORATE CREDIT CARD PAYMENT)' : '';
   const remarksRowHtml = remarks
     ? \`
-    <tr style="height: 24px;">
-      <td style="border: 1px solid #000000; padding: 3px 8px;"></td>
-      <td style="border: 1px solid #000000; padding: 3px 8px; text-align: center; font-size: 0.8rem; font-weight: 700; color: #000000;">\${remarks}</td>
-      <td style="border: 1px solid #000000; padding: 3px 8px;"></td>
-      <td style="border: 1px solid #000000; padding: 3px 8px;"></td>
+    <tr style="height: 18px;">
+      <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
+      <td style="border: 1px solid #000000; padding: 2px 6px; text-align: center; font-size: 0.72rem; font-weight: 700; color: #000000;">\${remarks}</td>
+      <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
+      <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
     </tr>
   \`
     : '';
 
-  // Standard blank rows to maintain official paper pad height
+  // Standard blank rows to maintain official paper pad height without overflowing half sheet
   const renderedCount = items.length + 1 + (remarks ? 1 : 0);
-  const fillerCount = Math.max(0, 6 - renderedCount);
+  const fillerCount = Math.max(0, 3 - renderedCount);
   let fillerRowsHtml = '';
   for (let i = 0; i < fillerCount; i++) {
     fillerRowsHtml += \`
-      <tr style="height: 24px;">
-        <td style="border: 1px solid #000000; padding: 3px 8px;"></td>
-        <td style="border: 1px solid #000000; padding: 3px 8px;"></td>
-        <td style="border: 1px solid #000000; padding: 3px 8px;"></td>
-        <td style="border: 1px solid #000000; padding: 3px 8px;"></td>
+      <tr style="height: 18px;">
+        <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
+        <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
+        <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
+        <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
       </tr>
     \`;
   }
@@ -1883,52 +1883,55 @@ function openVoucherSlipModal(voucherId) {
   });
 
   const body = \`
-    <div class="official-voucher-sheet" style="background: #ffffff; color: #000000; padding: 2rem; font-family: 'Inter', Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 4px; max-width: 840px; margin: 0 auto; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+    <div class="official-voucher-sheet" style="background: #ffffff; color: #000000; padding: 1rem 1.25rem; font-family: 'Inter', Arial, sans-serif; border: 1.5px solid #000000; border-radius: 4px; max-width: 760px; margin: 0 auto; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
       
       <!-- APEXS Header with Official Brand Logo -->
-      <div style="display: flex; justify-content: center; align-items: center; gap: 1.5rem; margin-bottom: 0.75rem;">
-        <img src="/assets/logo.png" alt="APEXS, INC. Logo" style="height: 78px; width: auto; object-fit: contain; flex-shrink: 0;" />
+      <div style="display: flex; justify-content: center; align-items: center; gap: 1.15rem; margin-bottom: 0.35rem;">
+        <img src="/assets/logo.png" alt="APEXS, INC. Logo" style="height: 48px; width: auto; object-fit: contain; flex-shrink: 0;" />
         <div>
-          <div style="font-size: 1.55rem; font-weight: 900; color: #dc2626; font-family: Arial, Helvetica, sans-serif; letter-spacing: 0.5px; line-height: 1.1;">APEXS, INC.</div>
-          <div style="font-size: 0.88rem; font-weight: 700; font-style: italic; color: #0f172a; line-height: 1.2;">Applied Expert Systems & Software, Inc.</div>
-          <div style="font-size: 0.82rem; font-style: italic; color: #0284c7; font-weight: 600; font-family: 'Georgia', serif;">“We put technology to work for you”</div>
+          <div style="font-size: 1.28rem; font-weight: 900; color: #dc2626; font-family: Arial, Helvetica, sans-serif; letter-spacing: 0.5px; line-height: 1.1;">APEXS, INC.</div>
+          <div style="font-size: 0.76rem; font-weight: 700; font-style: italic; color: #0f172a; line-height: 1.15;">Applied Expert Systems & Software, Inc.</div>
+          <div style="font-size: 0.7rem; font-style: italic; color: #0284c7; font-weight: 600; font-family: 'Georgia', serif; line-height: 1.15;">“We put technology to work for you”</div>
         </div>
       </div>
 
       <!-- Address & Contact -->
-      <div style="text-align: center; font-size: 0.78rem; font-weight: 600; color: #1e293b; margin-bottom: 1.25rem;">
-        <div>Suite 714 EGI City by the Sea, Maribago, Lapu-Lapu City 6015</div>
-        <div>Telefax# 495-2106</div>
+      <div style="text-align: center; font-size: 0.68rem; font-weight: 600; color: #1e293b; margin-bottom: 0.45rem; line-height: 1.25;">
+        <div>Suite 714 EGI City by the Sea, Maribago, Lapu-Lapu City 6015 | Telefax# 495-2106</div>
       </div>
 
-      <!-- Top Right Voucher Number & Metadata Rows -->
-      <div style="display: flex; justify-content: flex-end; align-items: baseline; margin-bottom: 0.5rem;">
-        <div style="font-weight: 700; font-size: 0.95rem; margin-right: 0.5rem;">No.</div>
-        <div style="border-bottom: 1.5px solid #000000; min-width: 190px; text-align: center; font-weight: 800; font-size: 1.05rem; font-family: 'JetBrains Mono', Arial, monospace;">
-          \${v.voucherNumber}
-        </div>
-      </div>
-
-      <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 1rem;">
-        <div style="display: flex; align-items: baseline; flex: 1; max-width: 65%;">
-          <span style="font-weight: 700; font-size: 0.9rem; margin-right: 0.5rem; white-space: nowrap;">Pay to:</span>
-          <span style="border-bottom: 1.5px solid #000000; flex: 1; font-weight: 700; font-size: 0.95rem; text-transform: uppercase; padding-left: 0.25rem;">
+      <!-- Top Voucher Number, Date & Pay to Rows -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 0.45rem; font-size: 0.8rem;">
+        <div style="display: flex; align-items: baseline; flex: 1; margin-right: 1.25rem;">
+          <span style="font-weight: 700; font-size: 0.82rem; margin-right: 0.4rem; white-space: nowrap;">Pay to:</span>
+          <span style="border-bottom: 1.5px solid #000000; flex: 1; font-weight: 700; font-size: 0.86rem; text-transform: uppercase; padding-left: 0.25rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
             \${v.recipient || v.recipientName || '-'}
           </span>
         </div>
-        <div style="border-bottom: 1.5px solid #000000; min-width: 190px; text-align: center; font-weight: 700; font-size: 0.9rem;">
-          \${formattedDate}
+        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
+          <div style="display: flex; align-items: baseline;">
+            <span style="font-weight: 700; font-size: 0.8rem; margin-right: 0.4rem;">No.</span>
+            <span style="border-bottom: 1.5px solid #000000; min-width: 140px; text-align: center; font-weight: 800; font-size: 0.9rem; font-family: 'JetBrains Mono', Arial, monospace;">
+              \${v.voucherNumber}
+            </span>
+          </div>
+          <div style="display: flex; align-items: baseline;">
+            <span style="font-weight: 700; font-size: 0.78rem; margin-right: 0.4rem;">Date:</span>
+            <span style="border-bottom: 1.5px solid #000000; min-width: 140px; text-align: center; font-weight: 700; font-size: 0.78rem;">
+              \${formattedDate}
+            </span>
+          </div>
         </div>
       </div>
 
       <!-- Official Voucher Line Items Grid -->
-      <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000000; margin-bottom: 2rem;">
+      <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000000; margin-bottom: 0.45rem;">
         <thead>
-          <tr style="background: #ffffff; border-bottom: 1.5px solid #000000; height: 30px;">
-            <th style="border: 1px solid #000000; width: 20%; padding: 4px 8px; font-weight: 700; font-size: 0.88rem; text-align: center;">Invoice No</th>
-            <th style="border: 1px solid #000000; width: 54%; padding: 4px 8px; font-weight: 700; font-size: 0.88rem; text-align: center;">Account/Description</th>
-            <th style="border: 1px solid #000000; width: 6%; padding: 4px 8px; font-weight: 700; font-size: 0.88rem; text-align: center;">₱</th>
-            <th style="border: 1px solid #000000; width: 20%; padding: 4px 8px; font-weight: 700; font-size: 0.88rem; text-align: center;">Amount</th>
+          <tr style="background: #ffffff; border-bottom: 1.5px solid #000000; height: 22px;">
+            <th style="border: 1px solid #000000; width: 20%; padding: 2px 6px; font-weight: 700; font-size: 0.76rem; text-align: center;">Invoice No</th>
+            <th style="border: 1px solid #000000; width: 54%; padding: 2px 6px; font-weight: 700; font-size: 0.76rem; text-align: center;">Account/Description</th>
+            <th style="border: 1px solid #000000; width: 6%; padding: 2px 6px; font-weight: 700; font-size: 0.76rem; text-align: center;">₱</th>
+            <th style="border: 1px solid #000000; width: 20%; padding: 2px 6px; font-weight: 700; font-size: 0.76rem; text-align: center;">Amount</th>
           </tr>
         </thead>
         <tbody>
@@ -1937,42 +1940,42 @@ function openVoucherSlipModal(voucherId) {
           \${remarksRowHtml}
           \${fillerRowsHtml}
           <!-- Total Summary Row -->
-          <tr style="height: 30px; font-weight: 700; border-top: 1.5px solid #000000;">
-            <td colspan="2" style="border: 1px solid #000000; border-right: none; padding: 4px 8px;"></td>
-            <td style="border: 1px solid #000000; border-left: 1px solid #000000; padding: 4px 8px; text-align: center; font-size: 0.92rem;">\${curLabel}</td>
-            <td style="border: 1px solid #000000; padding: 4px 8px; text-align: right; font-size: 0.95rem; font-family: 'JetBrains Mono', monospace;">\${totalFormatted}</td>
+          <tr style="height: 22px; font-weight: 700; border-top: 1.5px solid #000000;">
+            <td colspan="2" style="border: 1px solid #000000; border-right: none; padding: 2px 6px;"></td>
+            <td style="border: 1px solid #000000; border-left: 1px solid #000000; padding: 2px 6px; text-align: center; font-size: 0.8rem;">\${curLabel}</td>
+            <td style="border: 1px solid #000000; padding: 2px 6px; text-align: right; font-size: 0.84rem; font-family: 'JetBrains Mono', monospace;">\${totalFormatted}</td>
           </tr>
         </tbody>
       </table>
 
       <!-- 4-Column Official Signatories & Audit Section -->
-      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 1.5rem; text-align: left; font-size: 0.78rem;">
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-top: 0.35rem; text-align: left; font-size: 0.72rem;">
         <!-- Column 1: Prepared by -->
         <div>
-          <div style="font-size: 0.75rem; color: #1e293b; margin-bottom: 0.25rem;">Prepared by:</div>
-          <div style="height: 38px; border-bottom: 1.5px solid #000000; margin-bottom: 0.35rem;"></div>
-          <div style="font-weight: 700; text-align: center; font-size: 0.8rem; color: #000000;">\${sig.preparedBy || 'Administrator'}</div>
+          <div style="font-size: 0.66rem; color: #1e293b; margin-bottom: 0.15rem;">Prepared by:</div>
+          <div style="height: 22px; border-bottom: 1.5px solid #000000; margin-bottom: 0.2rem;"></div>
+          <div style="font-weight: 700; text-align: center; font-size: 0.72rem; color: #000000;">\${sig.preparedBy || 'Administrator'}</div>
         </div>
 
         <!-- Column 2: Certified Correct by -->
         <div>
-          <div style="font-size: 0.75rem; color: #1e293b; margin-bottom: 0.25rem;">Certified Correct by:</div>
-          <div style="height: 38px; border-bottom: 1.5px solid #000000; margin-bottom: 0.35rem;"></div>
-          <div style="font-weight: 700; text-align: center; font-size: 0.8rem; color: #000000;">\${sig.certifiedBy || 'Joy/Admin'}</div>
+          <div style="font-size: 0.66rem; color: #1e293b; margin-bottom: 0.15rem;">Certified Correct by:</div>
+          <div style="height: 22px; border-bottom: 1.5px solid #000000; margin-bottom: 0.2rem;"></div>
+          <div style="font-weight: 700; text-align: center; font-size: 0.72rem; color: #000000;">\${sig.certifiedBy || 'Joy/Admin'}</div>
         </div>
 
         <!-- Column 3: Approved by -->
         <div>
-          <div style="font-size: 0.75rem; color: #1e293b; margin-bottom: 0.25rem;">Approved by:</div>
-          <div style="height: 38px; border-bottom: 1.5px solid #000000; margin-bottom: 0.35rem;"></div>
-          <div style="font-weight: 700; text-align: center; font-size: 0.8rem; color: #000000;">\${sig.approvedBy || 'Kenneth Brown/CEO'}</div>
+          <div style="font-size: 0.66rem; color: #1e293b; margin-bottom: 0.15rem;">Approved by:</div>
+          <div style="height: 22px; border-bottom: 1.5px solid #000000; margin-bottom: 0.2rem;"></div>
+          <div style="font-weight: 700; text-align: center; font-size: 0.72rem; color: #000000;">\${sig.approvedBy || 'Kenneth Brown/CEO'}</div>
         </div>
 
         <!-- Column 4: Received Payment -->
         <div>
-          <div style="font-size: 0.75rem; color: #1e293b; margin-bottom: 0.25rem;">Received Payment:</div>
-          <div style="height: 38px; border-bottom: 1.5px solid #000000; margin-bottom: 0.35rem;"></div>
-          <div style="font-size: 0.7rem; text-align: center; color: #334155;">\${sig.receivedBy || 'Signature over printed name/Date'}</div>
+          <div style="font-size: 0.66rem; color: #1e293b; margin-bottom: 0.15rem;">Received Payment:</div>
+          <div style="height: 22px; border-bottom: 1.5px solid #000000; margin-bottom: 0.2rem;"></div>
+          <div style="font-size: 0.62rem; text-align: center; color: #334155;">\${sig.receivedBy || 'Signature over printed name/Date'}</div>
         </div>
       </div>
     </div>
