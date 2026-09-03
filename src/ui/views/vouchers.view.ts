@@ -247,7 +247,7 @@ function renderVouchersContent(container, vouchers) {
       <div style="padding: 1.25rem 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; border-bottom: 1px solid var(--border-color);">
         <div>
           <h2 style="font-size: 1.25rem; font-weight: 800; color: #0f172a; margin-bottom: 0.2rem; display: flex; align-items: center; gap: 0.5rem;">
-            <span>🧾 Payment Vouchers (PV)</span>
+            <span>🧾 Vouchers</span>
           </h2>
           <p style="font-size: 0.84rem; color: #64748b; margin-bottom: 0;">
             Manage and issue official corporate payment vouchers, vendor disbursements, and payout slips.
@@ -259,7 +259,7 @@ function renderVouchersContent(container, vouchers) {
           </button>
           <button type="button" class="btn btn-primary btn-sm" onclick="openNewPaymentVoucherModal()" style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.84rem; padding: 0.45rem 0.95rem;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 15px; height: 15px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            + Create Payment Voucher (PV)
+            + Create Voucher
           </button>
         </div>
       </div>

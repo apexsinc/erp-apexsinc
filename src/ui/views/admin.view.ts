@@ -46,7 +46,7 @@ const MODULE_CONFIG = {
     description: 'Warehouse dispatch, delivery receipts & inventory deduction on confirmed customer delivery',
   },
   vouchers: {
-    name: 'Payment Vouchers (PV)',
+    name: 'Vouchers',
     category: 'Finance & HR',
     route: '/vouchers',
     description: 'Corporate disbursements, payment vouchers, official slips & approvals',

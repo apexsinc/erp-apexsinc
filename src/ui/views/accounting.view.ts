@@ -1295,7 +1295,7 @@ function openNewPaymentVoucherModal() {
     </button>
   \`;
 
-  openModal('Create Payment Voucher (PV)', body, footer, 'xl');
+  openModal('Create Voucher', body, footer, 'xl');
 
   // Add initial item row & set intelligent defaults
   setTimeout(() => {
