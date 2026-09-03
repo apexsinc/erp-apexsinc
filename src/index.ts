@@ -2698,12 +2698,12 @@ app.delete('/api/payroll/employees/:id', async (c) => {
     return c.json({ success: false, error: 'Employee not found' }, 404);
   }
 
-  // Check if employee has payrollItems records
-  const payrollItem = await db.query.payrollItems.findFirst({
-    where: eq(schema.payrollItems.employeeId, id),
+  // Check if employee has payslips records
+  const payslip = await db.query.payslips.findFirst({
+    where: eq(schema.payslips.employeeId, id),
   });
 
-  if (payrollItem) {
+  if (payslip) {
     // Soft delete: set status to TERMINATED
     await db
       .update(schema.employees)
@@ -2719,7 +2719,7 @@ app.delete('/api/payroll/employees/:id', async (c) => {
 
     return c.json({
       success: true,
-      message: `Employee ${existing.employeeCode} has historical payroll records. Status updated to TERMINATED and login access revoked.`,
+      message: `Employee ${existing.employeeCode} has historical payroll payslips. Status updated to TERMINATED and login access revoked.`,
       softDeleted: true,
     });
   }

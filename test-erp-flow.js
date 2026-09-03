@@ -281,7 +281,55 @@ async function runTests() {
     }),
   });
   const employeeData = await employeeRes.json();
+  const empId = employeeData.data.id;
   console.log('Created Employee:', `${employeeData.data.firstName} ${employeeData.data.lastName}`, 'Net Salary:', `₱${employeeData.data.salaryStructures[0].netSalaryCents / 100}`);
+
+  // Test Update Employee (PUT)
+  const updateEmpRes = await fetch(`${baseUrl}/api/payroll/employees/${empId}`, {
+    method: 'PUT',
+    headers: authHeaders,
+    body: JSON.stringify({
+      firstName: 'Sarah',
+      lastName: 'Connor-Reese',
+      email: `sarah-${suffix}@apexsinc.com`,
+      phone: '+63 917 555 0199',
+      department: 'Advanced Engineering',
+      position: 'Principal Edge Architect',
+      status: 'ACTIVE',
+      baseSalaryCents: 1500000, // ₱15,000.00
+      allowancesCents: 100000,  // ₱1,000.00
+      deductionsCents: 200000,  // ₱2,000.00
+    }),
+  });
+  const updateEmpData = await updateEmpRes.json();
+  console.log('Updated Employee:', updateEmpData.data.lastName, 'New Net Salary:', `₱${updateEmpData.data.salaryStructures[0].netSalaryCents / 100}`);
+
+  // Test Get Single Employee (GET :id)
+  const getEmpRes = await fetch(`${baseUrl}/api/payroll/employees/${empId}`, { headers: authHeaders });
+  const getEmpData = await getEmpRes.json();
+  console.log('Fetched Employee Details:', getEmpData.data.employeeCode, getEmpData.data.department);
+
+  // Test Delete Temporary Employee
+  const tempEmpRes = await fetch(`${baseUrl}/api/payroll/employees`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      employeeCode: `TEMP-${suffix}`,
+      firstName: 'Temporary',
+      lastName: 'Contractor',
+      email: `temp-${suffix}@apexsinc.com`,
+      department: 'Operations',
+      position: 'Field Specialist',
+      baseSalaryCents: 500000,
+    }),
+  });
+  const tempEmpData = await tempEmpRes.json();
+  const deleteEmpRes = await fetch(`${baseUrl}/api/payroll/employees/${tempEmpData.data.id}`, {
+    method: 'DELETE',
+    headers: authHeaders,
+  });
+  const deleteEmpData = await deleteEmpRes.json();
+  console.log('Deleted Temporary Employee:', deleteEmpData.message);
 
   const runRes = await fetch(`${baseUrl}/api/payroll/runs`, {
     method: 'POST',
