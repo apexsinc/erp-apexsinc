@@ -434,6 +434,29 @@ function switchTab(tabName, updateHistory = true, keepQueryParams = true) {
   if (tabName === 'settings') loadSettings();
 }
 
+// Live Header Clock (Date with Time Seconds)
+function updateLiveClock() {
+  const clockEl = document.getElementById('live-system-clock');
+  if (!clockEl) return;
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US', {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+  const timeStr = now.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
+  clockEl.textContent = dateStr + ' • ' + timeStr;
+}
+
+updateLiveClock();
+setInterval(updateLiveClock, 1000);
+
 // Browser back/forward navigation support
 window.addEventListener('popstate', (e) => {
   if (state.user) {
@@ -445,9 +468,11 @@ window.addEventListener('popstate', (e) => {
 // Initial Boot
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
+    updateLiveClock();
     checkAuth();
   });
 } else {
+  updateLiveClock();
   checkAuth();
 }
 `;
