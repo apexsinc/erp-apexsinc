@@ -363,16 +363,9 @@ async function submitAddCategory(e) {
 
     closeModal();
     showToast('Category "' + json.data.name + '" added', 'success');
-    // Add Category is shared between the Directory Products tab and Inventory & Stock —
-    // refresh whichever one is actually open instead of always jumping to Directory.
-    if (state.activeTab === 'inventory') {
-      if (typeof inventoryCategoryTab !== 'undefined') inventoryCategoryTab = json.data.name;
-      loadInventory();
-    } else {
-      directoryActiveTab = 'products';
-      productsCategoryTab = json.data.name;
-      loadDirectory();
-    }
+    directoryActiveTab = 'products';
+    productsCategoryTab = json.data.name;
+    loadDirectory();
   } catch (err) {
     showToast(err.message, 'danger');
   }
@@ -413,14 +406,8 @@ async function submitChangeCategory(e, productId) {
 
     closeModal();
     showToast('Category updated for ' + json.data.name, 'success');
-    // Change Category is opened from both the Directory Products tab and
-    // Inventory & Stock — refresh whichever one is actually open.
-    if (state.activeTab === 'inventory') {
-      loadInventory();
-    } else {
-      directoryActiveTab = 'products';
-      loadDirectory();
-    }
+    directoryActiveTab = 'products';
+    loadDirectory();
   } catch (err) {
     showToast(err.message, 'danger');
   }

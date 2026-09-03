@@ -92,9 +92,8 @@ function renderInventoryContent(container) {
           </span>
         </td>
         <td><strong>\${formatCurrency(p.inventoryValuationCents)}</strong></td>
-        <td style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+        <td>
           <button class="btn btn-secondary btn-sm" onclick="openProductHistoryModal('\${p.id}', '\${p.name}')">History</button>
-          <button class="btn btn-secondary btn-sm" onclick="openChangeCategoryModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}', '\${(p.category || '').replace(/'/g, "\\\\'")}')">Category</button>
         </td>
       </tr>
     \`;
@@ -144,9 +143,9 @@ function renderInventoryContent(container) {
   renderInventoryCategoryTabs();
 }
 
-// Category pill filter for the Inventory table — same UX as the Directory
-// Products tab's category tabs, scoped to Inventory's own product list/state
-// so switching categories here never touches Directory's filter state.
+// Category pill filter for the Inventory table — view-only browsing by
+// category. Adding/changing a product's category is managed exclusively
+// from the Business Directory, not here.
 function renderInventoryCategoryTabs() {
   const wrap = document.getElementById('inventory-category-tabs');
   if (!wrap) return;
@@ -170,7 +169,6 @@ function renderInventoryCategoryTabs() {
   wrap.innerHTML = \`
     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; border-top: 1px dashed var(--border-color); padding-top: 1rem;">
       \${pillsHtml}
-      <button type="button" onclick="openAddCategoryModal()" style="padding: 0.4rem 0.9rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; border: 1px dashed var(--border-color); background: transparent; color: #64748b; cursor: pointer;">+ Add Category</button>
     </div>
   \`;
 }
