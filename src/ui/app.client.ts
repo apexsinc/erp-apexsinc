@@ -367,6 +367,9 @@ function getTabFromUrl() {
 function can(moduleName, action = 'read') {
   if (!state.user) return false;
   if (state.user.role === 'ADMIN') return true;
+  if (state.user.permissions && state.user.permissions[moduleName]) {
+    return Boolean(state.user.permissions[moduleName][action]);
+  }
   const crud = window.__ROLE_PERMISSIONS_CRUD__ || {};
   const roleMatrix = crud[state.user.role] || {};
   const modPerms = roleMatrix[moduleName];
@@ -376,12 +379,7 @@ function can(moduleName, action = 'read') {
 
 // Global Tab Router
 function switchTab(tabName, updateHistory = true, keepQueryParams = true) {
-  const permissions = window.__ROLE_PERMISSIONS__ || {};
-  const allowedTabs = ((state.user && permissions[state.user.role]) || []).slice();
-  if (state.user && state.user.role === 'ADMIN') {
-    allowedTabs.push('admin');
-    allowedTabs.push('settings');
-  }
+  const allowedTabs = typeof applyRolePermissions === 'function' ? applyRolePermissions() : ['dashboard'];
   if (!allowedTabs.includes(tabName)) {
     showToast('You do not have access to that module', 'danger');
     tabName = allowedTabs[0] || 'dashboard';

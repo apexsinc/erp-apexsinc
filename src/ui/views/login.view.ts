@@ -137,10 +137,27 @@ function checkAuth() {
     try {
       state.user = JSON.parse(savedUser);
       showApp();
+      refreshSessionUser();
       return;
     } catch (_) {}
   }
   showLogin();
+}
+
+async function refreshSessionUser() {
+  const token = localStorage.getItem('apexs_token');
+  if (!token) return;
+  try {
+    const res = await fetch('/api/auth/me', {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    const json = await res.json();
+    if (res.ok && json.success && json.user) {
+      state.user = json.user;
+      localStorage.setItem('apexs_user', JSON.stringify(json.user));
+      applyRolePermissions();
+    }
+  } catch (_) {}
 }
 
 function showLogin() {
@@ -172,29 +189,53 @@ function showApp() {
 
   const allowedTabs = applyRolePermissions();
   const urlTab = typeof getTabFromUrl === 'function' ? getTabFromUrl() : 'dashboard';
-  const initialTab = allowedTabs.includes(urlTab) ? urlTab : (allowedTabs.includes(state.activeTab) ? state.activeTab : allowedTabs[0]);
-  switchTab(initialTab || 'dashboard', true);
+  const initialTab = allowedTabs.includes(urlTab) ? urlTab : (allowedTabs.includes(state.activeTab) ? state.activeTab : (allowedTabs[0] || 'dashboard'));
+  switchTab(initialTab, true);
 }
 
-// Hides sidebar nav items the current user's role isn't permitted to view,
-// per the role -> module map computed server-side (src/lib/permissions.ts)
-// and injected as window.__ROLE_PERMISSIONS__. Returns the allowed tab list.
-//
-// 'admin' (Roles & Permissions) is intentionally NOT part of that editable
-// matrix — it's hardcoded to ADMIN only here so the permission-matrix UI
-// itself can never be used to grant access to the permission-matrix UI.
+// Hides sidebar nav items and section titles the current user isn't permitted to view.
+// Checks customized employee permissions first, then falls back to base role matrix.
 function applyRolePermissions() {
   const permissions = window.__ROLE_PERMISSIONS__ || {};
   const role = state.user && state.user.role;
-  const allowedTabs = ((role && permissions[role]) || []).slice();
+  let allowedTabs = [];
+
   if (role === 'ADMIN') {
-    allowedTabs.push('admin');
-    allowedTabs.push('settings');
+    allowedTabs = [
+      'dashboard', 'directory', 'inventory', 'purchasing', 'inbound',
+      'sales', 'outbound', 'vouchers', 'accounting', 'payroll',
+      'staff', 'admin', 'settings'
+    ];
+  } else if (state.user && state.user.permissions) {
+    // Check user's direct customized effective CRUD matrix
+    allowedTabs = Object.keys(state.user.permissions).filter(
+      (m) => state.user.permissions[m] && Boolean(state.user.permissions[m].read)
+    );
+  } else if (state.user && Array.isArray(state.user.visibleModules)) {
+    allowedTabs = state.user.visibleModules.slice();
+  } else {
+    allowedTabs = ((role && permissions[role]) || []).slice();
   }
 
+  // Update nav item visibility in sidebar
   document.querySelectorAll('.nav-item[data-tab]').forEach((item) => {
     const tab = item.dataset.tab;
-    item.style.display = allowedTabs.includes(tab) ? '' : 'none';
+    const isAllowed = allowedTabs.includes(tab);
+    item.style.display = isAllowed ? '' : 'none';
+  });
+
+  // Automatically hide category section titles if all child nav items in that section are hidden
+  document.querySelectorAll('.sidebar-menu .nav-section-title').forEach((titleEl) => {
+    let nextEl = titleEl.nextElementSibling;
+    let hasVisibleChild = false;
+    while (nextEl && !nextEl.classList.contains('nav-section-title')) {
+      if (nextEl.classList.contains('nav-item') && nextEl.style.display !== 'none') {
+        hasVisibleChild = true;
+        break;
+      }
+      nextEl = nextEl.nextElementSibling;
+    }
+    titleEl.style.display = hasVisibleChild ? '' : 'none';
   });
 
   return allowedTabs;

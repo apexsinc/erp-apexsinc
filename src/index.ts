@@ -225,6 +225,9 @@ app.post(
       expiresAt,
     });
 
+    const effective = await getUserEffectiveCrudMatrix(db, user.id, user.role);
+    const visibleModules = ALL_MODULES.filter((m) => effective.crud[m]?.read);
+
     return c.json({
       success: true,
       token,
@@ -233,6 +236,9 @@ app.post(
         email: user.email,
         name: user.name,
         role: user.role,
+        hasCustomPermissions: effective.hasCustomOverrides,
+        permissions: effective.crud,
+        visibleModules,
       },
     });
   }
