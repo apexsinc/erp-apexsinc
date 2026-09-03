@@ -18,6 +18,7 @@ async function runTests() {
     '/payroll',
     '/staff',
     '/admin',
+    '/permissions',
     '/settings',
     '/vouchers?tab=vouchers-pv',
     '/vouchers?tab=general-ledger',

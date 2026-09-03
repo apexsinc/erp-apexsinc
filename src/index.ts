@@ -91,6 +91,7 @@ app.get('/accounting', async (c) => c.html(await renderApp(c)));
 app.get('/payroll', async (c) => c.html(await renderApp(c)));
 app.get('/staff', async (c) => c.html(await renderApp(c)));
 app.get('/admin', async (c) => c.html(await renderApp(c)));
+app.get('/permissions', async (c) => c.html(await renderApp(c)));
 app.get('/settings', async (c) => c.html(await renderApp(c)));
 app.get('/settings/*', async (c) => c.html(await renderApp(c)));
 

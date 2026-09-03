@@ -299,6 +299,7 @@ const ROUTE_TAB_MAP = {
   '/payroll': 'payroll',
   '/staff': 'staff',
   '/admin': 'admin',
+  '/permissions': 'admin',
   '/settings': 'settings',
 };
 
@@ -313,7 +314,7 @@ const TAB_ROUTE_MAP = {
   accounting: '/vouchers',
   payroll: '/payroll',
   staff: '/staff',
-  admin: '/admin',
+  admin: '/permissions',
   settings: '/settings',
 };
 

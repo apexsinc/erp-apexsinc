@@ -1807,9 +1807,6 @@ function openVoucherSlipModal(voucherId) {
           <div style="font-size: 0.7rem; text-align: center; color: #334155;">\${sig.receivedBy || 'Signature over printed name/Date'}</div>
         </div>
       </div>
-
-      <!-- Bottom Heavy Border Bar -->
-      <div style="border-top: 3.5px solid #000000; margin-top: 1.5rem; width: 100%;"></div>
     </div>
   \`;
 

@@ -55,7 +55,7 @@ export function renderSidebar(): string {
         </a>
 
         <div class="nav-section-title">Administration</div>
-        <a class="nav-item" data-tab="admin" href="/admin" onclick="event.preventDefault(); switchTab('admin')">
+        <a class="nav-item" data-tab="admin" href="/permissions" onclick="event.preventDefault(); switchTab('admin')">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"></path><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"></path><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
           Roles & Permissions
         </a>
