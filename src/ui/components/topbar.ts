@@ -8,10 +8,12 @@ export function renderTopbar(): string {
       </div>
 
       <div class="top-actions">
-        <span class="badge badge-success" id="live-clock-badge" style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.75rem; letter-spacing: 0.02em;">
-          <span class="badge-dot"></span>
-          <span id="live-system-clock">Loading time...</span>
-        </span>
+        <div class="topbar-clock-badge" id="live-clock-badge" title="Live System Date & Time">
+          <span class="topbar-clock-dot"></span>
+          <span class="topbar-clock-date" id="live-system-date">Loading date...</span>
+          <span class="topbar-clock-divider"></span>
+          <span class="topbar-clock-time" id="live-system-time">--:--:--</span>
+        </div>
       </div>
     </header>
   `;

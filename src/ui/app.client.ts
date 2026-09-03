@@ -436,14 +436,16 @@ function switchTab(tabName, updateHistory = true, keepQueryParams = true) {
 
 // Live Header Clock (Date with Time Seconds)
 function updateLiveClock() {
+  const dateEl = document.getElementById('live-system-date');
+  const timeEl = document.getElementById('live-system-time');
   const clockEl = document.getElementById('live-system-clock');
-  if (!clockEl) return;
+
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-US', {
     weekday: 'short',
-    year: 'numeric',
     month: 'short',
     day: 'numeric',
+    year: 'numeric',
   });
   const timeStr = now.toLocaleTimeString('en-US', {
     hour: '2-digit',
@@ -451,7 +453,10 @@ function updateLiveClock() {
     second: '2-digit',
     hour12: true,
   });
-  clockEl.textContent = dateStr + ' • ' + timeStr;
+
+  if (dateEl) dateEl.textContent = dateStr;
+  if (timeEl) timeEl.textContent = timeStr;
+  if (clockEl) clockEl.textContent = dateStr + ' • ' + timeStr;
 }
 
 updateLiveClock();

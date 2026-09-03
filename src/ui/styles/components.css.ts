@@ -370,6 +370,70 @@ export const COMPONENTS_CSS = `
   gap: 0.75rem;
 }
 
+.topbar-clock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%);
+  border: 1.5px solid #cbd5e1;
+  border-radius: 9999px;
+  padding: 0.4rem 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.topbar-clock-badge:hover {
+  border-color: #94a3b8;
+  background: #ffffff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+}
+
+.topbar-clock-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25);
+  animation: pulse-clock-dot 2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+  flex-shrink: 0;
+}
+
+@keyframes pulse-clock-dot {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.35);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1.2);
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+  }
+}
+
+.topbar-clock-date {
+  font-weight: 700;
+  font-size: 0.84rem;
+  color: #1e293b;
+  letter-spacing: -0.01em;
+}
+
+.topbar-clock-divider {
+  width: 1.5px;
+  height: 14px;
+  background-color: #cbd5e1;
+  border-radius: 1px;
+}
+
+.topbar-clock-time {
+  font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: #0f172a;
+  letter-spacing: 0.03em;
+}
+
 .page-body {
   padding: 1.75rem;
   flex: 1;
