@@ -125,17 +125,18 @@ function handleVoucherSearch(query) {
 }
 
 function exportVouchersCsv() {
-  const headers = ['Voucher #', 'Date', 'Type', 'Payee / Recipient', 'Payment Method', 'Currency', 'Amount', 'Status', 'Notes'];
+  const headers = ['Voucher #', 'Date', 'Type', 'Payee / Recipient', 'Tag / Category', 'Remarks', 'Payment Method', 'Currency', 'Amount', 'Status'];
   const rows = (cachedVouchers || []).map((v) => [
     v.voucherNumber,
     new Date(v.voucherDate || v.createdAt).toISOString().slice(0, 10),
     v.voucherType,
     v.recipient || v.recipientName || '',
+    v.tag || (v.referenceType !== 'MANUAL' ? v.referenceType : '') || '',
+    v.notes || '',
     v.paymentMethod || 'STANDARD',
     v.currency || 'PHP',
     (v.amountCents / 100).toFixed(2),
     v.status || 'POSTED',
-    v.notes || '',
   ]);
   exportToCsv('vouchers_export_' + new Date().toISOString().slice(0, 10), headers, rows);
 }
@@ -299,6 +300,38 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
     const amountColor = isPayment ? '#dc2626' : isReceipt ? '#059669' : '#1d4ed8';
     const amountPrefix = isPayment ? '- ' : isReceipt ? '+ ' : '';
 
+    const rawDate = v.voucherDate || v.createdAt;
+    let formattedDate = '—';
+    if (rawDate) {
+      const d = new Date(rawDate);
+      if (!isNaN(d.getTime())) {
+        formattedDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      }
+    }
+
+    // Extract tag & category
+    let tag = v.tag || v.referenceType || '';
+    if (tag === 'MANUAL' || tag === 'DIRECT_RECEIPT') tag = '';
+    else if (tag === 'PURCHASE_ORDER') tag = 'PO Procurement';
+    else if (tag === 'PAYROLL_RUN') tag = 'Payroll';
+    else if (tag === 'INVOICE' || tag === 'SALES_INVOICE') tag = 'Sales Invoice';
+    else if (tag === 'CONTRA_TRANSFER') tag = 'Contra Transfer';
+
+    let tagBadgeHtml = '<span style="color: #cbd5e1; font-size: 0.82rem;">—</span>';
+    if (tag) {
+      tagBadgeHtml = \`<span class="badge badge-neutral" style="font-size: 0.72rem; padding: 0.15rem 0.5rem; background: #f1f5f9; border: 1px solid #e2e8f0; color: #475569; font-weight: 600; white-space: nowrap;"><span style="color: #94a3b8; margin-right: 2px;">#</span>\${tag}</span>\`;
+    }
+
+    // Extract remarks / notes with tooltip & ellipsis (...)
+    let remarksText = v.notes || '';
+    if (!remarksText && v.items && v.items.length > 0) {
+      remarksText = v.items.map((it) => it.description).filter(Boolean).join(', ');
+    }
+    const cleanRemarks = remarksText.trim();
+    const remarksHtml = cleanRemarks
+      ? \`<div style="max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.82rem; color: #64748b;" title="\${cleanRemarks.replace(/"/g, '&quot;')}">\${cleanRemarks}</div>\`
+      : \`<span style="color: #cbd5e1; font-size: 0.82rem;">—</span>\`;
+
     const status = v.status || 'POSTED';
     let statusBadgeClass = 'badge-success';
     let statusLabel = 'Posted';
@@ -348,18 +381,21 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
     if (canDelete) {
       adminButtonsHtml += \`
         <button type="button" class="icon-btn icon-btn-delete has-tooltip" data-tooltip="Delete Voucher" onclick="handleDeleteVoucher('\${v.id}', '\${v.voucherNumber}')" aria-label="Delete Voucher">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2 2v2"></path></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
         </button>
       \`;
     }
 
     return \`
       <tr>
-        <td><strong style="font-family: 'JetBrains Mono', monospace;">\${v.voucherNumber}</strong></td>
+        <td><strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #0f172a;">\${v.voucherNumber}</strong></td>
+        <td><span style="font-size: 0.83rem; color: #334155; font-weight: 500; white-space: nowrap;">\${formattedDate}</span></td>
         <td><span class="badge \${voucherTypeBadges[v.voucherType] || 'badge-neutral'}"><span class="badge-dot"></span>\${v.voucherType}</span></td>
-        <td><strong>\${v.recipient || '-'}</strong></td>
-        <td><span style="font-size: 0.8rem; color: #64748b;">\${(v.paymentMethod || 'STANDARD').replace('_', ' ')}</span></td>
-        <td style="font-weight: 700; color: \${amountColor}; font-family: 'JetBrains Mono', monospace;">
+        <td><strong style="font-size: 0.84rem; color: #1e293b;">\${v.recipient || '-'}</strong></td>
+        <td>\${tagBadgeHtml}</td>
+        <td>\${remarksHtml}</td>
+        <td><span style="font-size: 0.8rem; color: #64748b; white-space: nowrap;">\${(v.paymentMethod || 'STANDARD').replace('_', ' ')}</span></td>
+        <td style="font-weight: 700; color: \${amountColor}; font-family: 'JetBrains Mono', monospace; font-size: 0.88rem; white-space: nowrap;">
           \${amountPrefix}\${formatCurrency(v.amountCents, v.currency || 'PHP')}
         </td>
         <td><span class="badge \${statusBadgeClass}"><span class="badge-dot"></span>\${statusLabel}</span></td>
@@ -468,7 +504,9 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
               <th>Voucher #</th>
               <th>Date</th>
               <th>Type</th>
-              <th>Payee / Payer / Memo</th>
+              <th>Payee / Payer</th>
+              <th>Tag / Category</th>
+              <th>Remarks</th>
               <th>Payment Method</th>
               <th>Total Amount</th>
               <th>Status</th>
@@ -476,7 +514,7 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
             </tr>
           </thead>
           <tbody>
-            \${voucherRows || '<tr><td colspan="8" style="text-align: center; color: #64748b; padding: 2rem;">No vouchers found in this category.</td></tr>'}
+            \${voucherRows || '<tr><td colspan="10" style="text-align: center; color: #64748b; padding: 2.5rem;">No vouchers found in this category.</td></tr>'}
           </tbody>
         </table>
       </div>

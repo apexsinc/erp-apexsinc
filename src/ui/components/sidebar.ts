@@ -37,7 +37,7 @@ export function renderSidebar(): string {
         </a>
         <a class="nav-item" data-tab="outbound" href="/outbound" onclick="event.preventDefault(); switchTab('outbound')">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg>
-          Outbound Deliveries
+          Delivery Receipts (DR)
         </a>
 
         <div class="nav-section-title">Finance & HR</div>

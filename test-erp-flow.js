@@ -228,18 +228,31 @@ async function runTests() {
     headers: authHeaders,
   });
 
-  // Step 2: Ship items (decrements inventory, creates invoice)
-  const shipRes = await fetch(`${baseUrl}/api/outbound/orders/${soId}/ship`, {
+  // Step 2: Deliver items in outbound
+  const deliverRes = await fetch(`${baseUrl}/api/outbound/orders/${soId}/deliver`, {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify({
-      notes: 'Shipped via Express Courier',
+      notes: 'Delivered via Express Courier',
+      receivedBy: 'John Doe',
       items: [{ soItemId, quantityShipped: 20 }],
     }),
   });
-  const shipData = await shipRes.json();
-  console.log('Outbound Shipped & Invoiced:', shipData.invoiceNumber, 'Total:', `₱${shipData.totalAmountCents / 100}`);
-  const invoiceId = shipData.invoiceId;
+  const deliverData = await deliverRes.json();
+  console.log('Outbound Delivered (DR):', deliverData.drNumber);
+
+  // Step 3: Issue Sales Invoice
+  const invoiceRes = await fetch(`${baseUrl}/api/sales/invoices`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      salesOrderId: soId,
+      notes: 'Standard Net 30 terms',
+    }),
+  });
+  const invoiceData = await invoiceRes.json();
+  const invoiceId = invoiceData.data?.id || invoiceData.invoiceId;
+  console.log('Issued Invoice:', invoiceData.data?.invoiceNumber || invoiceData.invoiceNumber, 'Total:', `₱${(invoiceData.data?.totalAmountCents || 180000) / 100}`);
 
   // Check stock after shipping (100 - 20 = 80)
   const stockAfterSaleRes = await fetch(`${baseUrl}/api/inventory/products/${productId}`, {

@@ -305,6 +305,30 @@ async function getProductStockBalance(db: ReturnType<typeof createDbClient>, pro
   }, 0);
 }
 
+// Fetches every Delivery Receipt for a batch of Sales Orders in one query and
+// groups them by salesOrderId — used by both the Sales and Outbound list
+// endpoints so each SO card/row can show what's been delivered vs. invoiced
+// without a separate round trip per order.
+async function attachDeliveryReceipts<T extends { id: string }>(db: ReturnType<typeof createDbClient>, orders: T[]) {
+  const soIds = orders.map((o) => o.id);
+  const receipts = soIds.length
+    ? await db.query.deliveryReceipts.findMany({
+        where: (dr, { inArray }) => inArray(dr.salesOrderId, soIds),
+        with: { items: { with: { product: true } } },
+        orderBy: (dr, { desc }) => [desc(dr.createdAt)],
+      })
+    : [];
+
+  const bySoId = new Map<string, typeof receipts>();
+  for (const r of receipts) {
+    const list = bySoId.get(r.salesOrderId) || [];
+    list.push(r);
+    bySoId.set(r.salesOrderId, list);
+  }
+
+  return orders.map((o) => ({ ...o, deliveryReceipts: bySoId.get(o.id) || [] }));
+}
+
 // GET /api/inventory/categories - List product categories
 app.get('/api/inventory/categories', async (c) => {
   const db = createDbClient(c.env.DB);
@@ -998,7 +1022,7 @@ app.get('/api/sales/orders', async (c) => {
     orderBy: [desc(schema.salesOrders.createdAt)],
     with: { customer: true, items: { with: { product: true } }, invoices: true },
   });
-  return c.json({ success: true, data: orders });
+  return c.json({ success: true, data: await attachDeliveryReceipts(db, orders) });
 });
 
 // POST /api/sales/invoices/:id/receipt - Customer Payment Receipt
@@ -1086,18 +1110,126 @@ app.post(
   }
 );
 
+// POST /api/sales/invoices - Issue an Invoice for an already-delivered Delivery Receipt.
+// Delivery (Outbound) only ever moves stock; billing the customer for what
+// was delivered is this separate, later step, triggered on demand from Sales.
+app.post(
+  '/api/sales/invoices',
+  zValidator('json', z.object({ deliveryReceiptId: z.string().uuid() })),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const body = c.req.valid('json');
+
+    const dr = await db.query.deliveryReceipts.findFirst({
+      where: eq(schema.deliveryReceipts.id, body.deliveryReceiptId),
+      with: { items: true, salesOrder: true },
+    });
+    if (!dr) return c.json({ success: false, error: 'Delivery receipt not found' }, 404);
+    if (dr.invoiceId) return c.json({ success: false, error: 'This delivery receipt has already been invoiced' }, 400);
+
+    const invoiceId = crypto.randomUUID();
+    const invoiceNumber = 'INV-' + Date.now().toString().slice(-6);
+    const totalAmountCents = dr.items.reduce((acc, item) => acc + item.quantity * item.unitPriceCents, 0);
+
+    const invoiceInsert = db.insert(schema.invoices).values({
+      id: invoiceId,
+      invoiceNumber,
+      salesOrderId: dr.salesOrderId,
+      customerId: dr.salesOrder.customerId,
+      status: 'ISSUED',
+      currency: dr.salesOrder.currency,
+      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      totalAmountCents,
+      paidAmountCents: 0,
+    });
+
+    const batchStatements: any[] = [invoiceInsert];
+
+    for (const item of dr.items) {
+      batchStatements.push(
+        db.insert(schema.invoiceItems).values({
+          id: crypto.randomUUID(),
+          invoiceId,
+          productId: item.productId,
+          quantity: item.quantity,
+          unitPriceCents: item.unitPriceCents,
+          subtotalCents: item.quantity * item.unitPriceCents,
+        })
+      );
+    }
+
+    batchStatements.push(
+      db.update(schema.deliveryReceipts).set({ invoiceId }).where(eq(schema.deliveryReceipts.id, dr.id))
+    );
+
+    // Double-Entry Accounting: Accounts Receivable (1300) Debit, Sales Revenue (4010) Credit
+    const arAccount = await db.query.accounts.findFirst({ where: eq(schema.accounts.code, '1300') });
+    const revAccount = await db.query.accounts.findFirst({ where: eq(schema.accounts.code, '4010') });
+
+    if (arAccount && revAccount) {
+      const jvId = crypto.randomUUID();
+      const jvNumber = 'JV-SALES-' + Date.now().toString().slice(-6);
+
+      batchStatements.push(
+        db.insert(schema.journalVouchers).values({
+          id: jvId,
+          jvNumber,
+          description: 'Sales revenue recognition for ' + invoiceNumber,
+          referenceType: 'INVOICE',
+          referenceId: invoiceId,
+        })
+      );
+
+      batchStatements.push(
+        db.insert(schema.journalEntries).values({
+          id: crypto.randomUUID(),
+          voucherType: 'JOURNAL',
+          voucherId: jvId,
+          accountId: arAccount.id,
+          debitCents: totalAmountCents,
+          creditCents: 0,
+          description: 'Receivable from invoice ' + invoiceNumber,
+        })
+      );
+
+      batchStatements.push(
+        db.insert(schema.journalEntries).values({
+          id: crypto.randomUUID(),
+          voucherType: 'JOURNAL',
+          voucherId: jvId,
+          accountId: revAccount.id,
+          debitCents: 0,
+          creditCents: totalAmountCents,
+          description: 'Revenue from delivery ' + dr.drNumber,
+        })
+      );
+    }
+
+    await db.batch(batchStatements as any);
+
+    return c.json({
+      success: true,
+      message: 'Invoice issued for ' + dr.drNumber + '.',
+      invoiceId,
+      invoiceNumber,
+      totalAmountCents,
+    });
+  }
+);
+
 /* ========================================================================== */
-/* 5. OUTBOUND DELIVERY TRACKING MODULE                                       */
+/* 5. OUTBOUND DELIVERY TRACKING MODULE (Delivery Receipts)                   */
 /* Every confirmed SO shows up here for two-step fulfillment:                 */
 /*   1) Mark as Packed — the order is picked, boxed, ready to leave.          */
-/*   2) Confirm Shipped Quantity — validates against both remaining ordered   */
-/*      quantity and actual on-hand stock, decrements inventory, issues an    */
-/*      invoice for just the shipped value, and moves the SO to               */
-/*      PARTIALLY_FULFILLED or FULFILLED depending on whether every line is   */
-/*      now fully shipped.                                                    */
+/*   2) Confirm Delivery — validates against both remaining ordered quantity  */
+/*      and actual on-hand stock, decrements inventory, issues a numbered     */
+/*      Delivery Receipt (DR) for just the delivered quantity, and moves the  */
+/*      SO to PARTIALLY_FULFILLED or FULFILLED depending on whether every     */
+/*      line is now fully delivered. No invoice is created here — that's a    */
+/*      separate step from the Sales tab, billed against the DR on demand.   */
 /* ========================================================================== */
 
-// GET /api/outbound/orders - List SOs that have moved past DRAFT for shipment tracking
+// GET /api/outbound/orders - List SOs that have moved past DRAFT for delivery tracking
 app.get('/api/outbound/orders', async (c) => {
   const db = createDbClient(c.env.DB);
   const orders = await db.query.salesOrders.findMany({
@@ -1105,7 +1237,7 @@ app.get('/api/outbound/orders', async (c) => {
     orderBy: [desc(schema.salesOrders.createdAt)],
     with: { customer: true, items: { with: { product: true } } },
   });
-  return c.json({ success: true, data: orders });
+  return c.json({ success: true, data: await attachDeliveryReceipts(db, orders) });
 });
 
 // POST /api/outbound/orders/:id/mark-packed - Step 1: order picked and ready to ship
@@ -1131,13 +1263,15 @@ app.post('/api/outbound/orders/:id/mark-packed', async (c) => {
   return c.json({ success: true, data: updated });
 });
 
-// POST /api/outbound/orders/:id/ship - Step 2: confirm shipped quantity, invoice, decrement inventory
+// POST /api/outbound/orders/:id/deliver - Step 2: confirm delivered quantity, decrement inventory,
+// issue a Delivery Receipt. No invoice or journal entry is created here — see POST /api/sales/invoices.
 app.post(
-  '/api/outbound/orders/:id/ship',
+  '/api/outbound/orders/:id/deliver',
   zValidator(
     'json',
     z.object({
       notes: z.string().optional(),
+      receivedBy: z.string().optional(),
       items: z.array(
         z.object({
           soItemId: z.string().uuid(),
@@ -1157,11 +1291,11 @@ app.post(
     });
     if (!so) return c.json({ success: false, error: 'Sales Order not found' }, 404);
     if (so.status !== 'PACKED' && so.status !== 'PARTIALLY_FULFILLED') {
-      return c.json({ success: false, error: `Cannot ship from status ${so.status}. Mark as packed first.` }, 400);
+      return c.json({ success: false, error: `Cannot deliver from status ${so.status}. Mark as packed first.` }, 400);
     }
 
-    // Validate every line before writing anything: can't ship more than what's still
-    // owed on the order, and — unlike receiving inbound stock — can't ship more than
+    // Validate every line before writing anything: can't deliver more than what's still
+    // owed on the order, and — unlike receiving inbound stock — can't deliver more than
     // what's actually on hand.
     for (const shipItem of body.items) {
       const soItem = so.items.find((i) => i.id === shipItem.soItemId);
@@ -1170,7 +1304,7 @@ app.post(
       const remaining = soItem.quantity - soItem.quantityShipped;
       if (shipItem.quantityShipped > remaining) {
         return c.json(
-          { success: false, error: `Cannot ship ${shipItem.quantityShipped} of ${soItem.product.name}; only ${remaining} remain on this order.` },
+          { success: false, error: `Cannot deliver ${shipItem.quantityShipped} of ${soItem.product.name}; only ${remaining} remain on this order.` },
           400
         );
       }
@@ -1184,40 +1318,31 @@ app.post(
       }
     }
 
-    const invoiceId = crypto.randomUUID();
-    const invoiceNumber = 'INV-' + Date.now().toString().slice(-6);
-    const shippedTotalCents = body.items.reduce((acc, shipItem) => {
-      const soItem = so.items.find((i) => i.id === shipItem.soItemId)!;
-      return acc + shipItem.quantityShipped * soItem.unitPriceCents;
-    }, 0);
+    const deliveryReceiptId = crypto.randomUUID();
+    const drNumber = 'DR-' + Date.now().toString().slice(-6);
 
-    const invoiceInsert = db.insert(schema.invoices).values({
-      id: invoiceId,
-      invoiceNumber,
+    const drInsert = db.insert(schema.deliveryReceipts).values({
+      id: deliveryReceiptId,
+      drNumber,
       salesOrderId: so.id,
-      customerId: so.customerId,
-      status: 'ISSUED',
-      currency: so.currency,
-      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      totalAmountCents: shippedTotalCents,
-      paidAmountCents: 0,
+      receivedBy: body.receivedBy,
       notes: body.notes,
     });
 
-    const batchStatements: any[] = [invoiceInsert];
+    const batchStatements: any[] = [drInsert];
     const updatedQtyByItemId = new Map<string, number>();
 
     for (const shipItem of body.items) {
       const soItem = so.items.find((i) => i.id === shipItem.soItemId)!;
 
       batchStatements.push(
-        db.insert(schema.invoiceItems).values({
+        db.insert(schema.deliveryReceiptItems).values({
           id: crypto.randomUUID(),
-          invoiceId,
+          deliveryReceiptId,
+          salesOrderItemId: soItem.id,
           productId: soItem.productId,
           quantity: shipItem.quantityShipped,
           unitPriceCents: soItem.unitPriceCents,
-          subtotalCents: shipItem.quantityShipped * soItem.unitPriceCents,
         })
       );
 
@@ -1230,12 +1355,12 @@ app.post(
           quantity: shipItem.quantityShipped,
           unitCostCents: soItem.product.costPriceCents,
           referenceType: 'SO_DELIVERY',
-          referenceId: invoiceNumber,
-          notes: 'Shipment for ' + so.soNumber,
+          referenceId: drNumber,
+          notes: 'Delivery for ' + so.soNumber,
         })
       );
 
-      // Update SO Item quantity shipped
+      // Update SO Item quantity delivered
       const updatedQty = soItem.quantityShipped + shipItem.quantityShipped;
       updatedQtyByItemId.set(soItem.id, updatedQty);
       batchStatements.push(
@@ -1243,68 +1368,24 @@ app.post(
       );
     }
 
-    // A SO is only fully FULFILLED once every line item's shipped quantity meets its
+    // A SO is only fully FULFILLED once every line item's delivered quantity meets its
     // ordered quantity; otherwise it's PARTIALLY_FULFILLED so the remainder still shows
-    // up in Outbound.
-    const isFullyShipped = so.items.every((item) => (updatedQtyByItemId.get(item.id) ?? item.quantityShipped) >= item.quantity);
+    // up in Delivery Receipts.
+    const isFullyDelivered = so.items.every((item) => (updatedQtyByItemId.get(item.id) ?? item.quantityShipped) >= item.quantity);
     batchStatements.push(
       db
         .update(schema.salesOrders)
-        .set({ status: isFullyShipped ? 'FULFILLED' : 'PARTIALLY_FULFILLED', updatedAt: new Date().toISOString() })
+        .set({ status: isFullyDelivered ? 'FULFILLED' : 'PARTIALLY_FULFILLED', updatedAt: new Date().toISOString() })
         .where(eq(schema.salesOrders.id, soId))
     );
-
-    // Double-Entry Accounting: Accounts Receivable (1300) Debit, Sales Revenue (4010) Credit — for the shipped value only
-    const arAccount = await db.query.accounts.findFirst({ where: eq(schema.accounts.code, '1300') });
-    const revAccount = await db.query.accounts.findFirst({ where: eq(schema.accounts.code, '4010') });
-
-    if (arAccount && revAccount) {
-      const jvId = crypto.randomUUID();
-      const jvNumber = 'JV-SALES-' + Date.now().toString().slice(-6);
-
-      batchStatements.push(
-        db.insert(schema.journalVouchers).values({
-          id: jvId,
-          jvNumber,
-          description: 'Sales revenue recognition for ' + invoiceNumber,
-          referenceType: 'INVOICE',
-          referenceId: invoiceId,
-        })
-      );
-
-      batchStatements.push(
-        db.insert(schema.journalEntries).values({
-          id: crypto.randomUUID(),
-          voucherType: 'JOURNAL',
-          voucherId: jvId,
-          accountId: arAccount.id,
-          debitCents: shippedTotalCents,
-          creditCents: 0,
-          description: 'Receivable from invoice ' + invoiceNumber,
-        })
-      );
-
-      batchStatements.push(
-        db.insert(schema.journalEntries).values({
-          id: crypto.randomUUID(),
-          voucherType: 'JOURNAL',
-          voucherId: jvId,
-          accountId: revAccount.id,
-          debitCents: 0,
-          creditCents: shippedTotalCents,
-          description: 'Revenue from sales order ' + so.soNumber,
-        })
-      );
-    }
 
     await db.batch(batchStatements as any);
 
     return c.json({
       success: true,
-      message: 'Shipment confirmed, invoice issued, and stock ledger updated.',
-      invoiceId,
-      invoiceNumber,
-      totalAmountCents: shippedTotalCents,
+      message: 'Delivery Receipt issued and stock ledger updated.',
+      deliveryReceiptId,
+      drNumber,
     });
   }
 );
@@ -1414,6 +1495,14 @@ app.get('/api/accounting/vouchers', async (c) => {
         if (pv.signatories) parsedSignatories = JSON.parse(pv.signatories);
       } catch {}
 
+      let tag: string | null = pv.referenceType;
+      let cleanNotes = pv.notes || '';
+      if (cleanNotes.startsWith('[') && cleanNotes.includes(']')) {
+        tag = cleanNotes.slice(1, cleanNotes.indexOf(']'));
+        cleanNotes = cleanNotes.slice(cleanNotes.indexOf(']') + 1).trim();
+      }
+      if (tag === 'MANUAL') tag = null;
+
       vouchers.push({
         id: pv.id,
         voucherType: 'PAYMENT',
@@ -1426,9 +1515,10 @@ app.get('/api/accounting/vouchers', async (c) => {
         amountCents: pv.amountCents,
         paymentMethod: pv.paymentMethod,
         referenceType: pv.referenceType,
+        tag: tag || null,
         referenceId: pv.referenceId,
         status: pv.status,
-        notes: pv.notes,
+        notes: cleanNotes || pv.notes,
         items: parsedItems,
         signatories: parsedSignatories,
         createdAt: pv.createdAt,
@@ -1451,6 +1541,7 @@ app.get('/api/accounting/vouchers', async (c) => {
         amountCents: rv.amountCents,
         paymentMethod: rv.paymentMethod,
         referenceType: rv.invoiceId ? 'INVOICE' : 'DIRECT_RECEIPT',
+        tag: rv.invoiceId ? 'Sales Invoice' : 'Customer Receipt',
         referenceId: rv.invoice?.invoiceNumber || rv.invoiceId,
         status: rv.status,
         notes: rv.notes,
@@ -1475,6 +1566,7 @@ app.get('/api/accounting/vouchers', async (c) => {
         amountCents: totalAmount,
         paymentMethod: 'DOUBLE_ENTRY',
         referenceType: jv.referenceType || 'ADJUSTING_ENTRY',
+        tag: jv.referenceType === 'CONTRA_TRANSFER' ? 'Contra Transfer' : (jv.referenceType || 'Journal Entry'),
         referenceId: jv.referenceId,
         status: jv.status,
         notes: jv.description,
@@ -1512,6 +1604,7 @@ app.post(
       recipientName: z.string().min(1),
       currency: z.enum(['PHP', 'USD']).default('PHP'),
       amountCents: z.number().int().nonnegative().optional(),
+      tag: z.string().optional(),
       items: z
         .array(
           z.object({
@@ -1561,6 +1654,9 @@ app.post(
     const voucherNumber = body.voucherNumber?.trim() || (await generateNextPaymentVoucherNumber(db));
     const voucherDate = body.voucherDate || new Date().toISOString();
 
+    const tagPrefix = body.tag ? `[${body.tag}] ` : '';
+    const storedNotes = body.notes ? `${tagPrefix}${body.notes}`.trim() : (body.tag ? `[${body.tag}]` : null);
+
     const pvInsert = db.insert(schema.paymentVouchers).values({
       id: pvId,
       voucherNumber,
@@ -1571,7 +1667,7 @@ app.post(
       amountCents: totalAmountCents,
       paymentMethod: body.paymentMethod,
       referenceType: 'MANUAL',
-      notes: body.notes || null,
+      notes: storedNotes,
       items: body.items && body.items.length > 0 ? JSON.stringify(body.items) : null,
       signatories: body.signatories ? JSON.stringify(body.signatories) : null,
       status: 'POSTED',

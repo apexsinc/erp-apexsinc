@@ -100,7 +100,25 @@ function renderSalesContent(container) {
               '</div>'
           )
           .join('')
-      : '<span style="color: #94a3b8; font-size: 0.78rem;">Not yet invoiced</span>';
+      : '';
+
+    // Every Delivery Receipt without an invoiceId yet is goods already shipped
+    // (stock is already decremented) that nobody has billed for — surface it
+    // here as the one place invoicing actually happens.
+    const uninvoicedDRs = (so.deliveryReceipts || []).filter((dr) => !dr.invoiceId);
+    const uninvoicedHtml = uninvoicedDRs
+      .map(
+        (dr) =>
+          '<div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem;">' +
+          '<span class="badge badge-neutral" style="font-size: 0.68rem;">' + dr.drNumber + ' delivered</span>' +
+          (can('sales', 'create')
+            ? '<button type="button" class="btn btn-primary btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.72rem;" onclick="issueInvoiceForDelivery(\\\'' + dr.id + '\\\')">Issue Invoice</button>'
+            : '') +
+          '</div>'
+      )
+      .join('');
+
+    const deliveriesInvoicesHtml = invoicesHtml + uninvoicedHtml || '<span style="color: #94a3b8; font-size: 0.78rem;">Not yet delivered</span>';
 
     rowsHtml += \`
       <tr>
@@ -113,7 +131,7 @@ function renderSalesContent(container) {
           </span>
         </td>
         <td><strong>\${formatCurrency(so.totalAmountCents, so.currency)}</strong></td>
-        <td>\${invoicesHtml}</td>
+        <td>\${deliveriesInvoicesHtml}</td>
       </tr>
     \`;
   });
@@ -129,7 +147,7 @@ function renderSalesContent(container) {
       </div>
       <div style="padding: 0 1.35rem 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
         <p style="font-size: 0.85rem; color: #64748b; margin: 0;">
-          Manage customers in the Business Directory. Ship confirmed orders and issue invoices from Outbound Deliveries.
+          Manage customers in the Business Directory. Confirm deliveries from Delivery Receipts, then issue invoices here once goods are delivered.
         </p>
         <div style="min-width: 260px;">
           <input type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search SO #, customer, status..." value="\${salesSearchQuery}" oninput="handleSalesSearch(this.value)" />
@@ -143,7 +161,7 @@ function renderSalesContent(container) {
               <th>Customer</th>
               <th>Status</th>
               <th>Order Total</th>
-              <th>Invoices & Payment</th>
+              <th>Deliveries & Invoices</th>
             </tr>
           </thead>
           <tbody>
@@ -322,6 +340,26 @@ async function submitReceipt(e, invoiceId) {
 
     closeModal();
     showToast('Receipt ' + json.receiptVoucherNumber + ' recorded', 'success');
+    loadSales();
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
+}
+
+// Bills a customer for goods already delivered (stock already decremented
+// when the Delivery Receipt was issued from Delivery Receipts) — this is the
+// only place an Invoice gets created.
+async function issueInvoiceForDelivery(deliveryReceiptId) {
+  try {
+    const res = await apiFetch('/api/sales/invoices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deliveryReceiptId }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to issue invoice');
+
+    showToast('Invoice ' + json.invoiceNumber + ' issued', 'success');
     loadSales();
   } catch (err) {
     showToast(err.message, 'danger');

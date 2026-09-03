@@ -1,6 +1,7 @@
 export * from './inventory';
 export * from './purchasing';
 export * from './sales';
+export * from './delivery';
 export * from './vouchers';
 export * from './payroll';
 export * from './auth';

@@ -68,10 +68,10 @@ export const MODULE_METADATA: Record<
     description: 'Customer Sales Orders (SO), commercial billing invoices & revenue receipts',
   },
   outbound: {
-    name: 'Outbound Deliveries',
+    name: 'Delivery Receipts (DR)',
     category: 'Operations',
     route: '/outbound',
-    description: 'Warehouse dispatch, order shipments, delivery notes & customer fulfillment',
+    description: 'Warehouse dispatch, delivery receipts & inventory deduction on confirmed customer delivery',
   },
   accounting: {
     name: 'Vouchers',

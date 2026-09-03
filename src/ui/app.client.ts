@@ -393,7 +393,7 @@ function switchTab(tabName, updateHistory = true, keepQueryParams = true) {
     purchasing: 'Purchasing (P2P Procurement)',
     inbound: 'Inbound Deliveries',
     sales: 'Sales (O2C Orders & Invoices)',
-    outbound: 'Outbound Deliveries',
+    outbound: 'Delivery Receipts (DR)',
     accounting: 'Vouchers',
     payroll: 'Payroll & Compensation',
     staff: 'Staff & Human Resources',
