@@ -88,7 +88,7 @@ function renderSalesContent(container) {
               '" style="font-size: 0.68rem;">' +
               inv.invoiceNumber +
               '</span>' +
-              (inv.status !== 'PAID'
+              (inv.status !== 'PAID' && (can('sales', 'update') || can('accounting', 'create'))
                 ? '<button type="button" class="btn btn-success btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.72rem;" onclick="openRecordReceiptModal(\\\'' +
                   inv.id +
                   '\\\', \\\'' +
@@ -124,7 +124,7 @@ function renderSalesContent(container) {
         <div class="panel-title">Sales Orders & Invoicing</div>
         <div class="panel-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
           <button class="btn btn-secondary btn-sm" onclick="exportSalesCsv()">📥 Export CSV</button>
-          <button class="btn btn-primary btn-sm" onclick="openNewSalesOrderModal()">Create Sales Order</button>
+          \${can('sales', 'create') ? '<button class="btn btn-primary btn-sm" onclick="openNewSalesOrderModal()">Create Sales Order</button>' : ''}
         </div>
       </div>
       <div style="padding: 0 1.35rem 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">

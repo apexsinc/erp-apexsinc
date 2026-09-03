@@ -36,6 +36,7 @@ async function loadAdmin() {
     state.adminUsers = usersJson.data || [];
     state.adminModules = permsJson.modules || [];
     state.adminMatrix = permsJson.matrix || {};
+    state.adminCrudMatrix = permsJson.crudMatrix || {};
 
     renderAdminPanel(container);
   } catch (err) {
@@ -72,16 +73,58 @@ function renderAdminPanel(container) {
     \`;
   });
 
+  const crud = state.adminCrudMatrix || {};
+  const mgrCrudMap = crud.MANAGER || {};
+  const staffCrudMap = crud.STAFF || {};
+
   let matrixRows = '';
   state.adminModules.forEach((mod) => {
-    const managerChecked = (state.adminMatrix.MANAGER || []).includes(mod);
-    const staffChecked = (state.adminMatrix.STAFF || []).includes(mod);
+    const mgr = mgrCrudMap[mod] || { create: false, read: false, update: false, delete: false };
+    const staff = staffCrudMap[mod] || { create: false, read: false, update: false, delete: false };
+
     matrixRows += \`
       <tr>
-        <td><strong>\${MODULE_LABELS[mod] || mod}</strong></td>
-        <td style="text-align: center;"><input type="checkbox" checked disabled title="Administrators always have full access" /></td>
-        <td style="text-align: center;"><input type="checkbox" id="perm-MANAGER-\${mod}" \${managerChecked ? 'checked' : ''} /></td>
-        <td style="text-align: center;"><input type="checkbox" id="perm-STAFF-\${mod}" \${staffChecked ? 'checked' : ''} /></td>
+        <td>
+          <div style="font-weight: 700; color: #1e293b;">\${MODULE_LABELS[mod] || mod}</div>
+          <div style="font-size: 0.72rem; color: #64748b; font-family: monospace;">/\${mod}</div>
+        </td>
+        <td style="text-align: center; background: #f8fafc;">
+          <span class="badge badge-success" style="font-size: 0.7rem; letter-spacing: 0.04em;" title="Administrators always possess full CRUD access">
+            C • R • U • D (Full)
+          </span>
+        </td>
+        <td style="text-align: center;">
+          <div style="display: inline-flex; gap: 0.75rem; align-items: center; justify-content: center;">
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.78rem; cursor: pointer;" title="Create">
+              <input type="checkbox" id="perm-MANAGER-\${mod}-create" \${mgr.create ? 'checked' : ''} /> <strong>C</strong>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.78rem; cursor: pointer;" title="Read / View">
+              <input type="checkbox" id="perm-MANAGER-\${mod}-read" \${mgr.read ? 'checked' : ''} /> <strong>R</strong>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.78rem; cursor: pointer;" title="Update / Edit">
+              <input type="checkbox" id="perm-MANAGER-\${mod}-update" \${mgr.update ? 'checked' : ''} /> <strong>U</strong>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.78rem; cursor: pointer;" title="Delete / Void">
+              <input type="checkbox" id="perm-MANAGER-\${mod}-delete" \${mgr.delete ? 'checked' : ''} /> <strong>D</strong>
+            </label>
+          </div>
+        </td>
+        <td style="text-align: center;">
+          <div style="display: inline-flex; gap: 0.75rem; align-items: center; justify-content: center;">
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.78rem; cursor: pointer;" title="Create">
+              <input type="checkbox" id="perm-STAFF-\${mod}-create" \${staff.create ? 'checked' : ''} /> <strong>C</strong>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.78rem; cursor: pointer;" title="Read / View">
+              <input type="checkbox" id="perm-STAFF-\${mod}-read" \${staff.read ? 'checked' : ''} /> <strong>R</strong>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.78rem; cursor: pointer;" title="Update / Edit">
+              <input type="checkbox" id="perm-STAFF-\${mod}-update" \${staff.update ? 'checked' : ''} /> <strong>U</strong>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.78rem; cursor: pointer;" title="Delete / Void">
+              <input type="checkbox" id="perm-STAFF-\${mod}-delete" \${staff.delete ? 'checked' : ''} /> <strong>D</strong>
+            </label>
+          </div>
+        </td>
       </tr>
     \`;
   });
@@ -92,7 +135,7 @@ function renderAdminPanel(container) {
         <div class="panel-title">User Accounts</div>
       </div>
       <p style="padding: 0 0 1rem; font-size: 0.85rem; color: #64748b;">
-        New logins are created from Payroll &amp; Staff when adding an employee. This page manages roles and access for existing accounts.
+        New logins are created from Payroll &amp; Staff when adding an employee. This page manages roles, credentials, and access for existing accounts.
       </p>
       <div class="table-responsive">
         <table class="data-table">
@@ -114,7 +157,12 @@ function renderAdminPanel(container) {
 
     <div class="panel-card">
       <div class="panel-header">
-        <div class="panel-title">Role Permissions — Sidebar & API Module Access</div>
+        <div>
+          <div class="panel-title">Role Permissions — Granular CRUD Matrix</div>
+          <div style="font-size: 0.78rem; color: #64748b; margin-top: 0.2rem;">
+            Control exact permissions for each role: <strong>C</strong> (Create), <strong>R</strong> (Read/View), <strong>U</strong> (Update/Edit), <strong>D</strong> (Delete/Void).
+          </div>
+        </div>
         <div class="panel-actions">
           <button class="btn btn-primary btn-sm" onclick="savePermissionMatrix()">Save Permissions</button>
         </div>
@@ -123,10 +171,16 @@ function renderAdminPanel(container) {
         <table class="data-table">
           <thead>
             <tr>
-              <th>Module</th>
-              <th style="text-align: center;">ADMIN</th>
-              <th style="text-align: center;">MANAGER</th>
-              <th style="text-align: center;">STAFF</th>
+              <th style="min-width: 180px;">Module</th>
+              <th style="text-align: center; min-width: 140px;">ADMIN</th>
+              <th style="text-align: center; min-width: 220px;">
+                MANAGER<br />
+                <span style="font-weight: normal; font-size: 0.72rem; color: #64748b;">(C • R • U • D)</span>
+              </th>
+              <th style="text-align: center; min-width: 220px;">
+                STAFF<br />
+                <span style="font-weight: normal; font-size: 0.72rem; color: #64748b;">(C • R • U • D)</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -136,6 +190,54 @@ function renderAdminPanel(container) {
       </div>
     </div>
   \`;
+}
+
+async function savePermissionMatrix() {
+  const roles = ['MANAGER', 'STAFF'];
+
+  try {
+    for (const role of roles) {
+      const permissions = {};
+      state.adminModules.forEach((mod) => {
+        const createCb = document.getElementById('perm-' + role + '-' + mod + '-create');
+        const readCb = document.getElementById('perm-' + role + '-' + mod + '-read');
+        const updateCb = document.getElementById('perm-' + role + '-' + mod + '-update');
+        const deleteCb = document.getElementById('perm-' + role + '-' + mod + '-delete');
+
+        permissions[mod] = {
+          create: createCb ? createCb.checked : false,
+          read: readCb ? readCb.checked : false,
+          update: updateCb ? updateCb.checked : false,
+          delete: deleteCb ? deleteCb.checked : false,
+        };
+      });
+
+      const res = await apiFetch('/api/admin/role-permissions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role, permissions }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Failed to save permissions for ' + role);
+    }
+
+    showToast('Role CRUD permissions saved successfully', 'success');
+
+    // Refresh the client permission matrix and sidebar visibility immediately
+    const refreshed = await (await apiFetch('/api/admin/role-permissions')).json();
+    if (refreshed.success) {
+      window.__ROLE_PERMISSIONS__ = {
+        ADMIN: refreshed.matrix.ADMIN,
+        MANAGER: refreshed.matrix.MANAGER,
+        STAFF: refreshed.matrix.STAFF,
+      };
+      window.__ROLE_PERMISSIONS_CRUD__ = refreshed.crudMatrix || {};
+      state.adminCrudMatrix = refreshed.crudMatrix || {};
+      applyRolePermissions();
+    }
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
 }
 
 async function applyUserRoleChange(userId) {
@@ -199,38 +301,6 @@ function toggleUserActive(userId, makeActive) {
       showToast(err.message, 'danger');
     }
   })();
-}
-
-async function savePermissionMatrix() {
-  const roles = ['MANAGER', 'STAFF'];
-
-  try {
-    for (const role of roles) {
-      const permissions = {};
-      state.adminModules.forEach((mod) => {
-        const checkbox = document.getElementById('perm-' + role + '-' + mod);
-        permissions[mod] = checkbox ? checkbox.checked : false;
-      });
-
-      const res = await apiFetch('/api/admin/role-permissions', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role, permissions }),
-      });
-      const json = await res.json();
-      if (!res.ok || !json.success) throw new Error(json.error || 'Failed to save permissions for ' + role);
-    }
-
-    showToast('Permissions saved', 'success');
-    // Refresh the sidebar's own permission map so it reflects the new matrix immediately.
-    const refreshed = await (await apiFetch('/api/admin/role-permissions')).json();
-    if (refreshed.success) {
-      window.__ROLE_PERMISSIONS__ = { ADMIN: refreshed.matrix.ADMIN, MANAGER: refreshed.matrix.MANAGER, STAFF: refreshed.matrix.STAFF };
-      applyRolePermissions();
-    }
-  } catch (err) {
-    showToast(err.message, 'danger');
-  }
 }
 
 function openAdminEditUserModal(userId) {

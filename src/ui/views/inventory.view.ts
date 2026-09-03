@@ -105,8 +105,8 @@ function renderInventoryContent(container) {
         <div class="panel-title">Product Catalog & Stock Levels</div>
         <div class="panel-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
           <button class="btn btn-secondary btn-sm" onclick="exportInventoryCsv()">📥 Export CSV</button>
-          <button class="btn btn-primary btn-sm" onclick="openAddStockModal()">➕ Add Stock</button>
-          <button class="btn btn-secondary btn-sm" onclick="openStockAdjustmentModal()">Stock Adjustment</button>
+          \${can('inventory', 'create') ? '<button class="btn btn-primary btn-sm" onclick="openAddStockModal()">➕ Add Stock</button>' : ''}
+          \${can('inventory', 'update') ? '<button class="btn btn-secondary btn-sm" onclick="openStockAdjustmentModal()">Stock Adjustment</button>' : ''}
         </div>
       </div>
       <div style="padding: 0 1.35rem 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">

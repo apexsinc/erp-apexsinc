@@ -83,11 +83,13 @@ function renderDirectoryContent() {
     \`;
   }).join('');
 
-  const addButton = {
-    customers: '<button class="btn btn-primary btn-sm" onclick="openNewCustomerModal()">Add Customer</button>',
-    products: '<button class="btn btn-primary btn-sm" onclick="openNewProductModal()">Add Product</button>',
-    suppliers: '<button class="btn btn-primary btn-sm" onclick="openNewVendorModal()">Add Supplier</button>',
-  }[directoryActiveTab] || '';
+  const addButton = can('directory', 'create')
+    ? {
+        customers: '<button class="btn btn-primary btn-sm" onclick="openNewCustomerModal()">Add Customer</button>',
+        products: '<button class="btn btn-primary btn-sm" onclick="openNewProductModal()">Add Product</button>',
+        suppliers: '<button class="btn btn-primary btn-sm" onclick="openNewVendorModal()">Add Supplier</button>',
+      }[directoryActiveTab] || ''
+    : '';
 
   container.innerHTML = \`
     <div class="panel-card">

@@ -23,7 +23,7 @@ async function loadPayroll() {
         '<td><span class="badge ' + (isFinal ? 'badge-success' : 'badge-warning') + '"><span class="badge-dot"></span>' + run.status + '</span></td>' +
         '<td><strong>' + formatCurrency(run.totalNetCents) + '</strong></td>' +
         '<td>' + (run.paymentVoucher?.voucherNumber ? '<strong style="font-family: monospace;">' + run.paymentVoucher.voucherNumber + '</strong>' : '<span style="color: #94a3b8;">Pending Finalization</span>') + '</td>' +
-        '<td>' + (!isFinal ? '<button type="button" class="btn btn-success btn-sm" onclick="finalizePayrollRun(\\\'' + run.id + '\\\', \\\'' + run.runNumber + '\\\')">Finalize & Disburse</button>' : '<span class="badge badge-success">Disbursed</span>') + '</td>' +
+        '<td>' + (!isFinal ? (can('payroll', 'update') ? '<button type="button" class="btn btn-success btn-sm" onclick="finalizePayrollRun(\\\'' + run.id + '\\\', \\\'' + run.runNumber + '\\\')">Finalize & Disburse</button>' : '<span class="badge badge-warning">Pending</span>') : '<span class="badge badge-success">Disbursed</span>') + '</td>' +
         '</tr>';
     });
 
@@ -38,7 +38,7 @@ async function loadPayroll() {
       '</div>' +
       '<div class="panel-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">' +
       '<button type="button" class="btn btn-secondary btn-sm" onclick="exportPayrollRunsCsv()">📥 Export Runs CSV</button>' +
-      '<button type="button" class="btn btn-primary btn-sm" onclick="openNewPayrollRunModal()">+ Calculate Payroll</button>' +
+      (can('payroll', 'create') ? '<button type="button" class="btn btn-primary btn-sm" onclick="openNewPayrollRunModal()">+ Calculate Payroll</button>' : '') +
       '</div>' +
       '</div>' +
       '<div class="table-responsive">' +

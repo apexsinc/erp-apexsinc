@@ -68,6 +68,10 @@ export const rolePermissions = sqliteTable(
       enum: ['dashboard', 'directory', 'inventory', 'purchasing', 'inbound', 'sales', 'outbound', 'accounting', 'payroll', 'staff'],
     }).notNull(),
     canView: integer('can_view', { mode: 'boolean' }).notNull().default(false),
+    canCreate: integer('can_create', { mode: 'boolean' }).notNull().default(false),
+    canRead: integer('can_read', { mode: 'boolean' }).notNull().default(false),
+    canUpdate: integer('can_update', { mode: 'boolean' }).notNull().default(false),
+    canDelete: integer('can_delete', { mode: 'boolean' }).notNull().default(false),
     updatedAt: text('updated_at')
       .notNull()
       .$defaultFn(() => new Date().toISOString()),

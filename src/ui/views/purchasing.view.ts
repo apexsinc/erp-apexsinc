@@ -102,7 +102,7 @@ function renderPurchasingContent(container) {
         <div class="panel-title">Purchase Orders & Procurement</div>
         <div class="panel-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
           <button class="btn btn-secondary btn-sm" onclick="exportPurchasingCsv()">📥 Export CSV</button>
-          <button class="btn btn-primary btn-sm" onclick="openNewPOModal()">Create Purchase Order</button>
+          \${can('purchasing', 'create') ? '<button class="btn btn-primary btn-sm" onclick="openNewPOModal()">Create Purchase Order</button>' : ''}
         </div>
       </div>
       <div style="padding: 0 1.35rem 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">

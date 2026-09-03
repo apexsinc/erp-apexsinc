@@ -16,7 +16,7 @@ import {
   renderSettingsView,
 } from './views';
 import { APP_CLIENT_JS } from './app.client';
-import type { Module, Role } from '../lib/permissions';
+import type { Module, Role, RoleCrudMatrix } from '../lib/permissions';
 
 export * from './styles';
 export * from './components';
@@ -27,12 +27,15 @@ export * from './app.client';
  * Renders the complete Single Page Application HTML markup
  * directly for Cloudflare Workers edge delivery.
  *
- * `rolePermissions` (role -> visible module list) is computed server-side
- * from the DB-backed permission matrix (src/lib/permissions.ts) and
- * serialized here so the client router can show/hide sidebar items and
- * tabs without re-implementing the rules.
+ * `rolePermissions` (role -> visible module list) and `crudMatrix`
+ * (role -> module -> { create, read, update, delete }) are computed
+ * server-side from the DB-backed permission matrix (src/lib/permissions.ts)
+ * and serialized here so the client can gate UI components and tabs.
  */
-export function renderAppHtml(rolePermissions: Record<Role, Module[]>, options: { turnstileSiteKey?: string } = {}): string {
+export function renderAppHtml(
+  rolePermissions: Record<Role, Module[]>,
+  options: { turnstileSiteKey?: string; crudMatrix?: RoleCrudMatrix } = {}
+): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -47,7 +50,10 @@ export function renderAppHtml(rolePermissions: Record<Role, Module[]>, options: 
   <style>
     ${APP_CSS}
   </style>
-  <script>window.__ROLE_PERMISSIONS__ = ${JSON.stringify(rolePermissions)};</script>
+  <script>
+    window.__ROLE_PERMISSIONS__ = ${JSON.stringify(rolePermissions)};
+    window.__ROLE_PERMISSIONS_CRUD__ = ${JSON.stringify(options.crudMatrix || {})};
+  </script>
 </head>
 <body>
 

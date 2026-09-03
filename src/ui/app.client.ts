@@ -325,6 +325,17 @@ function getTabFromUrl() {
   return 'dashboard';
 }
 
+// Granular CRUD Permission Checker
+function can(moduleName, action = 'read') {
+  if (!state.user) return false;
+  if (state.user.role === 'ADMIN') return true;
+  const crud = window.__ROLE_PERMISSIONS_CRUD__ || {};
+  const roleMatrix = crud[state.user.role] || {};
+  const modPerms = roleMatrix[moduleName];
+  if (!modPerms) return false;
+  return Boolean(modPerms[action]);
+}
+
 // Global Tab Router
 function switchTab(tabName, updateHistory = true, keepQueryParams = true) {
   const permissions = window.__ROLE_PERMISSIONS__ || {};

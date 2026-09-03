@@ -513,7 +513,35 @@ async function runTests() {
   const updatedSign = verifySettingsData.settings?.['vouchers.signatories'];
   console.log('Verified Updated Signatories in DB:', updatedSign?.preparedBy, '|', updatedSign?.approvedBy);
 
-  console.log('\n=== 11. FINANCIAL STATEMENTS & REPORTING AUDIT ===');
+  console.log('\n=== 10.1 ROLE CRUD PERMISSIONS MATRIX AUDIT ===');
+  const getPermsRes = await fetch(`${baseUrl}/api/admin/role-permissions`, { headers: authHeaders });
+  const permsData = await getPermsRes.json();
+  if (!permsData.success || !permsData.crudMatrix) {
+    console.error('Failed to get CRUD permissions:', permsData);
+    process.exit(1);
+  }
+  console.log('Admin Full Access Modules:', Object.keys(permsData.crudMatrix.ADMIN).length);
+  console.log('Manager Inventory CRUD:', JSON.stringify(permsData.crudMatrix.MANAGER.inventory));
+  console.log('Staff Inventory CRUD:', JSON.stringify(permsData.crudMatrix.STAFF.inventory));
+
+  // Update permissions for STAFF to have custom CRUD on inventory
+  const updatePermsRes = await fetch(`${baseUrl}/api/admin/role-permissions`, {
+    method: 'PUT',
+    headers: authHeaders,
+    body: JSON.stringify({
+      role: 'STAFF',
+      permissions: {
+        inventory: { create: false, read: true, update: true, delete: false },
+        sales: { create: true, read: true, update: true, delete: false },
+      },
+    }),
+  });
+  const updatePermsData = await updatePermsRes.json();
+  if (!updatePermsData.success) {
+    console.error('Failed to update CRUD permissions:', updatePermsData);
+    process.exit(1);
+  }
+  console.log('Updated Staff CRUD Permissions Successfully. Message:', updatePermsData.message);
   // 1. Profit & Loss (Income Statement)
   const plRes = await fetch(`${baseUrl}/api/accounting/reports/profit-loss`, { headers: authHeaders });
   const plData = await plRes.json();

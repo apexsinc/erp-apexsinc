@@ -8,7 +8,17 @@ import { renderAppHtml } from './ui';
 import { authMiddleware, requireAdmin, requireModule } from './middleware/auth';
 import { hashPassword, verifyPasswordLegacyAware } from './lib/password';
 import { verifyTurnstileToken } from './lib/turnstile';
-import { ALL_MODULES, DEFAULT_PERMISSION_MATRIX, isAdminRole, loadPermissionMatrix, seedDefaultPermissions, type EditableRole, type Module } from './lib/permissions';
+import {
+  ALL_MODULES,
+  DEFAULT_PERMISSION_MATRIX,
+  isAdminRole,
+  loadPermissionMatrix,
+  loadCrudPermissionMatrix,
+  seedDefaultPermissions,
+  type EditableRole,
+  type Module,
+  type RoleCrudMatrix,
+} from './lib/permissions';
 import { APEXS_LOGO_BASE64 } from './ui/assets/logo';
 
 // Environment Bindings for Cloudflare Workers
@@ -63,10 +73,11 @@ app.use('/api/payroll/*', authMiddleware, requireModule('payroll'));
 async function renderApp(c: { req: any; env: Bindings }) {
   const db = createDbClient(c.env.DB);
   const rolePermissions = await loadPermissionMatrix(db);
+  const crudMatrix = await loadCrudPermissionMatrix(db);
   const host = (c.req.header('host') || '').toLowerCase();
   const isProduction = host.startsWith('app.apexsinc.com');
   const turnstileSiteKey = isProduction ? c.env.TURNSTILE_SITE_KEY : undefined;
-  return renderAppHtml(rolePermissions, { turnstileSiteKey });
+  return renderAppHtml(rolePermissions, { turnstileSiteKey, crudMatrix });
 }
 app.get('/', async (c) => c.html(await renderApp(c)));
 app.get('/login', async (c) => c.html(await renderApp(c)));
@@ -3246,25 +3257,38 @@ app.delete('/api/admin/users/:id', async (c) => {
   return c.json({ success: true, message: 'User deactivated' });
 });
 
-// GET /api/admin/role-permissions - Current role -> module visibility matrix
+// GET /api/admin/role-permissions - Current role -> module visibility & CRUD matrix
 app.get('/api/admin/role-permissions', async (c) => {
   const db = createDbClient(c.env.DB);
   const matrix = await loadPermissionMatrix(db);
+  const crudMatrix = await loadCrudPermissionMatrix(db);
   return c.json({
     success: true,
     modules: ALL_MODULES,
     matrix, // { ADMIN: [...always all], MANAGER: [...], STAFF: [...] }
+    crudMatrix, // { ADMIN: { ... }, MANAGER: { ... }, STAFF: { ... } }
   });
 });
 
-// PUT /api/admin/role-permissions - Bulk-update one editable role's module access
+// PUT /api/admin/role-permissions - Bulk-update one editable role's module CRUD access
 app.put(
   '/api/admin/role-permissions',
   zValidator(
     'json',
     z.object({
       role: z.enum(['MANAGER', 'STAFF']),
-      permissions: z.record(z.enum(ALL_MODULES), z.boolean()),
+      permissions: z.record(
+        z.enum(ALL_MODULES),
+        z.union([
+          z.object({
+            create: z.boolean(),
+            read: z.boolean(),
+            update: z.boolean(),
+            delete: z.boolean(),
+          }),
+          z.boolean(),
+        ])
+      ),
     })
   ),
   async (c) => {
@@ -3273,13 +3297,50 @@ app.put(
     const role = body.role as EditableRole;
 
     const statements = ALL_MODULES.filter((mod) => body.permissions[mod] !== undefined).map((mod) => {
-      const canView = body.permissions[mod as Module] as boolean;
+      const p = body.permissions[mod as Module];
+      let canCreate = false;
+      let canRead = false;
+      let canUpdate = false;
+      let canDelete = false;
+
+      if (typeof p === 'boolean') {
+        canRead = p;
+        canCreate = p && role === 'MANAGER';
+        canUpdate = p && role === 'MANAGER';
+        canDelete = p && role === 'MANAGER';
+      } else if (p) {
+        canCreate = Boolean(p.create);
+        canRead = Boolean(p.read);
+        canUpdate = Boolean(p.update);
+        canDelete = Boolean(p.delete);
+      }
+
+      const canView = canRead;
+      const now = new Date().toISOString();
+
       return db
         .insert(schema.rolePermissions)
-        .values({ id: crypto.randomUUID(), role, module: mod, canView })
+        .values({
+          id: crypto.randomUUID(),
+          role,
+          module: mod,
+          canView,
+          canRead,
+          canCreate,
+          canUpdate,
+          canDelete,
+          updatedAt: now,
+        })
         .onConflictDoUpdate({
           target: [schema.rolePermissions.role, schema.rolePermissions.module],
-          set: { canView, updatedAt: new Date().toISOString() },
+          set: {
+            canView,
+            canRead,
+            canCreate,
+            canUpdate,
+            canDelete,
+            updatedAt: now,
+          },
         });
     });
 
@@ -3288,7 +3349,8 @@ app.put(
     }
 
     const matrix = await loadPermissionMatrix(db);
-    return c.json({ success: true, message: 'Permissions updated', matrix });
+    const crudMatrix = await loadCrudPermissionMatrix(db);
+    return c.json({ success: true, message: 'Permissions updated successfully', matrix, crudMatrix });
   }
 );
 

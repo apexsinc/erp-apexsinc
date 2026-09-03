@@ -2,7 +2,7 @@ import { createMiddleware } from 'hono/factory';
 import { eq, and, gt } from 'drizzle-orm';
 import { createDbClient } from '../db/client';
 import * as schema from '../db/schema';
-import { canViewModule, isAdminRole, type Module } from '../lib/permissions';
+import { canPerformAction, canViewModule, isAdminRole, type CrudAction, type Module } from '../lib/permissions';
 
 type Bindings = { DB: D1Database };
 type AuthUser = { id: string; email: string; name: string; role: schema.User['role'] };
@@ -50,14 +50,40 @@ export const requireAdmin = createMiddleware<{ Bindings: Bindings; Variables: Va
   await next();
 });
 
-/** Gate a route group behind the editable role_permissions matrix for the given sidebar module. Must run after authMiddleware. */
-export function requireModule(mod: Module) {
+/**
+ * Gate a route group behind the editable CRUD role_permissions matrix.
+ * Automatically infers CRUD action from HTTP method (GET -> read, POST -> create, PUT/PATCH -> update, DELETE -> delete)
+ * or uses explicit action if specified.
+ */
+export function requireModule(mod: Module, explicitAction?: CrudAction) {
   return createMiddleware<{ Bindings: Bindings; Variables: Variables }>(async (c, next) => {
     const user = c.get('authUser');
+    if (!user) {
+      return c.json({ success: false, error: 'Authentication required' }, 401);
+    }
+    if (isAdminRole(user.role)) {
+      return await next();
+    }
+
+    let action: CrudAction = explicitAction || 'read';
+    if (!explicitAction) {
+      const method = c.req.method.toUpperCase();
+      if (method === 'POST') action = 'create';
+      else if (method === 'PUT' || method === 'PATCH') action = 'update';
+      else if (method === 'DELETE') action = 'delete';
+      else action = 'read';
+    }
+
     const db = createDbClient(c.env.DB);
-    const allowed = user && (await canViewModule(db, user.role, mod));
+    const allowed = await canPerformAction(db, user.role, mod, action);
     if (!allowed) {
-      return c.json({ success: false, error: 'You do not have access to this module' }, 403);
+      return c.json(
+        {
+          success: false,
+          error: `Access Denied: You do not have permission to ${action.toUpperCase()} in the ${mod} module`,
+        },
+        403
+      );
     }
     await next();
   });

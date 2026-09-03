@@ -80,15 +80,19 @@ function renderStaffContent(container) {
       '<button type="button" class="btn btn-secondary btn-sm" style="padding: 0.3rem 0.5rem;" title="View Profile" onclick="openViewEmployeeModal(\\\'' + emp.id + '\\\')">' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' +
       '</button>' +
-      '<button type="button" class="btn btn-secondary btn-sm" style="padding: 0.3rem 0.5rem;" title="Edit Employee Profile" onclick="openEditEmployeeModal(\\\'' + emp.id + '\\\')">' +
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>' +
-      '</button>' +
-      '<button type="button" class="btn ' + (hasUser ? 'btn-secondary' : 'btn-outline-primary') + ' btn-sm" style="padding: 0.3rem 0.5rem;' + (hasUser ? '' : ' border: 1px dashed #3b82f6;') + '" title="' + (hasUser ? 'Edit Login Account & Reset Password (' + emp.user.role + ')' : '+ Provision Login Account') + '" onclick="openEmployeeAccountModal(\\\'' + emp.id + '\\\')">' +
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>' +
-      '</button>' +
-      '<button type="button" class="btn btn-danger btn-sm" style="padding: 0.3rem 0.5rem;" title="Delete / Deactivate" onclick="handleDeleteEmployee(\\\'' + emp.id + '\\\', \\\'' + emp.employeeCode + '\\\')">' +
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>' +
-      '</button>' +
+      (can('staff', 'update')
+        ? '<button type="button" class="btn btn-secondary btn-sm" style="padding: 0.3rem 0.5rem;" title="Edit Employee Profile" onclick="openEditEmployeeModal(\\\'' + emp.id + '\\\')">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>' +
+          '</button>' +
+          '<button type="button" class="btn ' + (hasUser ? 'btn-secondary' : 'btn-outline-primary') + ' btn-sm" style="padding: 0.3rem 0.5rem;' + (hasUser ? '' : ' border: 1px dashed #3b82f6;') + '" title="' + (hasUser ? 'Edit Login Account & Reset Password (' + emp.user.role + ')' : '+ Provision Login Account') + '" onclick="openEmployeeAccountModal(\\\'' + emp.id + '\\\')">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>' +
+          '</button>'
+        : '') +
+      (can('staff', 'delete')
+        ? '<button type="button" class="btn btn-danger btn-sm" style="padding: 0.3rem 0.5rem;" title="Delete / Deactivate" onclick="handleDeleteEmployee(\\\'' + emp.id + '\\\', \\\'' + emp.employeeCode + '\\\')">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>' +
+          '</button>'
+        : '') +
       '</div>' +
       '</td>' +
       '</tr>';
@@ -105,7 +109,7 @@ function renderStaffContent(container) {
     '</div>' +
     '<div class="panel-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">' +
     '<button type="button" class="btn btn-secondary btn-sm" onclick="exportEmployeesCsv()">📥 Export Staff CSV</button>' +
-    '<button type="button" class="btn btn-primary btn-sm" onclick="openNewEmployeeModal()">+ Add Employee</button>' +
+    (can('staff', 'create') ? '<button type="button" class="btn btn-primary btn-sm" onclick="openNewEmployeeModal()">+ Add Employee</button>' : '') +
     '</div>' +
     '</div>' +
     '<div style="padding: 0 1.25rem 1rem; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color); margin-bottom: 0.5rem;">' +
@@ -415,10 +419,14 @@ function openViewEmployeeModal(empId) {
 
   const footer =
     '<div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">' +
-    '<button type="button" class="btn btn-secondary btn-sm" onclick="closeModal(); openEmployeeAccountModal(\\\'' + emp.id + '\\\')">🔐 ' + (hasUser ? 'Manage Login Account (' + emp.user.role + ')' : '+ Provision Login Account') + '</button>' +
+    (can('staff', 'update')
+      ? '<button type="button" class="btn btn-secondary btn-sm" onclick="closeModal(); openEmployeeAccountModal(\\\'' + emp.id + '\\\')">🔐 ' + (hasUser ? 'Manage Login Account (' + emp.user.role + ')' : '+ Provision Login Account') + '</button>'
+      : '<div></div>') +
     '<div style="display: flex; gap: 0.5rem;">' +
     '<button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>' +
-    '<button type="button" class="btn btn-primary" onclick="closeModal(); openEditEmployeeModal(\\\'' + emp.id + '\\\')">Edit Profile</button>' +
+    (can('staff', 'update')
+      ? '<button type="button" class="btn btn-primary" onclick="closeModal(); openEditEmployeeModal(\\\'' + emp.id + '\\\')">Edit Profile</button>'
+      : '') +
     '</div>' +
     '</div>';
 
