@@ -460,6 +460,208 @@ function openVoucherExportModal() {
   openModal('Export Payment Vouchers', body, footer, 'lg');
 }
 
+let pendingImportVouchers = [];
+
+function openVoucherImportModal() {
+  pendingImportVouchers = [];
+  const body =
+    '<div style="padding: 0.5rem 0.25rem;">' +
+    '<div style="color: #475569; font-size: 0.88rem; margin-bottom: 1.25rem; line-height: 1.45;">' +
+    'Import vouchers via <strong>Itemized Ledger CSV</strong> or <strong>Summary CSV</strong>. The ERP system will validate rows, create payment vouchers, and post the double-entry transactions to the General Ledger.' +
+    '</div>' +
+    '<div style="background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 8px; padding: 1.5rem; text-align: center; margin-bottom: 1.25rem;">' +
+    '<div style="font-size: 2rem; margin-bottom: 0.5rem;">📄</div>' +
+    '<label style="display: inline-block; cursor: pointer; background: var(--primary, #0284c7); color: #ffffff; padding: 0.5rem 1.15rem; border-radius: 6px; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.5rem;">' +
+    'Choose CSV File' +
+    '<input type="file" id="voucher-csv-input" accept=".csv" style="display: none;" onchange="handleVoucherCsvSelected(this)" />' +
+    '</label>' +
+    '<div id="voucher-csv-status" style="font-size: 0.82rem; color: #64748b; margin-top: 0.25rem;">Supports Itemized Ledger or Summary CSV format</div>' +
+    '</div>' +
+    '<div id="voucher-import-preview-box" style="display: none; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.75rem; background: #ffffff; max-height: 220px; overflow-y: auto;">' +
+    '<div id="voucher-import-preview-title" style="font-weight: 700; font-size: 0.84rem; color: #0f172a; margin-bottom: 0.45rem;"></div>' +
+    '<div id="voucher-import-preview-content" style="font-size: 0.78rem; color: #334155;"></div>' +
+    '</div>' +
+    '</div>';
+
+  const footer =
+    '<button type="button" id="btn-submit-voucher-import" class="btn btn-primary" onclick="submitVoucherCsvImport()" disabled>📤 Import Vouchers</button>' +
+    '<button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>';
+
+  openModal('Import Payment Vouchers', body, footer, 'lg');
+}
+
+function handleVoucherCsvSelected(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+
+  const statusEl = document.getElementById('voucher-csv-status');
+  if (statusEl) statusEl.innerText = 'Reading ' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)...';
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const text = e.target.result;
+    parseVoucherCsvText(text, file.name);
+  };
+  reader.readAsText(file);
+}
+
+function parseVoucherCsvText(csvText, filename) {
+  const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length < 2) {
+    showToast('CSV file is empty or missing data rows', 'warning');
+    return;
+  }
+
+  function parseCsvLine(line) {
+    const row = [];
+    let inQuote = false;
+    let entry = '';
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        if (inQuote && line[i + 1] === '"') {
+          entry += '"';
+          i++;
+        } else {
+          inQuote = !inQuote;
+        }
+      } else if (c === ',' && !inQuote) {
+        row.push(entry.trim());
+        entry = '';
+      } else {
+        entry += c;
+      }
+    }
+    row.push(entry.trim());
+    return row;
+  }
+
+  const vouchersMap = new Map();
+
+  for (let i = 1; i < lines.length; i++) {
+    const r = parseCsvLine(lines[i]);
+    if (r.length < 2 || !r[0]) continue;
+
+    const voucherNum = r[0];
+    const vDate = r[1] || '';
+    const payee = r[3] || '';
+    const invNo = r[5] || '';
+    const desc = r[6] || '';
+    const lineAmt = parseFloat((r[7] || '0').replace(/,/g, '')) || 0;
+    const totalAmt = parseFloat((r[8] || '0').replace(/,/g, '')) || 0;
+    const method = r[9] || 'BANK_TRANSFER';
+    const tag = r[11] || '';
+    const remarks = r[12] || '';
+    const prep = r[13] || '';
+    const cert = r[14] || '';
+    const app = r[15] || '';
+    const rec = r[16] || '';
+
+    if (!vouchersMap.has(voucherNum)) {
+      vouchersMap.set(voucherNum, {
+        voucherNumber: voucherNum,
+        voucherDate: vDate,
+        recipientName: payee,
+        amountCents: Math.round(totalAmt * 100),
+        paymentMethod: method,
+        tag: tag,
+        notes: remarks,
+        signatories: { preparedBy: prep, certifiedBy: cert, approvedBy: app, receivedBy: rec },
+        items: []
+      });
+    }
+
+    const v = vouchersMap.get(voucherNum);
+    if (desc || invNo || lineAmt > 0) {
+      v.items.push({
+        invoiceNo: invNo,
+        description: desc || 'Disbursement',
+        amountCents: Math.round(lineAmt * 100)
+      });
+    }
+  }
+
+  pendingImportVouchers = Array.from(vouchersMap.values());
+  pendingImportVouchers.forEach((v) => {
+    if (v.items.length > 0 && v.amountCents === 0) {
+      v.amountCents = v.items.reduce((s, it) => s + it.amountCents, 0);
+    }
+  });
+
+  const previewBox = document.getElementById('voucher-import-preview-box');
+  const previewTitle = document.getElementById('voucher-import-preview-title');
+  const previewContent = document.getElementById('voucher-import-preview-content');
+  const submitBtn = document.getElementById('btn-submit-voucher-import');
+  const statusEl = document.getElementById('voucher-csv-status');
+
+  if (pendingImportVouchers.length > 0) {
+    if (statusEl) statusEl.innerText = 'Ready to import ' + pendingImportVouchers.length + ' voucher(s) from ' + filename;
+    if (previewTitle) previewTitle.innerText = 'Preview: ' + pendingImportVouchers.length + ' Vouchers Detected';
+    if (previewContent) {
+      previewContent.innerHTML = pendingImportVouchers.slice(0, 10).map((v) =>
+        '<div style="display: flex; justify-content: space-between; border-bottom: 1px solid #f1f5f9; padding: 2px 0;">' +
+        '<span><strong>' + v.voucherNumber + '</strong> — ' + escapeHtml(v.recipientName || 'Payee') + ' (' + v.items.length + ' line(s))</span>' +
+        '<span style="font-family: monospace; font-weight: 600;">₱' + (((v.amountCents || 0) / 100).toFixed(2)) + '</span>' +
+        '</div>'
+      ).join('') + (pendingImportVouchers.length > 10 ? '<div style="font-style: italic; color: #64748b; margin-top: 4px;">... and ' + (pendingImportVouchers.length - 10) + ' more vouchers</div>' : '');
+    }
+    if (previewBox) previewBox.style.display = 'block';
+    if (submitBtn) submitBtn.disabled = false;
+  } else {
+    showToast('No valid vouchers could be extracted from this CSV', 'warning');
+  }
+}
+
+async function submitVoucherCsvImport() {
+  if (!pendingImportVouchers || pendingImportVouchers.length === 0) {
+    showToast('No vouchers to import', 'warning');
+    return;
+  }
+
+  const submitBtn = document.getElementById('btn-submit-voucher-import');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerText = 'Importing...';
+  }
+
+  let successCount = 0;
+  let failCount = 0;
+
+  for (let i = 0; i < pendingImportVouchers.length; i++) {
+    const v = pendingImportVouchers[i];
+    try {
+      const res = await apiFetch('/api/accounting/vouchers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          voucherType: 'PAYMENT',
+          voucherNumber: v.voucherNumber,
+          voucherDate: v.voucherDate,
+          recipientType: 'OTHER',
+          recipientName: v.recipientName || 'Disbursement Payee',
+          currency: 'PHP',
+          amountCents: v.amountCents,
+          paymentMethod: v.paymentMethod || 'BANK_TRANSFER',
+          tag: v.tag || '',
+          notes: v.notes || '',
+          items: v.items,
+          signatories: v.signatories
+        })
+      });
+      const json = await res.json();
+      if (res.ok && json.success) successCount++;
+      else failCount++;
+    } catch (e) {
+      failCount++;
+    }
+  }
+
+  closeModal();
+  showToast('Import completed: ' + successCount + ' imported' + (failCount > 0 ? ', ' + failCount + ' failed/skipped' : ''), successCount > 0 ? 'success' : 'danger');
+  if (typeof loadVouchers === 'function') loadVouchers();
+  if (typeof loadAccounting === 'function') loadAccounting();
+}
+
 function renderVouchersContent(container, vouchers) {
   // Extract all available years dynamically
   const allYearsSet = new Set(['2026', '2025', '2024', '2023']);
@@ -572,6 +774,9 @@ function renderVouchersContent(container, vouchers) {
     '</button>' +
     '<button type="button" class="btn btn-secondary btn-sm" onclick="exportFilteredVouchersZip()" title="Download ZIP with individual PDFs" style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; padding: 0.45rem 0.85rem;">' +
     '📦 Export ZIP (PDFs)' +
+    '</button>' +
+    '<button type="button" class="btn btn-secondary btn-sm" onclick="openVoucherImportModal()" title="Import Vouchers from CSV" style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; padding: 0.45rem 0.85rem;">' +
+    '📤 Import CSV' +
     '</button>' +
     '<button type="button" class="btn btn-primary btn-sm" onclick="openNewPaymentVoucherModal()" style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.84rem; padding: 0.45rem 0.95rem;">' +
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 15px; height: 15px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>' +
