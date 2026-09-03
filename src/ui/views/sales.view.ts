@@ -290,6 +290,20 @@ async function submitNewSalesOrder(e) {
 }
 
 function openRecordReceiptModal(invoiceId, invoiceNumber, totalCents) {
+  const vSettings = window.cachedVoucherSettings || {};
+  const sMethods = (vSettings['vouchers.payment_methods'] && Array.isArray(vSettings['vouchers.payment_methods']))
+    ? vSettings['vouchers.payment_methods'].filter((m) => m.isActive !== false)
+    : [
+        { id: 'BANK_TRANSFER', name: 'Bank Wire / Transfer' },
+        { id: 'CREDIT_CARD', name: 'Credit Card' },
+        { id: 'CHECK', name: 'Check' },
+        { id: 'CASH', name: 'Cash' },
+        { id: 'ONLINE', name: 'Online / E-Wallet' },
+      ];
+  const sMethodOptions = sMethods
+    .map((m) => \`<option value="\${m.id}">\${m.name}</option>\`)
+    .join('');
+
   const body = \`
     <form id="form-receipt" onsubmit="submitReceipt(event, '\${invoiceId}')">
       <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1rem;">
@@ -302,10 +316,7 @@ function openRecordReceiptModal(invoiceId, invoiceNumber, totalCents) {
       <div class="form-group">
         <label class="form-label">Payment Method</label>
         <select id="rcpt-method" class="form-select">
-          <option value="BANK_TRANSFER">Bank Wire / Transfer</option>
-          <option value="CREDIT_CARD">Credit Card</option>
-          <option value="CHECK">Check</option>
-          <option value="CASH">Cash</option>
+          \${sMethodOptions}
         </select>
       </div>
       <div class="form-group">

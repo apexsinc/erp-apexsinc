@@ -14,6 +14,29 @@ let cachedProfitLoss = null;
 let cachedBalanceSheet = null;
 let cachedCashFlow = null;
 let voucherSearchQuery = '';
+let voucherYearFilter = '2026';
+
+function getVoucherYear(v) {
+  if (!v) return '2026';
+  const rawDate = v.voucherDate || v.createdAt;
+  if (rawDate) {
+    const d = new Date(rawDate);
+    if (!isNaN(d.getTime())) {
+      return d.getFullYear().toString();
+    }
+  }
+  if (v.voucherNumber) {
+    const match = v.voucherNumber.match(/^(\d{2})-/);
+    if (match) {
+      return '20' + match[1];
+    }
+    const match4 = v.voucherNumber.match(/(20\d{2})/);
+    if (match4) {
+      return match4[1];
+    }
+  }
+  return '2026';
+}
 
 async function loadAccounting() {
   const container = document.getElementById('view-accounting');
@@ -23,6 +46,7 @@ async function loadAccounting() {
     const urlTab = typeof getUrlParam === 'function' ? getUrlParam('tab') : null;
     if (urlTab) accountingActiveTab = urlTab;
     voucherSearchQuery = (typeof getUrlParam === 'function' ? getUrlParam('search') : '') || '';
+    voucherYearFilter = (typeof getUrlParam === 'function' ? getUrlParam('year') : null) || '2026';
 
     const [tbRes, ledgerRes, vouchersRes, accountsRes, settingsRes, plRes, bsRes, cfRes, vendorsRes, empRes, custRes] = await Promise.all([
       apiFetch('/api/accounting/trial-balance'),
@@ -124,9 +148,24 @@ function handleVoucherSearch(query) {
   }
 }
 
+function handleVoucherYearFilter(year) {
+  voucherYearFilter = year;
+  if (typeof setUrlParam === 'function') {
+    setUrlParam('year', voucherYearFilter === '2026' ? null : voucherYearFilter);
+  }
+  const container = document.getElementById('view-accounting');
+  if (container && state.trialBalance) {
+    renderAccountingContent(container, state.trialBalance, state.trialBalance.accounts || [], cachedLedgerEntries, cachedVouchers, cachedAccounts);
+  }
+}
+
 function exportVouchersCsv() {
   const headers = ['Voucher #', 'Date', 'Type', 'Payee / Recipient', 'Tag / Category', 'Remarks', 'Payment Method', 'Currency', 'Amount', 'Status'];
-  const rows = (cachedVouchers || []).map((v) => [
+  let list = cachedVouchers || [];
+  if (voucherYearFilter && voucherYearFilter !== 'ALL') {
+    list = list.filter((v) => getVoucherYear(v) === voucherYearFilter);
+  }
+  const rows = list.map((v) => [
     v.voucherNumber,
     new Date(v.voucherDate || v.createdAt).toISOString().slice(0, 10),
     v.voucherType,
@@ -138,7 +177,8 @@ function exportVouchersCsv() {
     (v.amountCents / 100).toFixed(2),
     v.status || 'POSTED',
   ]);
-  exportToCsv('vouchers_export_' + new Date().toISOString().slice(0, 10), headers, rows);
+  const yrSuffix = voucherYearFilter && voucherYearFilter !== 'ALL' ? '_' + voucherYearFilter : '';
+  exportToCsv('vouchers_export' + yrSuffix + '_' + new Date().toISOString().slice(0, 10), headers, rows);
 }
 
 function exportLedgerCsv() {
@@ -264,7 +304,19 @@ function exportCashFlowCsv() {
 function renderAccountingContent(container, tbJson, accounts, entries, vouchers, rawAccounts) {
   const isBalanced = tbJson.isBalanced;
 
-  // Filter vouchers according to selected sub-tab and search query
+  // Extract all available years dynamically from vouchers
+  const allYearsSet = new Set(['2026', '2025', '2024', '2023']);
+  (vouchers || []).forEach((v) => {
+    allYearsSet.add(getVoucherYear(v));
+  });
+  const availableYears = Array.from(allYearsSet).sort((a, b) => parseInt(b, 10) - parseInt(a, 10));
+
+  const yearFilterOptions = availableYears
+    .map((y) => '<option value="' + y + '"' + (voucherYearFilter === y ? ' selected' : '') + '>' + y + (y === '2026' ? ' (Current)' : '') + '</option>')
+    .concat(['<option value="ALL"' + (voucherYearFilter === 'ALL' ? ' selected' : '') + '>All Years</option>'])
+    .join('');
+
+  // Filter vouchers according to selected sub-tab, year filter, and search query
   let filteredVouchers = vouchers;
   if (accountingActiveTab === 'vouchers-pv') {
     filteredVouchers = vouchers.filter((v) => v.voucherType === 'PAYMENT');
@@ -276,6 +328,12 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
     filteredVouchers = vouchers.filter((v) => v.status === 'VOID' || v.status === 'DECLINED');
   }
 
+  // Apply Year Filter
+  if (voucherYearFilter && voucherYearFilter !== 'ALL') {
+    filteredVouchers = filteredVouchers.filter((v) => getVoucherYear(v) === voucherYearFilter);
+  }
+
+  // Apply Search Query Filter
   if (voucherSearchQuery) {
     filteredVouchers = filteredVouchers.filter((v) => {
       const num = (v.voucherNumber || '').toLowerCase();
@@ -285,6 +343,13 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
       return num.includes(voucherSearchQuery) || rec.includes(voucherSearchQuery) || notes.includes(voucherSearchQuery) || method.includes(voucherSearchQuery);
     });
   }
+
+  // Sort by last updated voucher (or created / voucherDate) descending
+  filteredVouchers.sort((a, b) => {
+    const timeB = new Date(b.updatedAt || b.createdAt || b.voucherDate || 0).getTime();
+    const timeA = new Date(a.updatedAt || a.createdAt || a.voucherDate || 0).getTime();
+    return timeB - timeA;
+  });
 
   const voucherTypeBadges = {
     PAYMENT: 'badge-danger',
@@ -490,8 +555,16 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
   if (accountingActiveTab.startsWith('vouchers')) {
     mainSectionHtml = \`
       <div style="padding: 0.75rem 1.35rem 0.5rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
-        <div style="flex: 1; max-width: 380px;">
-          <input type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search voucher #, payee, or notes..." value="\${voucherSearchQuery}" oninput="handleVoucherSearch(this.value)" />
+        <div style="display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap; flex: 1;">
+          <div style="flex: 1; max-width: 320px; min-width: 180px;">
+            <input type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search voucher #, payee, or notes..." value="\${voucherSearchQuery}" oninput="handleVoucherSearch(this.value)" />
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.45rem;">
+            <label style="font-size: 0.8rem; font-weight: 700; color: #475569; white-space: nowrap;">📅 Year:</label>
+            <select class="form-select" style="padding: 0.42rem 0.75rem; font-size: 0.82rem; font-weight: 600; min-width: 140px; border-radius: 6px;" onchange="handleVoucherYearFilter(this.value)">
+              \${yearFilterOptions}
+            </select>
+          </div>
         </div>
         <div>
           \${exportButtonHtml}
@@ -514,7 +587,7 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
             </tr>
           </thead>
           <tbody>
-            \${voucherRows || '<tr><td colspan="10" style="text-align: center; color: #64748b; padding: 2.5rem;">No vouchers found in this category.</td></tr>'}
+            \${(voucherRows && voucherRows.length > 0) ? voucherRows.join('') : '<tr><td colspan="10" style="text-align: center; color: #64748b; padding: 2.5rem;">No vouchers found' + (voucherYearFilter !== 'ALL' ? ' for year ' + voucherYearFilter : '') + ' in this category.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -2033,6 +2106,24 @@ function openEditVoucherModal(voucherId) {
       '</div></div>';
   }
 
+  const vSettings = window.cachedVoucherSettings || {};
+  const editMethods = (vSettings['vouchers.payment_methods'] && Array.isArray(vSettings['vouchers.payment_methods']))
+    ? vSettings['vouchers.payment_methods']
+    : [
+        { id: 'BANK_TRANSFER', name: 'Bank Transfer' },
+        { id: 'CHECK', name: 'Check' },
+        { id: 'CASH', name: 'Cash' },
+        { id: 'CREDIT_CARD', name: 'Credit Card' },
+        { id: 'ONLINE', name: 'Online Payment' },
+        { id: 'DOUBLE_ENTRY', name: 'Double-Entry Journal' },
+      ];
+  let editMethodOptions = editMethods
+    .map((m) => '<option value="' + m.id + '"' + (v.paymentMethod === m.id ? ' selected' : '') + '>' + m.name + '</option>')
+    .join('');
+  if (v.paymentMethod && !editMethods.some((m) => m.id === v.paymentMethod)) {
+    editMethodOptions += '<option value="' + v.paymentMethod + '" selected>' + v.paymentMethod + '</option>';
+  }
+
   const body =
     '<form id="edit-voucher-form" onsubmit="event.preventDefault(); handleSaveVoucherEdit(\\\'' + v.id + '\\\', \\\'' + v.voucherType + '\\\')">' +
     '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">' +
@@ -2046,12 +2137,7 @@ function openEditVoucherModal(voucherId) {
     '<input type="text" id="edit-v-recipient" class="form-input" value="' + (v.recipientName || v.recipient || '') + '" required /></div>' +
     '<div class="form-group" style="margin-bottom: 0;"><label class="form-label" for="edit-v-method">Payment Method</label>' +
     '<select id="edit-v-method" class="form-select">' +
-    '<option value="BANK_TRANSFER"' + (v.paymentMethod === 'BANK_TRANSFER' ? ' selected' : '') + '>Bank Transfer</option>' +
-    '<option value="CHECK"' + (v.paymentMethod === 'CHECK' ? ' selected' : '') + '>Check</option>' +
-    '<option value="CASH"' + (v.paymentMethod === 'CASH' ? ' selected' : '') + '>Cash</option>' +
-    '<option value="CREDIT_CARD"' + (v.paymentMethod === 'CREDIT_CARD' ? ' selected' : '') + '>Credit Card</option>' +
-    '<option value="ONLINE"' + (v.paymentMethod === 'ONLINE' ? ' selected' : '') + '>Online Payment</option>' +
-    '<option value="DOUBLE_ENTRY"' + (v.paymentMethod === 'DOUBLE_ENTRY' ? ' selected' : '') + '>Double-Entry Journal</option>' +
+    editMethodOptions +
     '</select></div>' +
     '</div>' +
     '<div class="form-group" style="margin-bottom: 1.25rem;">' +

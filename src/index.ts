@@ -1032,7 +1032,7 @@ app.post(
     'json',
     z.object({
       amountCents: z.number().int().positive(),
-      paymentMethod: z.enum(['BANK_TRANSFER', 'CHECK', 'CASH', 'CREDIT_CARD', 'ONLINE']).default('BANK_TRANSFER'),
+      paymentMethod: z.string().default('BANK_TRANSFER'),
       notes: z.string().optional(),
     })
   ),
@@ -1576,7 +1576,11 @@ app.get('/api/accounting/vouchers', async (c) => {
     });
   }
 
-  vouchers.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  vouchers.sort((a, b) => {
+    const timeB = new Date((b as any).updatedAt || b.createdAt || b.voucherDate || 0).getTime();
+    const timeA = new Date((a as any).updatedAt || a.createdAt || a.voucherDate || 0).getTime();
+    return timeB - timeA;
+  });
 
   return c.json({
     success: true,
@@ -1623,7 +1627,7 @@ app.post(
           receivedBy: z.string().optional(),
         })
         .optional(),
-      paymentMethod: z.enum(['BANK_TRANSFER', 'CHECK', 'CASH', 'CREDIT_CARD']).default('BANK_TRANSFER'),
+      paymentMethod: z.string().default('BANK_TRANSFER'),
       paymentAccountCode: z.string().default('1010'), // Cash & Bank Account (credited)
       expenseAccountCode: z.string().default('5020'), // Expense or AP Account (debited)
       notes: z.string().optional(),
@@ -1719,7 +1723,7 @@ app.post(
     z.object({
       payerName: z.string().min(1),
       amountCents: z.number().int().positive(),
-      paymentMethod: z.enum(['BANK_TRANSFER', 'CHECK', 'CASH', 'CREDIT_CARD', 'ONLINE']).default('BANK_TRANSFER'),
+      paymentMethod: z.string().default('BANK_TRANSFER'),
       depositAccountCode: z.string().default('1010'), // Cash & Bank Account (debited)
       creditAccountCode: z.string().default('4010'),  // Revenue or AR Account (credited)
       notes: z.string().optional(),
@@ -1944,7 +1948,7 @@ app.patch(
     z.object({
       recipientName: z.string().optional(),
       voucherDate: z.string().optional(),
-      paymentMethod: z.enum(['BANK_TRANSFER', 'CHECK', 'CASH', 'CREDIT_CARD', 'ONLINE', 'DOUBLE_ENTRY']).optional(),
+      paymentMethod: z.string().optional(),
       notes: z.string().optional(),
       amountCents: z.number().int().nonnegative().optional(),
       items: z

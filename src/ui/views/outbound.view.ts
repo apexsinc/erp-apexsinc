@@ -71,7 +71,7 @@ function renderOutboundCard(so) {
   if (canMarkPacked) {
     actionHtml = \`<button type="button" class="btn btn-primary btn-sm" onclick="markSOPacked('\${so.id}')">Mark as Packed</button>\`;
   } else if (canConfirmDelivery) {
-    actionHtml = '<button type="submit" class="btn btn-success btn-sm">Confirm Delivery</button>';
+    actionHtml = '<button type="submit" class="btn btn-success btn-sm">Create Delivery Receipt</button>';
   } else if (isFullyDelivered) {
     actionHtml = '<span class="badge badge-success">Fully Delivered</span>';
   }
@@ -170,9 +170,9 @@ async function submitConfirmDelivery(e, soId) {
       body: JSON.stringify({ items }),
     });
     const json = await res.json();
-    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to confirm delivery');
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to create delivery receipt');
 
-    showToast('Delivery Receipt ' + json.drNumber + ' issued — stock updated', 'success');
+    showToast('Delivery Receipt ' + json.drNumber + ' created — stock deducted', 'success');
     loadOutbound();
   } catch (err) {
     showToast(err.message, 'danger');

@@ -39,9 +39,7 @@ export const paymentVouchers = sqliteTable('payment_vouchers', {
   recipientName: text('recipient_name'),
   currency: text('currency', { enum: ['PHP', 'USD'] }).notNull().default('PHP'),
   amountCents: integer('amount_cents').notNull(),
-  paymentMethod: text('payment_method', {
-    enum: ['BANK_TRANSFER', 'CHECK', 'CASH', 'CREDIT_CARD'],
-  })
+  paymentMethod: text('payment_method')
     .notNull()
     .default('BANK_TRANSFER'),
   referenceType: text('reference_type', {
@@ -75,9 +73,7 @@ export const receiptVouchers = sqliteTable('receipt_vouchers', {
   customerId: text('customer_id').references(() => customers.id),
   invoiceId: text('invoice_id').references(() => invoices.id),
   amountCents: integer('amount_cents').notNull(),
-  paymentMethod: text('payment_method', {
-    enum: ['BANK_TRANSFER', 'CHECK', 'CASH', 'CREDIT_CARD', 'ONLINE'],
-  })
+  paymentMethod: text('payment_method')
     .notNull()
     .default('BANK_TRANSFER'),
   notes: text('notes'),

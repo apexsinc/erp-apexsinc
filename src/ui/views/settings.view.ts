@@ -200,16 +200,70 @@ export function renderSettingsView(): string {
 
         <!-- 6. Payment Methods Management -->
         <div class="settings-card">
-          <div class="settings-card-header">
-            <div class="settings-card-icon">💳</div>
-            <div>
-              <h3 class="settings-card-title">Payment & Disbursement Methods</h3>
-              <p class="settings-card-desc" style="margin-bottom: 0;">
-                Enabled payment methods shown in voucher drop-downs and disbursement modals.
-              </p>
+          <div class="settings-card-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.75rem;">
+            <div style="display: flex; gap: 0.75rem; align-items: center;">
+              <div class="settings-card-icon">💳</div>
+              <div>
+                <h3 class="settings-card-title">Payment & Disbursement Methods</h3>
+                <p class="settings-card-desc" style="margin-bottom: 0;">
+                  Manage payment, collection, and disbursement channels available across vouchers, sales receipts, and payroll.
+                </p>
+              </div>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openAddPaymentMethodModal()" style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; padding: 0.4rem 0.85rem;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              + Add Method
+            </button>
+          </div>
+
+          <!-- Quick Presets -->
+          <div style="margin-top: 1rem; margin-bottom: 1.15rem; padding: 0.85rem 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <div style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.4rem;">
+              <span>⚡ Quick-Add Popular Methods:</span>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 0.45rem;">
+              <button type="button" class="btn btn-sm btn-secondary" onclick="addPresetPaymentMethod('GCASH')" style="font-size: 0.78rem; padding: 0.25rem 0.65rem; background: #ffffff;">+ GCash (E-Wallet)</button>
+              <button type="button" class="btn btn-sm btn-secondary" onclick="addPresetPaymentMethod('MAYA')" style="font-size: 0.78rem; padding: 0.25rem 0.65rem; background: #ffffff;">+ Maya / PayMaya</button>
+              <button type="button" class="btn btn-sm btn-secondary" onclick="addPresetPaymentMethod('PAYPAL')" style="font-size: 0.78rem; padding: 0.25rem 0.65rem; background: #ffffff;">+ PayPal</button>
+              <button type="button" class="btn btn-sm btn-secondary" onclick="addPresetPaymentMethod('WIRE')" style="font-size: 0.78rem; padding: 0.25rem 0.65rem; background: #ffffff;">+ Telegraphic Wire / Swift</button>
+              <button type="button" class="btn btn-sm btn-secondary" onclick="addPresetPaymentMethod('DEBIT_CARD')" style="font-size: 0.78rem; padding: 0.25rem 0.65rem; background: #ffffff;">+ Debit Card</button>
+              <button type="button" class="btn btn-sm btn-secondary" onclick="addPresetPaymentMethod('CRYPTO')" style="font-size: 0.78rem; padding: 0.25rem 0.65rem; background: #ffffff;">+ Crypto (USDT / BTC)</button>
+              <button type="button" class="btn btn-sm btn-secondary" onclick="addPresetPaymentMethod('WESTERN_UNION')" style="font-size: 0.78rem; padding: 0.25rem 0.65rem; background: #ffffff;">+ Remittance / Western Union</button>
+              <button type="button" class="btn btn-sm btn-secondary" onclick="addPresetPaymentMethod('PETTY_CASH')" style="font-size: 0.78rem; padding: 0.25rem 0.65rem; background: #ffffff;">+ Branch Cash Fund</button>
             </div>
           </div>
-          <div id="settings-payment-methods-table" class="table-container" style="margin-top: 1rem;">
+
+          <!-- Inline Quick Add -->
+          <div style="display: flex; gap: 0.65rem; margin-bottom: 1.25rem; flex-wrap: wrap; align-items: flex-end; padding: 0.9rem; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px;">
+            <div style="flex: 1; min-width: 140px;">
+              <label class="form-label" style="font-size: 0.76rem; font-weight: 600; margin-bottom: 0.25rem; color: #475569;">Method Code / ID</label>
+              <input type="text" id="new-pm-id" class="form-input" placeholder="e.g. GCASH" style="text-transform: uppercase; font-family: monospace; font-size: 0.82rem; background: #ffffff;" oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_')" />
+            </div>
+            <div style="flex: 1.8; min-width: 200px;">
+              <label class="form-label" style="font-size: 0.76rem; font-weight: 600; margin-bottom: 0.25rem; color: #475569;">Display Name</label>
+              <input type="text" id="new-pm-name" class="form-input" placeholder="e.g. GCash Mobile Wallet" style="font-size: 0.82rem; background: #ffffff;" onkeydown="if(event.key==='Enter') addSettingsPaymentMethodInline()" />
+            </div>
+            <div style="flex: 1.2; min-width: 150px;">
+              <label class="form-label" style="font-size: 0.76rem; font-weight: 600; margin-bottom: 0.25rem; color: #475569;">Channel / Type</label>
+              <select id="new-pm-cat" class="form-select" style="font-size: 0.82rem; background: #ffffff;">
+                <option value="E-Wallet">E-Wallet / Online</option>
+                <option value="Bank / Wire">Bank Transfer / Wire</option>
+                <option value="Physical Cash">Physical Cash</option>
+                <option value="Check">Check / Draft</option>
+                <option value="Card">Credit / Debit Card</option>
+                <option value="Crypto">Cryptocurrency</option>
+                <option value="Remittance">Remittance / Agent</option>
+                <option value="Other">Other Channel</option>
+              </select>
+            </div>
+            <div>
+              <button type="button" class="btn btn-primary" onclick="addSettingsPaymentMethodInline()" style="font-size: 0.82rem; padding: 0.48rem 1rem; white-space: nowrap;">
+                + Add Method
+              </button>
+            </div>
+          </div>
+
+          <div id="settings-payment-methods-table" class="table-container" style="margin-top: 0.5rem; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
             <!-- Dynamically populated table -->
           </div>
         </div>
@@ -511,27 +565,317 @@ function removeSettingsTag(idx) {
   renderSettingsTags();
 }
 
+const PRESET_PAYMENT_METHODS = {
+  GCASH: { id: 'GCASH', name: 'GCash E-Wallet', category: 'E-Wallet', isActive: true },
+  MAYA: { id: 'MAYA', name: 'Maya (PayMaya)', category: 'E-Wallet', isActive: true },
+  PAYPAL: { id: 'PAYPAL', name: 'PayPal Business', category: 'E-Wallet', isActive: true },
+  WIRE: { id: 'WIRE_TRANSFER', name: 'Telegraphic Wire / Swift', category: 'Bank / Wire', isActive: true },
+  DEBIT_CARD: { id: 'DEBIT_CARD', name: 'Corporate Debit Card', category: 'Card', isActive: true },
+  CRYPTO: { id: 'CRYPTO_USDT', name: 'Cryptocurrency (USDT / BTC)', category: 'Crypto', isActive: true },
+  WESTERN_UNION: { id: 'WESTERN_UNION', name: 'Western Union / Remittance', category: 'Remittance', isActive: true },
+  PETTY_CASH: { id: 'BRANCH_CASH', name: 'Branch Revolving Cash', category: 'Physical Cash', isActive: true },
+};
+
+function guessPaymentMethodCategory(id) {
+  const upper = (id || '').toUpperCase();
+  if (upper.includes('CASH')) return 'Physical Cash';
+  if (upper.includes('CHECK') || upper.includes('CHEQUE')) return 'Check';
+  if (upper.includes('CARD')) return 'Card';
+  if (upper.includes('BANK') || upper.includes('WIRE') || upper.includes('ACH') || upper.includes('TRANSFER')) return 'Bank / Wire';
+  if (upper.includes('WALLET') || upper.includes('GCASH') || upper.includes('MAYA') || upper.includes('PAYPAL') || upper.includes('ONLINE')) return 'E-Wallet';
+  if (upper.includes('CRYPTO') || upper.includes('USDT') || upper.includes('BTC')) return 'Crypto';
+  if (upper.includes('WESTERN') || upper.includes('REMIT')) return 'Remittance';
+  return 'General';
+}
+
 function renderSettingsPaymentMethods() {
   const table = document.getElementById('settings-payment-methods-table');
   if (!table) return;
+  if (!currentPaymentMethods || currentPaymentMethods.length === 0) {
+    table.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b; font-size: 0.85rem;">No payment methods configured. Click "+ Add Method" or a quick preset above.</div>';
+    return;
+  }
   table.innerHTML =
-    '<table class="table">' +
-    '<thead><tr><th>Method ID</th><th>Display Name</th><th>Status</th><th style="text-align: right;">Actions</th></tr></thead>' +
+    '<table class="table" style="margin-bottom: 0;">' +
+    '<thead><tr style="background: #f8fafc;">' +
+    '<th style="width: 22%; font-size: 0.78rem; text-transform: uppercase;">Method Code</th>' +
+    '<th style="width: 32%; font-size: 0.78rem; text-transform: uppercase;">Display Name</th>' +
+    '<th style="width: 18%; font-size: 0.78rem; text-transform: uppercase;">Channel / Type</th>' +
+    '<th style="width: 12%; font-size: 0.78rem; text-transform: uppercase;">Status</th>' +
+    '<th style="width: 16%; text-align: right; font-size: 0.78rem; text-transform: uppercase;">Actions</th>' +
+    '</tr></thead>' +
     '<tbody>' +
     currentPaymentMethods
       .map(
         (pm, idx) =>
           '<tr>' +
-          '<td><strong style="font-family: monospace;">' + pm.id + '</strong></td>' +
-          '<td><strong>' + pm.name + '</strong></td>' +
-          '<td>' + (pm.isActive ? '<span class="badge badge-success"><span class="badge-dot"></span>Active</span>' : '<span class="badge badge-neutral">Disabled</span>') + '</td>' +
-          '<td style="text-align: right;">' +
-          '<button type="button" class="btn btn-sm ' + (pm.isActive ? 'btn-secondary' : 'btn-primary') + '" onclick="togglePaymentMethodActive(' + idx + ')">' + (pm.isActive ? 'Disable' : 'Enable') + '</button>' +
+          '<td><code style="font-family: monospace; font-size: 0.82rem; font-weight: 700; color: #0f172a; background: #f1f5f9; border: 1px solid #e2e8f0; padding: 0.18rem 0.45rem; border-radius: 4px;">' + pm.id + '</code></td>' +
+          '<td><strong style="color: #1e293b; font-size: 0.86rem;">' + pm.name + '</strong>' + (pm.description ? '<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">' + pm.description + '</div>' : '') + '</td>' +
+          '<td><span class="badge badge-neutral" style="font-size: 0.72rem;">' + (pm.category || guessPaymentMethodCategory(pm.id)) + '</span></td>' +
+          '<td>' + (pm.isActive !== false ? '<span class="badge badge-success" style="font-size: 0.72rem;"><span class="badge-dot"></span>Active</span>' : '<span class="badge badge-neutral" style="font-size: 0.72rem;">Disabled</span>') + '</td>' +
+          '<td style="text-align: right; white-space: nowrap;">' +
+          '<div style="display: inline-flex; gap: 0.35rem;">' +
+          '<button type="button" class="btn btn-sm btn-secondary" onclick="openEditPaymentMethodModal(' + idx + ')" style="padding: 0.25rem 0.5rem; font-size: 0.76rem;" title="Edit details">✏️ Edit</button>' +
+          '<button type="button" class="btn btn-sm ' + (pm.isActive !== false ? 'btn-secondary' : 'btn-primary') + '" onclick="togglePaymentMethodActive(' + idx + ')" style="padding: 0.25rem 0.5rem; font-size: 0.76rem;">' + (pm.isActive !== false ? 'Disable' : 'Enable') + '</button>' +
+          '<button type="button" class="btn btn-sm btn-danger" onclick="deletePaymentMethod(' + idx + ')" style="padding: 0.25rem 0.45rem; font-size: 0.76rem;" title="Delete Method">🗑️</button>' +
+          '</div>' +
           '</td>' +
           '</tr>'
       )
       .join('') +
     '</tbody></table>';
+
+  const curDisburse = document.getElementById('set-pay-disburse-method') ? document.getElementById('set-pay-disburse-method').value : 'BANK_TRANSFER';
+  populatePayrollDisburseDropdown(curDisburse);
+}
+
+function populatePayrollDisburseDropdown(selectedVal) {
+  const el = document.getElementById('set-pay-disburse-method');
+  if (!el) return;
+  const activeMethods = (currentPaymentMethods || []).filter((m) => m.isActive !== false);
+  const list = activeMethods.length > 0 ? activeMethods : [
+    { id: 'BANK_TRANSFER', name: 'Bank Transfer / Direct Deposit' },
+    { id: 'CHECK', name: 'Corporate Check' },
+    { id: 'CASH', name: 'Petty Cash' },
+  ];
+  el.innerHTML = list
+    .map((m) => '<option value="' + m.id + '"' + (m.id === selectedVal ? ' selected' : '') + '>' + m.name + '</option>')
+    .join('');
+}
+
+function addPresetPaymentMethod(presetKey) {
+  const preset = PRESET_PAYMENT_METHODS[presetKey];
+  if (!preset) return;
+  const exists = currentPaymentMethods.some((pm) => pm.id === preset.id);
+  if (exists) {
+    showToast('Payment method "' + preset.name + '" (' + preset.id + ') is already in your list.', 'warning');
+    return;
+  }
+  currentPaymentMethods.push({ ...preset });
+  renderSettingsPaymentMethods();
+  showToast('Added ' + preset.name + ' to payment methods. Remember to click "Save Changes"!', 'success');
+}
+
+function addSettingsPaymentMethodInline() {
+  const idInput = document.getElementById('new-pm-id');
+  const nameInput = document.getElementById('new-pm-name');
+  const catInput = document.getElementById('new-pm-cat');
+  if (!idInput || !nameInput) return;
+
+  const code = (idInput.value || '').trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+  const name = (nameInput.value || '').trim();
+  const category = (catInput ? catInput.value : 'Other') || 'Other';
+
+  if (!code) {
+    showToast('Please specify a Method Code / Identifier (e.g. GCASH)', 'warning');
+    idInput.focus();
+    return;
+  }
+  if (!name) {
+    showToast('Please specify a Display Name (e.g. GCash E-Wallet)', 'warning');
+    nameInput.focus();
+    return;
+  }
+
+  const exists = currentPaymentMethods.some((pm) => pm.id === code);
+  if (exists) {
+    showToast('Method Code "' + code + '" already exists. Please choose a distinct code.', 'warning');
+    idInput.focus();
+    return;
+  }
+
+  currentPaymentMethods.push({
+    id: code,
+    name: name,
+    category: category,
+    isActive: true,
+  });
+
+  idInput.value = '';
+  nameInput.value = '';
+  renderSettingsPaymentMethods();
+  showToast('Added ' + name + ' (' + code + ')! Click "Save Changes" to apply across ERP.', 'success');
+}
+
+function openAddPaymentMethodModal() {
+  const body =
+    '<div style="display: flex; flex-direction: column; gap: 1.15rem;">' +
+    '<div class="form-group" style="margin-bottom: 0;">' +
+    '<label class="form-label" for="modal-pm-id" style="font-weight: 600;">Method Code / Identifier *</label>' +
+    '<input type="text" id="modal-pm-id" class="form-input" placeholder="e.g. GCASH, STRIPE, WIRE" style="text-transform: uppercase; font-family: monospace; font-weight: 600;" oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, \'_\')" />' +
+    '<p style="font-size: 0.74rem; color: #64748b; margin-top: 4px; margin-bottom: 0;">Uppercase alphanumeric code stored in voucher databases.</p>' +
+    '</div>' +
+    '<div class="form-group" style="margin-bottom: 0;">' +
+    '<label class="form-label" for="modal-pm-name" style="font-weight: 600;">Display Name *</label>' +
+    '<input type="text" id="modal-pm-name" class="form-input" placeholder="e.g. GCash Mobile Wallet / Wire Transfer" />' +
+    '</div>' +
+    '<div class="form-group" style="margin-bottom: 0;">' +
+    '<label class="form-label" for="modal-pm-cat" style="font-weight: 600;">Category / Channel</label>' +
+    '<select id="modal-pm-cat" class="form-select">' +
+    '<option value="E-Wallet">E-Wallet / Online Wallet</option>' +
+    '<option value="Bank / Wire">Bank Transfer / Wire / ACH</option>' +
+    '<option value="Physical Cash">Physical Cash / Cash Fund</option>' +
+    '<option value="Check">Check / Bank Draft</option>' +
+    '<option value="Card">Credit / Debit Card</option>' +
+    '<option value="Crypto">Cryptocurrency</option>' +
+    '<option value="Remittance">Remittance / Agent Transfer</option>' +
+    '<option value="Other">Other Custom Channel</option>' +
+    '</select>' +
+    '</div>' +
+    '<div class="form-group" style="margin-bottom: 0;">' +
+    '<label class="form-label" for="modal-pm-desc" style="font-weight: 600;">Description / Memo Note (Optional)</label>' +
+    '<input type="text" id="modal-pm-desc" class="form-input" placeholder="e.g. For instant online settlements and peer-to-peer payout" />' +
+    '</div>' +
+    '<label class="toggle-option" style="margin-top: 0.25rem;">' +
+    '<span>Enable this method immediately for voucher selections</span>' +
+    '<input type="checkbox" id="modal-pm-active" checked style="width: 18px; height: 18px; cursor: pointer;" />' +
+    '</label>' +
+    '</div>';
+
+  const footer =
+    '<button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>' +
+    '<button type="button" class="btn btn-primary" onclick="submitModalAddPaymentMethod()">Add Payment Method</button>';
+
+  openModal('Add Payment & Disbursement Method', body, footer, 'md');
+}
+
+function submitModalAddPaymentMethod() {
+  const idInput = document.getElementById('modal-pm-id');
+  const nameInput = document.getElementById('modal-pm-name');
+  const catInput = document.getElementById('modal-pm-cat');
+  const descInput = document.getElementById('modal-pm-desc');
+  const activeInput = document.getElementById('modal-pm-active');
+
+  const code = (idInput ? idInput.value : '').trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+  const name = (nameInput ? nameInput.value : '').trim();
+  const category = (catInput ? catInput.value : 'Other') || 'Other';
+  const description = (descInput ? descInput.value : '').trim();
+  const isActive = activeInput ? activeInput.checked : true;
+
+  if (!code) {
+    showToast('Please enter a Method Code', 'warning');
+    return;
+  }
+  if (!name) {
+    showToast('Please enter a Display Name', 'warning');
+    return;
+  }
+
+  const exists = currentPaymentMethods.some((pm) => pm.id === code);
+  if (exists) {
+    showToast('Method Code "' + code + '" already exists.', 'warning');
+    return;
+  }
+
+  currentPaymentMethods.push({
+    id: code,
+    name: name,
+    category: category,
+    description: description || undefined,
+    isActive: isActive,
+  });
+
+  closeModal();
+  renderSettingsPaymentMethods();
+  showToast('Added ' + name + ' (' + code + ') to payment methods.', 'success');
+}
+
+function openEditPaymentMethodModal(idx) {
+  const pm = currentPaymentMethods[idx];
+  if (!pm) return;
+
+  const isSystemDefault = ['BANK_TRANSFER', 'CHECK', 'CASH', 'CREDIT_CARD'].includes(pm.id);
+
+  const body =
+    '<div style="display: flex; flex-direction: column; gap: 1.15rem;">' +
+    '<div class="form-group" style="margin-bottom: 0;">' +
+    '<label class="form-label" for="edit-pm-id" style="font-weight: 600;">Method Code / Identifier</label>' +
+    '<input type="text" id="edit-pm-id" class="form-input" value="' + pm.id + '" ' + (isSystemDefault ? 'disabled style="background: #f1f5f9; cursor: not-allowed; font-family: monospace;"' : 'style="text-transform: uppercase; font-family: monospace;"') + ' />' +
+    (isSystemDefault ? '<p style="font-size: 0.74rem; color: #64748b; margin-top: 4px; margin-bottom: 0;">Built-in standard method code is locked to preserve ledger history.</p>' : '') +
+    '</div>' +
+    '<div class="form-group" style="margin-bottom: 0;">' +
+    '<label class="form-label" for="edit-pm-name" style="font-weight: 600;">Display Name *</label>' +
+    '<input type="text" id="edit-pm-name" class="form-input" value="' + (pm.name || '') + '" required />' +
+    '</div>' +
+    '<div class="form-group" style="margin-bottom: 0;">' +
+    '<label class="form-label" for="edit-pm-cat" style="font-weight: 600;">Category / Channel</label>' +
+    '<select id="edit-pm-cat" class="form-select">' +
+    '<option value="E-Wallet"' + (pm.category === 'E-Wallet' ? ' selected' : '') + '>E-Wallet / Online Wallet</option>' +
+    '<option value="Bank / Wire"' + (pm.category === 'Bank / Wire' ? ' selected' : '') + '>Bank Transfer / Wire / ACH</option>' +
+    '<option value="Physical Cash"' + (pm.category === 'Physical Cash' ? ' selected' : '') + '>Physical Cash / Cash Fund</option>' +
+    '<option value="Check"' + (pm.category === 'Check' ? ' selected' : '') + '>Check / Bank Draft</option>' +
+    '<option value="Card"' + (pm.category === 'Card' ? ' selected' : '') + '>Credit / Debit Card</option>' +
+    '<option value="Crypto"' + (pm.category === 'Crypto' ? ' selected' : '') + '>Cryptocurrency</option>' +
+    '<option value="Remittance"' + (pm.category === 'Remittance' ? ' selected' : '') + '>Remittance / Agent Transfer</option>' +
+    '<option value="Other"' + (pm.category === 'Other' ? ' selected' : '') + '>Other Custom Channel</option>' +
+    '</select>' +
+    '</div>' +
+    '<div class="form-group" style="margin-bottom: 0;">' +
+    '<label class="form-label" for="edit-pm-desc" style="font-weight: 600;">Description / Memo Note</label>' +
+    '<input type="text" id="edit-pm-desc" class="form-input" value="' + (pm.description || '') + '" placeholder="e.g. Direct electronic deposit" />' +
+    '</div>' +
+    '<label class="toggle-option" style="margin-top: 0.25rem;">' +
+    '<span>Method is Active & Available across ERP forms</span>' +
+    '<input type="checkbox" id="edit-pm-active" ' + (pm.isActive !== false ? 'checked' : '') + ' style="width: 18px; height: 18px; cursor: pointer;" />' +
+    '</label>' +
+    '</div>';
+
+  const footer =
+    '<button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>' +
+    '<button type="button" class="btn btn-primary" onclick="submitModalEditPaymentMethod(' + idx + ')">Save Changes</button>';
+
+  openModal('Edit Payment Method — ' + pm.name, body, footer, 'md');
+}
+
+function submitModalEditPaymentMethod(idx) {
+  const pm = currentPaymentMethods[idx];
+  if (!pm) return;
+
+  const idInput = document.getElementById('edit-pm-id');
+  const nameInput = document.getElementById('edit-pm-name');
+  const catInput = document.getElementById('edit-pm-cat');
+  const descInput = document.getElementById('edit-pm-desc');
+  const activeInput = document.getElementById('edit-pm-active');
+
+  const newCode = (idInput ? idInput.value : '').trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+  const newName = (nameInput ? nameInput.value : '').trim();
+  const newCat = catInput ? catInput.value : 'Other';
+  const newDesc = (descInput ? descInput.value : '').trim();
+  const isActive = activeInput ? activeInput.checked : true;
+
+  if (!newName) {
+    showToast('Display Name cannot be empty', 'warning');
+    return;
+  }
+
+  if (newCode && newCode !== pm.id) {
+    const conflict = currentPaymentMethods.some((m, i) => i !== idx && m.id === newCode);
+    if (conflict) {
+      showToast('Method Code "' + newCode + '" is already used by another payment method.', 'warning');
+      return;
+    }
+    pm.id = newCode;
+  }
+
+  pm.name = newName;
+  pm.category = newCat;
+  pm.description = newDesc || undefined;
+  pm.isActive = isActive;
+
+  closeModal();
+  renderSettingsPaymentMethods();
+  showToast('Updated payment method "' + newName + '". Remember to click "Save Changes"!', 'success');
+}
+
+function deletePaymentMethod(idx) {
+  const pm = currentPaymentMethods[idx];
+  if (!pm) return;
+  if (!confirm('Are you sure you want to remove "' + pm.name + '" (' + pm.id + ')? Existing posted vouchers with this method will still retain their historical records.')) {
+    return;
+  }
+  currentPaymentMethods.splice(idx, 1);
+  renderSettingsPaymentMethods();
+  showToast('Removed ' + pm.name + ' from payment methods.', 'success');
 }
 
 function togglePaymentMethodActive(idx) {
