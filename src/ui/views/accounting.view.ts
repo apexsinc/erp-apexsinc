@@ -971,154 +971,205 @@ function openNewPaymentVoucherModal() {
   const defaultExp = defAccounts.salariesExpenseCode || '5020';
 
   const body = \`
-    <form id="form-new-pv" onsubmit="submitNewPaymentVoucher(event)">
-      <!-- Top Info Grid -->
-      <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 0.85rem; margin-bottom: 0.85rem;">
-        <div class="form-group" style="margin-bottom: 0;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
-            <label class="form-label" style="font-weight: 700; margin-bottom: 0;">Pay to (Recipient / Payee Name) *</label>
-            <span style="font-size: 0.72rem; color: #64748b;">Type or pick from directory</span>
+    <form id="form-new-pv" onsubmit="submitNewPaymentVoucher(event)" style="display: flex; flex-direction: column; gap: 1.15rem;">
+      <!-- PANEL 1: PAYEE & VOUCHER DETAILS -->
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1.15rem; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.9rem; padding-bottom: 0.6rem; border-bottom: 1px solid #f1f5f9;">
+          <div style="display: flex; align-items: center; gap: 0.55rem;">
+            <div style="width: 26px; height: 26px; border-radius: 6px; background: #eff6ff; color: #2563eb; display: flex; align-items: center; justify-content: center; font-size: 0.82rem; font-weight: 800; border: 1px solid #bfdbfe;">1</div>
+            <div>
+              <span style="font-weight: 700; font-size: 0.92rem; color: #0f172a;">Payee & Basic Details</span>
+              <span style="font-size: 0.75rem; color: #64748b; margin-left: 0.4rem;">• Primary disbursement entity</span>
+            </div>
           </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem;">
-            <input type="text" id="pv-recipient-name" class="form-input" list="pv-payees-datalist" placeholder="e.g. Acme Materials or Sarah Connor" oninput="handlePvPayeeInput(this.value)" required />
-            <select class="form-input" onchange="handlePvQuickPayeeSelect(this.value)" style="font-size: 0.8rem; background-color: #f8fafc;">
-              <option value="">🔍 Directory Pick...</option>
-              <optgroup label="🏢 Vendors / Suppliers (\${cachedVendors.length})">
-                \${cachedVendors.map((v) => \`<option value="VENDOR|\${v.name}">\${v.name} (\${v.vendorCode || 'Vendor'})\</option>\`).join('')}
-              </optgroup>
-              <optgroup label="👷 Employees / Staff (\${cachedEmployees.length})">
-                \${cachedEmployees.map((e) => \`<option value="EMPLOYEE|\${e.firstName} \${e.lastName}">\${e.firstName} \${e.lastName} (\${e.department || 'Staff'})\</option>\`).join('')}
-              </optgroup>
-              <optgroup label="🏬 Customers / Companies (\${cachedCustomers.length})">
-                \${cachedCustomers.map((c) => \`<option value="OTHER|\${c.name}">\${c.name} (\${c.customerCode || 'Client'})\</option>\`).join('')}
-              </optgroup>
+          <span class="badge badge-primary" style="font-size: 0.72rem; padding: 0.2rem 0.55rem;">Disbursement</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 0.9rem; margin-bottom: 0.9rem;">
+          <div class="form-group" style="margin-bottom: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+              <label class="form-label" style="font-weight: 700; margin-bottom: 0; color: #1e293b; font-size: 0.84rem;">Pay to (Recipient / Payee Name) *</label>
+              <span style="font-size: 0.72rem; color: #64748b;">Search or quick-pick</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 0.45rem;">
+              <input type="text" id="pv-recipient-name" class="form-input" list="pv-payees-datalist" placeholder="e.g. Acme Materials or Sarah Connor" oninput="handlePvPayeeInput(this.value)" required style="font-weight: 600;" />
+              <select class="form-input" onchange="handlePvQuickPayeeSelect(this.value)" style="font-size: 0.8rem; background-color: #f8fafc; font-weight: 500;">
+                <option value="">🔍 Directory Pick...</option>
+                <optgroup label="🏢 Vendors / Suppliers (\${cachedVendors.length})">
+                  \${cachedVendors.map((v) => \`<option value="VENDOR|\${v.name}">\${v.name} (\${v.vendorCode || 'Vendor'})\</option>\`).join('')}
+                </optgroup>
+                <optgroup label="👷 Employees / Staff (\${cachedEmployees.length})">
+                  \${cachedEmployees.map((e) => \`<option value="EMPLOYEE|\${e.firstName} \${e.lastName}">\${e.firstName} \${e.lastName} (\${e.department || 'Staff'})\</option>\`).join('')}
+                </optgroup>
+                <optgroup label="🏬 Customers / Companies (\${cachedCustomers.length})">
+                  \${cachedCustomers.map((c) => \`<option value="OTHER|\${c.name}">\${c.name} (\${c.customerCode || 'Client'})\</option>\`).join('')}
+                </optgroup>
+              </select>
+            </div>
+            <datalist id="pv-payees-datalist">
+              \${cachedVendors.map((v) => \`<option value="\${v.name}">Vendor: \${v.name} (\${v.vendorCode || 'Supplier'})\</option>\`).join('')}
+              \${cachedEmployees.map((e) => \`<option value="\${e.firstName} \${e.lastName}">Employee: \${e.firstName} \${e.lastName} (\${e.department || 'Staff'})\</option>\`).join('')}
+              \${cachedCustomers.map((c) => \`<option value="\${c.name}">Customer: \${c.name} (\${c.customerCode || 'Client'})\</option>\`).join('')}
+            </datalist>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" style="font-weight: 600; font-size: 0.82rem; color: #334155;">Recipient Classification</label>
+            <select id="pv-recipient-type" class="form-input" style="font-weight: 500;">
+              <option value="VENDOR">Vendor / Supplier</option>
+              <option value="EMPLOYEE">Employee / Staff</option>
+              <option value="OTHER">Other / Contractor</option>
             </select>
           </div>
-          <datalist id="pv-payees-datalist">
-            \${cachedVendors.map((v) => \`<option value="\${v.name}">Vendor: \${v.name} (\${v.vendorCode || 'Supplier'})\</option>\`).join('')}
-            \${cachedEmployees.map((e) => \`<option value="\${e.firstName} \${e.lastName}">Employee: \${e.firstName} \${e.lastName} (\${e.department || 'Staff'})\</option>\`).join('')}
-            \${cachedCustomers.map((c) => \`<option value="\${c.name}">Customer: \${c.name} (\${c.customerCode || 'Client'})\</option>\`).join('')}
-          </datalist>
-        </div>
-        <div class="form-group" style="margin-bottom: 0;">
-          <label class="form-label">Classification</label>
-          <select id="pv-recipient-type" class="form-input">
-            <option value="VENDOR">Vendor / Supplier</option>
-            <option value="EMPLOYEE">Employee / Staff</option>
-            <option value="OTHER">Other / Contractor</option>
-          </select>
-        </div>
-        <div class="form-group" style="margin-bottom: 0;">
-          <label class="form-label">Currency</label>
-          <select id="pv-currency" class="form-input" onchange="updatePaymentVoucherCurrency()">
-            <option value="PHP" selected>PHP (₱)</option>
-            <option value="USD">USD ($)</option>
-          </select>
-        </div>
-      </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.85rem; margin-bottom: 1.15rem;">
-        <div class="form-group" style="margin-bottom: 0;">
-          <label class="form-label">Voucher Date *</label>
-          <input type="date" id="pv-date" class="form-input" value="\${todayStr}" required />
-        </div>
-        <div class="form-group" style="margin-bottom: 0;">
-          <label class="form-label">Expense Tag / Category</label>
-          <select id="pv-tag" class="form-input">
-            \${tagOptions}
-          </select>
-        </div>
-        <div class="form-group" style="margin-bottom: 0;">
-          <label class="form-label">Voucher Number <span style="font-size: 0.75rem; color: #64748b;">(Auto)</span></label>
-          <input type="text" id="pv-voucher-number" class="form-input" placeholder="e.g. 26-000440 (Auto)" />
-        </div>
-      </div>
-
-      <!-- Line Items Section (Matching APEXS Voucher Format) -->
-      <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; background: #ffffff; margin-bottom: 1.15rem;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-          <div>
-            <span style="font-weight: 700; font-size: 0.9rem; color: #0f172a;">Itemized Breakdown</span>
-            <span style="font-size: 0.78rem; color: #64748b; margin-left: 0.5rem;">(Lines shown on official APEXS voucher slip)</span>
-          </div>
-          <button type="button" class="btn btn-secondary btn-sm" onclick="addPaymentVoucherItemRow()">+ Add Row</button>
-        </div>
-
-        <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;" id="pv-items-table">
-          <thead>
-            <tr style="border-bottom: 2px solid #cbd5e1; background: #f8fafc; text-align: left;">
-              <th style="padding: 6px 8px; width: 22%;">Invoice / Ref No</th>
-              <th style="padding: 6px 8px; width: 48%;">Account / Description *</th>
-              <th style="padding: 6px 8px; width: 22%; text-align: right;">Amount (<span class="pv-cur-symbol">₱</span>) *</th>
-              <th style="padding: 6px 8px; width: 8%; text-align: center;"></th>
-            </tr>
-          </thead>
-          <tbody id="pv-items-tbody">
-            <!-- Dynamic rows rendered here -->
-          </tbody>
-          <tfoot>
-            <tr style="border-top: 2px solid #0f172a; font-weight: 700;">
-              <td colspan="2" style="padding: 8px; text-align: right;">Total Voucher Amount:</td>
-              <td style="padding: 8px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: #dc2626;" id="pv-total-display">
-                ₱ 0.00
-              </td>
-              <td></td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-
-      <!-- Accounting Ledger Allocations -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; background: #f8fafc; padding: 0.9rem; border-radius: 6px; border: 1px solid #e2e8f0; margin-bottom: 1rem;">
-        <div class="form-group" style="margin-bottom: 0;">
-          <label class="form-label" style="color: #dc2626; font-weight: 600;">Debit Account (Expense / AP) *</label>
-          <select id="pv-exp-acc" class="form-input" required>
-            \${accountOptions}
-          </select>
-        </div>
-        <div class="form-group" style="margin-bottom: 0;">
-          <label class="form-label" style="color: #059669; font-weight: 600;">Credit Account (Cash / Bank) *</label>
-          <select id="pv-pay-acc" class="form-input" required>
-            \${accountOptions}
-          </select>
-        </div>
-      </div>
-
-      <!-- Settlement Method & Memo -->
-      <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 0.85rem; margin-bottom: 1rem;">
-        <div class="form-group" style="margin-bottom: 0;">
-          <label class="form-label">Payment Method</label>
-          <select id="pv-payment-method" class="form-input">
-            \${methodOptions}
-          </select>
-        </div>
-        <div class="form-group" style="margin-bottom: 0;">
-          <label class="form-label">Payment Memo / Remark</label>
-          <input type="text" id="pv-notes" class="form-input" placeholder="e.g. (KENNETH S BROWN CORP. CREDIT CARD PAYMENT)" />
-        </div>
-      </div>
-
-      <!-- Signatories Section -->
-      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.9rem;">
-        <div style="font-weight: 700; font-size: 0.82rem; color: #475569; margin-bottom: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em;">
-          Signatories & Approvals (Official APEXS Sign-off)
-        </div>
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem;">
           <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label" style="font-size: 0.75rem;">Prepared by:</label>
-            <input type="text" id="pv-sig-prepared" class="form-input" value="\${prepVal}" style="font-size: 0.82rem;" />
+            <label class="form-label" style="font-weight: 600; font-size: 0.82rem; color: #334155;">Currency</label>
+            <select id="pv-currency" class="form-input" onchange="updatePaymentVoucherCurrency()" style="font-weight: 700;">
+              <option value="PHP" selected>PHP (₱)</option>
+              <option value="USD">USD ($)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.9rem;">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" style="font-weight: 600; font-size: 0.82rem; color: #334155;">Voucher Date *</label>
+            <input type="date" id="pv-date" class="form-input" value="\${todayStr}" required style="font-weight: 600;" />
           </div>
           <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label" style="font-size: 0.75rem;">Certified Correct by:</label>
-            <input type="text" id="pv-sig-certified" class="form-input" value="\${certVal}" style="font-size: 0.82rem;" />
+            <label class="form-label" style="font-weight: 600; font-size: 0.82rem; color: #334155;">Expense Tag / Category</label>
+            <select id="pv-tag" class="form-input">
+              \${tagOptions}
+            </select>
           </div>
           <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label" style="font-size: 0.75rem;">Approved by:</label>
-            <input type="text" id="pv-sig-approved" class="form-input" value="\${appVal}" style="font-size: 0.82rem;" />
+            <label class="form-label" style="font-weight: 600; font-size: 0.82rem; color: #334155;">Voucher Number <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">(Auto if blank)</span></label>
+            <input type="text" id="pv-voucher-number" class="form-input" placeholder="e.g. 26-000440" style="font-family: 'JetBrains Mono', monospace;" />
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL 2: ITEMIZED EXPENSE BREAKDOWN -->
+      <div style="background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 1.15rem; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.9rem; padding-bottom: 0.6rem; border-bottom: 1px solid #f1f5f9;">
+          <div style="display: flex; align-items: center; gap: 0.55rem;">
+            <div style="width: 26px; height: 26px; border-radius: 6px; background: #fef3c7; color: #b45309; display: flex; align-items: center; justify-content: center; font-size: 0.82rem; font-weight: 800; border: 1px solid #fde68a;">2</div>
+            <div>
+              <span style="font-weight: 700; font-size: 0.92rem; color: #0f172a;">Itemized Breakdown</span>
+              <span style="font-size: 0.75rem; color: #64748b; margin-left: 0.4rem;">• Printed on official APEXS voucher slip</span>
+            </div>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="addPaymentVoucherItemRow()" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600; padding: 0.35rem 0.85rem;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Add Line Item
+          </button>
+        </div>
+
+        <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 0.9rem;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;" id="pv-items-table">
+            <thead>
+              <tr style="background: #f8fafc; border-bottom: 1.5px solid #cbd5e1; text-align: left;">
+                <th style="padding: 9px 12px; width: 25%; font-weight: 700; color: #475569; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em;">Invoice / Ref No</th>
+                <th style="padding: 9px 12px; width: 45%; font-weight: 700; color: #475569; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em;">Account / Description *</th>
+                <th style="padding: 9px 12px; width: 22%; text-align: right; font-weight: 700; color: #475569; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em;">Amount (<span class="pv-cur-symbol">₱</span>) *</th>
+                <th style="padding: 9px 12px; width: 8%; text-align: center;"></th>
+              </tr>
+            </thead>
+            <tbody id="pv-items-tbody">
+              <!-- Dynamic rows rendered here -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Grand Total Summary Card -->
+        <div style="display: flex; justify-content: flex-end; align-items: center; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); padding: 0.75rem 1.15rem; border-radius: 8px; border: 1px solid #e2e8f0;">
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <span style="font-size: 0.85rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.04em;">Total Voucher Amount:</span>
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 1.25rem; font-weight: 800; color: #dc2626; background: #ffffff; padding: 0.35rem 1rem; border-radius: 6px; border: 1.5px solid #fecaca; box-shadow: 0 1px 2px rgba(220, 38, 38, 0.08);" id="pv-total-display">
+              ₱ 0.00
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL 3: ACCOUNTING LEDGER & SETTLEMENT -->
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1.15rem; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.9rem; padding-bottom: 0.6rem; border-bottom: 1px solid #f1f5f9;">
+          <div style="display: flex; align-items: center; gap: 0.55rem;">
+            <div style="width: 26px; height: 26px; border-radius: 6px; background: #ecfdf5; color: #059669; display: flex; align-items: center; justify-content: center; font-size: 0.82rem; font-weight: 800; border: 1px solid #a7f3d0;">3</div>
+            <div>
+              <span style="font-weight: 700; font-size: 0.92rem; color: #0f172a;">Ledger Accounts & Settlement</span>
+              <span style="font-size: 0.75rem; color: #64748b; margin-left: 0.4rem;">• Double-entry general ledger posting</span>
+            </div>
+          </div>
+          <span class="badge badge-success" style="font-size: 0.72rem; padding: 0.2rem 0.55rem;">Balanced G/L</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 0.9rem;">
+          <div class="form-group" style="margin-bottom: 0; background: #fef2f2; padding: 0.9rem; border-radius: 8px; border: 1px solid #fecaca;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+              <label class="form-label" style="color: #991b1b; font-weight: 700; margin-bottom: 0; font-size: 0.82rem;">Debit Account (Expense / A/P) *</label>
+              <span class="badge badge-danger" style="font-size: 0.68rem; padding: 0.15rem 0.45rem;">Debit (+)</span>
+            </div>
+            <select id="pv-exp-acc" class="form-input" required style="font-weight: 600; background: #ffffff;">
+              \${accountOptions}
+            </select>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0; background: #f0fdf4; padding: 0.9rem; border-radius: 8px; border: 1px solid #bbf7d0;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+              <label class="form-label" style="color: #166534; font-weight: 700; margin-bottom: 0; font-size: 0.82rem;">Credit Account (Cash / Bank) *</label>
+              <span class="badge badge-success" style="font-size: 0.68rem; padding: 0.15rem 0.45rem;">Credit (-)</span>
+            </div>
+            <select id="pv-pay-acc" class="form-input" required style="font-weight: 600; background: #ffffff;">
+              \${accountOptions}
+            </select>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 1rem;">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" style="font-weight: 600; font-size: 0.82rem; color: #334155;">Payment Method *</label>
+            <select id="pv-payment-method" class="form-input" style="font-weight: 600;">
+              \${methodOptions}
+            </select>
           </div>
           <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label" style="font-size: 0.75rem;">Received Payment:</label>
-            <input type="text" id="pv-sig-received" class="form-input" value="\${recVal}" style="font-size: 0.82rem;" />
+            <label class="form-label" style="font-weight: 600; font-size: 0.82rem; color: #334155;">Payment Memo / Notes</label>
+            <input type="text" id="pv-notes" class="form-input" placeholder="e.g. Kenneth S Brown Corporate Credit Card / Check # / Transfer Ref" />
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL 4: SIGNATORIES & APPROVALS -->
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1.15rem; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.9rem; padding-bottom: 0.6rem; border-bottom: 1px solid #f1f5f9;">
+          <div style="display: flex; align-items: center; gap: 0.55rem;">
+            <div style="width: 26px; height: 26px; border-radius: 6px; background: #faf5ff; color: #7e22ce; display: flex; align-items: center; justify-content: center; font-size: 0.82rem; font-weight: 800; border: 1px solid #e9d5ff;">4</div>
+            <div>
+              <span style="font-weight: 700; font-size: 0.92rem; color: #0f172a;">Signatories & Approvals</span>
+              <span style="font-size: 0.75rem; color: #64748b; margin-left: 0.4rem;">• Official APEXS 4-point authorization sign-off</span>
+            </div>
+          </div>
+          <span class="badge badge-warning" style="font-size: 0.72rem; padding: 0.2rem 0.55rem;">Slip Sign-off</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.85rem;">
+          <div class="form-group" style="margin-bottom: 0; background: #f8fafc; padding: 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+            <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #475569; margin-bottom: 0.35rem;">Prepared by:</label>
+            <input type="text" id="pv-sig-prepared" class="form-input" value="\${prepVal}" style="font-size: 0.82rem; background: #ffffff;" placeholder="Administrator / Bookkeeper" />
+          </div>
+          <div class="form-group" style="margin-bottom: 0; background: #f8fafc; padding: 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+            <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #475569; margin-bottom: 0.35rem;">Certified Correct by:</label>
+            <input type="text" id="pv-sig-certified" class="form-input" value="\${certVal}" style="font-size: 0.82rem; background: #ffffff;" placeholder="Joy / Senior Admin" />
+          </div>
+          <div class="form-group" style="margin-bottom: 0; background: #f8fafc; padding: 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+            <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #475569; margin-bottom: 0.35rem;">Approved by:</label>
+            <input type="text" id="pv-sig-approved" class="form-input" value="\${appVal}" style="font-size: 0.82rem; background: #ffffff;" placeholder="Kenneth Brown / CEO" />
+          </div>
+          <div class="form-group" style="margin-bottom: 0; background: #f8fafc; padding: 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+            <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #475569; margin-bottom: 0.35rem;">Received Payment:</label>
+            <input type="text" id="pv-sig-received" class="form-input" value="\${recVal}" style="font-size: 0.82rem; background: #ffffff;" placeholder="Signature / Date" />
           </div>
         </div>
       </div>
@@ -1127,7 +1178,10 @@ function openNewPaymentVoucherModal() {
 
   const footer = \`
     <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-primary" onclick="document.getElementById('form-new-pv').requestSubmit()">Post Payment Voucher</button>
+    <button class="btn btn-primary" onclick="document.getElementById('form-new-pv').requestSubmit()" style="display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 700; padding: 0.5rem 1.25rem;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+      Post Payment Voucher
+    </button>
   \`;
 
   openModal('Create Payment Voucher (PV)', body, footer, 'xl');
@@ -1177,18 +1231,21 @@ function addPaymentVoucherItemRow(inv = '', desc = '', amt = '') {
 
   const tr = document.createElement('tr');
   tr.className = 'pv-item-row';
+  tr.style.borderBottom = '1px solid #f1f5f9';
   tr.innerHTML = \`
-    <td style="padding: 4px;">
-      <input type="text" class="form-input pv-item-inv" value="\${inv}" placeholder="e.g. Lazada / PO #" style="font-size: 0.82rem; padding: 0.35rem 0.5rem;" />
+    <td style="padding: 6px 8px;">
+      <input type="text" class="form-input pv-item-inv" value="\${inv}" placeholder="e.g. INV-10492 / PO #" style="font-size: 0.84rem; padding: 0.4rem 0.65rem;" />
     </td>
-    <td style="padding: 4px;">
-      <input type="text" class="form-input pv-item-desc" value="\${desc}" placeholder="Description / Purpose of disbursement" required style="font-size: 0.82rem; padding: 0.35rem 0.5rem;" />
+    <td style="padding: 6px 8px;">
+      <input type="text" class="form-input pv-item-desc" value="\${desc}" placeholder="Item description / Purpose of payment" required style="font-size: 0.84rem; padding: 0.4rem 0.65rem;" />
     </td>
-    <td style="padding: 4px;">
-      <input type="number" step="0.01" min="0" class="form-input pv-item-amt" value="\${amt}" placeholder="0.00" oninput="calcPaymentVoucherTotal()" required style="font-size: 0.82rem; padding: 0.35rem 0.5rem; text-align: right;" />
+    <td style="padding: 6px 8px;">
+      <input type="number" step="0.01" min="0" class="form-input pv-item-amt" value="\${amt}" placeholder="0.00" oninput="calcPaymentVoucherTotal()" required style="font-size: 0.84rem; padding: 0.4rem 0.65rem; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600;" />
     </td>
-    <td style="padding: 4px; text-align: center;">
-      <button type="button" class="btn btn-secondary btn-sm" onclick="removePaymentVoucherItemRow(this)" style="padding: 0.25rem 0.5rem; color: #dc2626;" title="Remove row">✕</button>
+    <td style="padding: 6px 8px; text-align: center;">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="removePaymentVoucherItemRow(this)" style="padding: 0.35rem 0.6rem; color: #dc2626; border-color: #fecaca; background: #fff5f5;" title="Remove row">
+        ✕
+      </button>
     </td>
   \`;
   tbody.appendChild(tr);
