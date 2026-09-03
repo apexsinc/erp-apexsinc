@@ -147,17 +147,20 @@ function removeUrlParam(name, updateHistory = true) {
 }
 
 // Universal CSV Data Export
-function exportToCsv(filename, headers, rows) {
+function generateCsvString(headers, rows) {
   const escapeCell = (val) => {
     if (val === null || val === undefined) return '""';
     const str = String(val).replace(/"/g, '""');
     return '"' + str + '"';
   };
-  const csvContent = [
+  return [
     headers.map(escapeCell).join(','),
     ...rows.map((row) => row.map(escapeCell).join(',')),
-  ].join('\\r\\n');
+  ].join('\r\n');
+}
 
+function exportToCsv(filename, headers, rows) {
+  const csvContent = generateCsvString(headers, rows);
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

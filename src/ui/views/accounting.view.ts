@@ -1783,17 +1783,8 @@ async function submitNewJV(e) {
 /* OFFICIAL VOUCHER SLIP PREVIEW & SIGN-OFF                                   */
 /* ========================================================================== */
 
-function openVoucherSlipModal(voucherId) {
-  const v = cachedVouchers.find((x) => x.id === voucherId);
-  if (!v) {
-    showToast('Voucher not found', 'warning');
-    return;
-  }
-
-  if (typeof setUrlParam === 'function') {
-    setUrlParam('slip', voucherId);
-  }
-
+function renderOfficialVoucherSlipMarkup(v) {
+  if (!v) return '';
   const cur = v.currency || 'PHP';
   const curSymbol = cur === 'USD' ? '$' : '₱';
   const curLabel = cur === 'USD' ? 'USD' : 'Php';
@@ -1805,7 +1796,11 @@ function openVoucherSlipModal(voucherId) {
   });
 
   const defaultSign = (window.cachedVoucherSettings && window.cachedVoucherSettings['vouchers.signatories']) || {};
-  const sig = v.signatories || {
+  let sig = v.signatories;
+  if (typeof sig === 'string') {
+    try { sig = JSON.parse(sig); } catch (_) { sig = {}; }
+  }
+  sig = sig || {
     preparedBy: defaultSign.preparedBy || 'Administrator',
     certifiedBy: defaultSign.certifiedBy || 'Joy/Admin',
     approvedBy: defaultSign.approvedBy || 'Kenneth Brown/CEO',
@@ -1813,180 +1808,247 @@ function openVoucherSlipModal(voucherId) {
   };
 
   let items = v.items || [];
+  if (typeof items === 'string') {
+    try { items = JSON.parse(items); } catch (_) { items = []; }
+  }
   if (!items || items.length === 0) {
     items = [
       {
         invoiceNo: v.referenceId || '',
-        description: v.notes || (v.recipient + ' disbursement'),
+        description: v.notes || (v.recipient ? (v.recipient + ' disbursement') : 'Disbursement'),
         currency: cur,
-        amountCents: v.amountCents,
+        amountCents: v.amountCents || 0,
       },
     ];
   }
 
-  const itemRowsHtml = items
-    .map(
-      (it) => \`
-      <tr style="height: 20px;">
-        <td style="border: 1px solid #000000; padding: 2px 6px; font-size: 0.78rem; font-family: 'Inter', sans-serif;">\${it.invoiceNo || ''}</td>
-        <td style="border: 1px solid #000000; padding: 2px 6px; font-size: 0.78rem; font-family: 'Inter', sans-serif;">\${it.description || ''}</td>
-        <td style="border: 1px solid #000000; padding: 2px 6px; text-align: center; font-size: 0.78rem; font-weight: 600;">\${curSymbol}</td>
-        <td style="border: 1px solid #000000; padding: 2px 6px; text-align: right; font-size: 0.78rem; font-family: 'JetBrains Mono', monospace;">
-          \${(it.amountCents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </td>
-      </tr>
-    \`
-    )
-    .join('');
+  let itemRowsHtml = '';
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const amtStr = (((it.amountCents || 0) / 100)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    itemRowsHtml +=
+      '<tr style="height: 20px;">' +
+      '<td style="border: 1px solid #000000; padding: 2px 6px; font-size: 0.78rem; font-family: \'Inter\', sans-serif;">' + escapeHtml(it.invoiceNo || '') + '</td>' +
+      '<td style="border: 1px solid #000000; padding: 2px 6px; font-size: 0.78rem; font-family: \'Inter\', sans-serif;">' + escapeHtml(it.description || '') + '</td>' +
+      '<td style="border: 1px solid #000000; padding: 2px 6px; text-align: center; font-size: 0.78rem; font-weight: 600;">' + curSymbol + '</td>' +
+      '<td style="border: 1px solid #000000; padding: 2px 6px; text-align: right; font-size: 0.78rem; font-family: \'JetBrains Mono\', monospace;">' + amtStr + '</td>' +
+      '</tr>';
+  }
 
-  // End delimiter row
-  const delimiterRowHtml = \`
-    <tr style="height: 18px;">
-      <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
-      <td style="border: 1px solid #000000; padding: 2px 6px; text-align: center; font-size: 0.72rem; font-style: italic; color: #1e293b;">-- End Nothing else --</td>
-      <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
-      <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
-    </tr>
-  \`;
+  const delimiterRowHtml =
+    '<tr style="height: 18px;">' +
+    '<td style="border: 1px solid #000000; padding: 2px 6px;"></td>' +
+    '<td style="border: 1px solid #000000; padding: 2px 6px; text-align: center; font-size: 0.72rem; font-style: italic; color: #1e293b;">-- End Nothing else --</td>' +
+    '<td style="border: 1px solid #000000; padding: 2px 6px;"></td>' +
+    '<td style="border: 1px solid #000000; padding: 2px 6px;"></td>' +
+    '</tr>';
 
-  // Payment remarks row (e.g. Kenneth S Brown Corp Credit Card Payment)
-  const remarks = v.notes ? \`(\${v.notes.toUpperCase()})\` : v.paymentMethod === 'CREDIT_CARD' ? '(CORPORATE CREDIT CARD PAYMENT)' : '';
+  const remarks = v.notes ? ('(' + v.notes.toUpperCase() + ')') : v.paymentMethod === 'CREDIT_CARD' ? '(CORPORATE CREDIT CARD PAYMENT)' : '';
   const remarksRowHtml = remarks
-    ? \`
-    <tr style="height: 18px;">
-      <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
-      <td style="border: 1px solid #000000; padding: 2px 6px; text-align: center; font-size: 0.72rem; font-weight: 700; color: #000000;">\${remarks}</td>
-      <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
-      <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
-    </tr>
-  \`
+    ? '<tr style="height: 18px;">' +
+      '<td style="border: 1px solid #000000; padding: 2px 6px;"></td>' +
+      '<td style="border: 1px solid #000000; padding: 2px 6px; text-align: center; font-size: 0.72rem; font-weight: 700; color: #000000;">' + escapeHtml(remarks) + '</td>' +
+      '<td style="border: 1px solid #000000; padding: 2px 6px;"></td>' +
+      '<td style="border: 1px solid #000000; padding: 2px 6px;"></td>' +
+      '</tr>'
     : '';
 
-  // Standard blank rows to maintain official paper pad height without overflowing half sheet
   const renderedCount = items.length + 1 + (remarks ? 1 : 0);
   const fillerCount = Math.max(0, 3 - renderedCount);
   let fillerRowsHtml = '';
   for (let i = 0; i < fillerCount; i++) {
-    fillerRowsHtml += \`
-      <tr style="height: 18px;">
-        <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
-        <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
-        <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
-        <td style="border: 1px solid #000000; padding: 2px 6px;"></td>
-      </tr>
-    \`;
+    fillerRowsHtml +=
+      '<tr style="height: 18px;">' +
+      '<td style="border: 1px solid #000000; padding: 2px 6px;"></td>' +
+      '<td style="border: 1px solid #000000; padding: 2px 6px;"></td>' +
+      '<td style="border: 1px solid #000000; padding: 2px 6px;"></td>' +
+      '<td style="border: 1px solid #000000; padding: 2px 6px;"></td>' +
+      '</tr>';
   }
 
-  const totalFormatted = (v.amountCents / 100).toLocaleString('en-US', {
+  const totalFormatted = (((v.amountCents || 0) / 100)).toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 
-  const body = \`
-    <div class="official-voucher-sheet" style="background: #ffffff; color: #000000; padding: 1rem 1.25rem; font-family: 'Inter', Arial, sans-serif; border: none; max-width: 760px; margin: 0 auto; box-shadow: none;">
-      
-      <!-- APEXS Header with Official Brand Logo -->
-      <div style="display: flex; justify-content: center; align-items: center; gap: 1.15rem; margin-bottom: 0.35rem;">
-        <img src="/assets/logo.png" alt="APEXS, INC. Logo" style="height: 48px; width: auto; object-fit: contain; flex-shrink: 0;" />
-        <div>
-          <div style="font-size: 1.28rem; font-weight: 900; color: #dc2626; font-family: Arial, Helvetica, sans-serif; letter-spacing: 0.5px; line-height: 1.1;">APEXS, INC.</div>
-          <div style="font-size: 0.76rem; font-weight: 700; font-style: italic; color: #0f172a; line-height: 1.15;">Applied Expert Systems & Software, Inc.</div>
-          <div style="font-size: 0.7rem; font-style: italic; color: #0284c7; font-weight: 600; font-family: 'Georgia', serif; line-height: 1.15;">“We put technology to work for you”</div>
-        </div>
-      </div>
+  return (
+    '<div class="official-voucher-sheet" style="background: #ffffff; color: #000000; padding: 1rem 1.25rem; font-family: \'Inter\', Arial, sans-serif; border: none; max-width: 760px; margin: 0 auto; box-shadow: none;">' +
+    '<!-- APEXS Header with Official Brand Logo -->' +
+    '<div style="display: flex; justify-content: center; align-items: center; gap: 1.15rem; margin-bottom: 0.35rem;">' +
+    '<img src="/assets/logo.png" alt="APEXS, INC. Logo" style="height: 48px; width: auto; object-fit: contain; flex-shrink: 0;" />' +
+    '<div>' +
+    '<div style="font-size: 1.28rem; font-weight: 900; color: #dc2626; font-family: Arial, Helvetica, sans-serif; letter-spacing: 0.5px; line-height: 1.1;">APEXS, INC.</div>' +
+    '<div style="font-size: 0.76rem; font-weight: 700; font-style: italic; color: #0f172a; line-height: 1.15;">Applied Expert Systems & Software, Inc.</div>' +
+    '<div style="font-size: 0.7rem; font-style: italic; color: #0284c7; font-weight: 600; font-family: \'Georgia\', serif; line-height: 1.15;">“We put technology to work for you”</div>' +
+    '</div>' +
+    '</div>' +
+    '<!-- Address & Contact -->' +
+    '<div style="text-align: center; font-size: 0.68rem; font-weight: 600; color: #1e293b; margin-bottom: 0.45rem; line-height: 1.25;">' +
+    '<div>Suite 714 EGI City by the Sea, Maribago, Lapu-Lapu City 6015 | Telefax# 495-2106</div>' +
+    '</div>' +
+    '<!-- Top Voucher Number, Date & Pay to Rows -->' +
+    '<div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 0.45rem; font-size: 0.8rem;">' +
+    '<div style="display: flex; align-items: baseline; flex: 1; margin-right: 1.25rem;">' +
+    '<span style="font-weight: 700; font-size: 0.82rem; margin-right: 0.4rem; white-space: nowrap;">Pay to:</span>' +
+    '<span style="border-bottom: 1.5px solid #000000; flex: 1; font-weight: 700; font-size: 0.86rem; text-transform: uppercase; padding-left: 0.25rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' +
+    escapeHtml(v.recipient || v.recipientName || '-') +
+    '</span>' +
+    '</div>' +
+    '<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">' +
+    '<div style="display: flex; align-items: baseline;">' +
+    '<span style="font-weight: 700; font-size: 0.8rem; margin-right: 0.4rem;">No.</span>' +
+    '<span style="border-bottom: 1.5px solid #000000; min-width: 140px; text-align: center; font-weight: 800; font-size: 0.9rem; font-family: \'JetBrains Mono\', Arial, monospace;">' +
+    escapeHtml(v.voucherNumber || '') +
+    '</span>' +
+    '</div>' +
+    '<div style="display: flex; align-items: baseline;">' +
+    '<span style="font-weight: 700; font-size: 0.78rem; margin-right: 0.4rem;">Date:</span>' +
+    '<span style="border-bottom: 1.5px solid #000000; min-width: 140px; text-align: center; font-weight: 700; font-size: 0.78rem;">' +
+    formattedDate +
+    '</span>' +
+    '</div>' +
+    '</div>' +
+    '</div>' +
+    '<!-- Official Voucher Line Items Grid -->' +
+    '<table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000000; margin-bottom: 0.45rem;">' +
+    '<thead>' +
+    '<tr style="background: #ffffff; border-bottom: 1.5px solid #000000; height: 22px;">' +
+    '<th style="border: 1px solid #000000; width: 20%; padding: 2px 6px; font-weight: 700; font-size: 0.76rem; text-align: center;">Invoice No</th>' +
+    '<th style="border: 1px solid #000000; width: 54%; padding: 2px 6px; font-weight: 700; font-size: 0.76rem; text-align: center;">Account/Description</th>' +
+    '<th style="border: 1px solid #000000; width: 6%; padding: 2px 6px; font-weight: 700; font-size: 0.76rem; text-align: center;">₱</th>' +
+    '<th style="border: 1px solid #000000; width: 20%; padding: 2px 6px; font-weight: 700; font-size: 0.76rem; text-align: center;">Amount</th>' +
+    '</tr>' +
+    '</thead>' +
+    '<tbody>' +
+    itemRowsHtml +
+    delimiterRowHtml +
+    remarksRowHtml +
+    fillerRowsHtml +
+    '<!-- Total Summary Row -->' +
+    '<tr style="height: 22px; font-weight: 700; border-top: 1.5px solid #000000;">' +
+    '<td colspan="2" style="border: 1px solid #000000; border-right: none; padding: 2px 6px;"></td>' +
+    '<td style="border: 1px solid #000000; border-left: 1px solid #000000; padding: 2px 6px; text-align: center; font-size: 0.8rem;">' + curLabel + '</td>' +
+    '<td style="border: 1px solid #000000; padding: 2px 6px; text-align: right; font-size: 0.84rem; font-family: \'JetBrains Mono\', monospace;">' + totalFormatted + '</td>' +
+    '</tr>' +
+    '</tbody>' +
+    '</table>' +
+    '<!-- 4-Column Official Signatories & Audit Section -->' +
+    '<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-top: 0.35rem; text-align: left; font-size: 0.72rem;">' +
+    '<!-- Column 1: Prepared by -->' +
+    '<div>' +
+    '<div style="font-size: 0.66rem; color: #1e293b; margin-bottom: 0.15rem;">Prepared by:</div>' +
+    '<div style="height: 22px; border-bottom: 1.5px solid #000000; margin-bottom: 0.2rem;"></div>' +
+    '<div style="font-weight: 700; text-align: center; font-size: 0.72rem; color: #000000;">' + escapeHtml(sig.preparedBy || 'Administrator') + '</div>' +
+    '</div>' +
+    '<!-- Column 2: Certified Correct by -->' +
+    '<div>' +
+    '<div style="font-size: 0.66rem; color: #1e293b; margin-bottom: 0.15rem;">Certified Correct by:</div>' +
+    '<div style="height: 22px; border-bottom: 1.5px solid #000000; margin-bottom: 0.2rem;"></div>' +
+    '<div style="font-weight: 700; text-align: center; font-size: 0.72rem; color: #000000;">' + escapeHtml(sig.certifiedBy || 'Joy/Admin') + '</div>' +
+    '</div>' +
+    '<!-- Column 3: Approved by -->' +
+    '<div>' +
+    '<div style="font-size: 0.66rem; color: #1e293b; margin-bottom: 0.15rem;">Approved by:</div>' +
+    '<div style="height: 22px; border-bottom: 1.5px solid #000000; margin-bottom: 0.2rem;"></div>' +
+    '<div style="font-weight: 700; text-align: center; font-size: 0.72rem; color: #000000;">' + escapeHtml(sig.approvedBy || 'Kenneth Brown/CEO') + '</div>' +
+    '</div>' +
+    '<!-- Column 4: Received Payment -->' +
+    '<div>' +
+    '<div style="font-size: 0.66rem; color: #1e293b; margin-bottom: 0.15rem;">Received Payment:</div>' +
+    '<div style="height: 22px; border-bottom: 1.5px solid #000000; margin-bottom: 0.2rem;"></div>' +
+    '<div style="font-size: 0.62rem; text-align: center; color: #334155;">' + escapeHtml(sig.receivedBy || 'Signature over printed name/Date') + '</div>' +
+    '</div>' +
+    '</div>' +
+    '</div>'
+  );
+}
 
-      <!-- Address & Contact -->
-      <div style="text-align: center; font-size: 0.68rem; font-weight: 600; color: #1e293b; margin-bottom: 0.45rem; line-height: 1.25;">
-        <div>Suite 714 EGI City by the Sea, Maribago, Lapu-Lapu City 6015 | Telefax# 495-2106</div>
-      </div>
+async function generateVoucherPdfBlob(v) {
+  const html = renderOfficialVoucherSlipMarkup(v);
+  const tempDiv = document.createElement('div');
+  tempDiv.style.position = 'fixed';
+  tempDiv.style.left = '-9999px';
+  tempDiv.style.top = '0';
+  tempDiv.style.width = '760px';
+  tempDiv.style.background = '#ffffff';
+  tempDiv.innerHTML = html;
+  document.body.appendChild(tempDiv);
 
-      <!-- Top Voucher Number, Date & Pay to Rows -->
-      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 0.45rem; font-size: 0.8rem;">
-        <div style="display: flex; align-items: baseline; flex: 1; margin-right: 1.25rem;">
-          <span style="font-weight: 700; font-size: 0.82rem; margin-right: 0.4rem; white-space: nowrap;">Pay to:</span>
-          <span style="border-bottom: 1.5px solid #000000; flex: 1; font-weight: 700; font-size: 0.86rem; text-transform: uppercase; padding-left: 0.25rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-            \${v.recipient || v.recipientName || '-'}
-          </span>
-        </div>
-        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
-          <div style="display: flex; align-items: baseline;">
-            <span style="font-weight: 700; font-size: 0.8rem; margin-right: 0.4rem;">No.</span>
-            <span style="border-bottom: 1.5px solid #000000; min-width: 140px; text-align: center; font-weight: 800; font-size: 0.9rem; font-family: 'JetBrains Mono', Arial, monospace;">
-              \${v.voucherNumber}
-            </span>
-          </div>
-          <div style="display: flex; align-items: baseline;">
-            <span style="font-weight: 700; font-size: 0.78rem; margin-right: 0.4rem;">Date:</span>
-            <span style="border-bottom: 1.5px solid #000000; min-width: 140px; text-align: center; font-weight: 700; font-size: 0.78rem;">
-              \${formattedDate}
-            </span>
-          </div>
-        </div>
-      </div>
+  const cleanNum = (v.voucherNumber || 'voucher').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const cleanRecipient = (v.recipient || v.recipientName || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const filename = 'PV_' + cleanNum + (cleanRecipient ? '_' + cleanRecipient : '') + '.pdf';
 
-      <!-- Official Voucher Line Items Grid -->
-      <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000000; margin-bottom: 0.45rem;">
-        <thead>
-          <tr style="background: #ffffff; border-bottom: 1.5px solid #000000; height: 22px;">
-            <th style="border: 1px solid #000000; width: 20%; padding: 2px 6px; font-weight: 700; font-size: 0.76rem; text-align: center;">Invoice No</th>
-            <th style="border: 1px solid #000000; width: 54%; padding: 2px 6px; font-weight: 700; font-size: 0.76rem; text-align: center;">Account/Description</th>
-            <th style="border: 1px solid #000000; width: 6%; padding: 2px 6px; font-weight: 700; font-size: 0.76rem; text-align: center;">₱</th>
-            <th style="border: 1px solid #000000; width: 20%; padding: 2px 6px; font-weight: 700; font-size: 0.76rem; text-align: center;">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          \${itemRowsHtml}
-          \${delimiterRowHtml}
-          \${remarksRowHtml}
-          \${fillerRowsHtml}
-          <!-- Total Summary Row -->
-          <tr style="height: 22px; font-weight: 700; border-top: 1.5px solid #000000;">
-            <td colspan="2" style="border: 1px solid #000000; border-right: none; padding: 2px 6px;"></td>
-            <td style="border: 1px solid #000000; border-left: 1px solid #000000; padding: 2px 6px; text-align: center; font-size: 0.8rem;">\${curLabel}</td>
-            <td style="border: 1px solid #000000; padding: 2px 6px; text-align: right; font-size: 0.84rem; font-family: 'JetBrains Mono', monospace;">\${totalFormatted}</td>
-          </tr>
-        </tbody>
-      </table>
+  const opt = {
+    margin: [4, 18, 4, 18], // mm
+    filename: filename,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true, logging: false },
+    jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' },
+  };
 
-      <!-- 4-Column Official Signatories & Audit Section -->
-      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-top: 0.35rem; text-align: left; font-size: 0.72rem;">
-        <!-- Column 1: Prepared by -->
-        <div>
-          <div style="font-size: 0.66rem; color: #1e293b; margin-bottom: 0.15rem;">Prepared by:</div>
-          <div style="height: 22px; border-bottom: 1.5px solid #000000; margin-bottom: 0.2rem;"></div>
-          <div style="font-weight: 700; text-align: center; font-size: 0.72rem; color: #000000;">\${sig.preparedBy || 'Administrator'}</div>
-        </div>
+  try {
+    if (typeof html2pdf !== 'undefined') {
+      const targetEl = tempDiv.querySelector('.official-voucher-sheet') || tempDiv;
+      const pdfBlob = await html2pdf().set(opt).from(targetEl).output('blob');
+      if (tempDiv.parentNode) document.body.removeChild(tempDiv);
+      return { blob: pdfBlob, filename };
+    } else {
+      if (tempDiv.parentNode) document.body.removeChild(tempDiv);
+      return null;
+    }
+  } catch (err) {
+    console.error('PDF generation error for voucher:', v.voucherNumber, err);
+    if (tempDiv.parentNode) document.body.removeChild(tempDiv);
+    return null;
+  }
+}
 
-        <!-- Column 2: Certified Correct by -->
-        <div>
-          <div style="font-size: 0.66rem; color: #1e293b; margin-bottom: 0.15rem;">Certified Correct by:</div>
-          <div style="height: 22px; border-bottom: 1.5px solid #000000; margin-bottom: 0.2rem;"></div>
-          <div style="font-weight: 700; text-align: center; font-size: 0.72rem; color: #000000;">\${sig.certifiedBy || 'Joy/Admin'}</div>
-        </div>
+async function downloadSingleVoucherPdf(voucherId) {
+  const v = (cachedVouchers || []).find((x) => x.id === voucherId) || (typeof cachedPVList !== 'undefined' ? cachedPVList.find((x) => x.id === voucherId) : null);
+  if (!v) {
+    showToast('Voucher not found', 'warning');
+    return;
+  }
+  showToast('Generating PDF for ' + v.voucherNumber + '...', 'info');
+  try {
+    const result = await generateVoucherPdfBlob(v);
+    if (result && result.blob) {
+      const url = URL.createObjectURL(result.blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = result.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('PDF downloaded successfully', 'success');
+    } else {
+      showToast('Could not generate PDF directly. You can also use Print to PDF.', 'warning');
+    }
+  } catch (e) {
+    showToast('PDF generation failed: ' + e.message, 'danger');
+  }
+}
 
-        <!-- Column 3: Approved by -->
-        <div>
-          <div style="font-size: 0.66rem; color: #1e293b; margin-bottom: 0.15rem;">Approved by:</div>
-          <div style="height: 22px; border-bottom: 1.5px solid #000000; margin-bottom: 0.2rem;"></div>
-          <div style="font-weight: 700; text-align: center; font-size: 0.72rem; color: #000000;">\${sig.approvedBy || 'Kenneth Brown/CEO'}</div>
-        </div>
+function openVoucherSlipModal(voucherId) {
+  const v = cachedVouchers.find((x) => x.id === voucherId) || (typeof cachedPVList !== 'undefined' ? cachedPVList.find((x) => x.id === voucherId) : null);
+  if (!v) {
+    showToast('Voucher not found', 'warning');
+    return;
+  }
 
-        <!-- Column 4: Received Payment -->
-        <div>
-          <div style="font-size: 0.66rem; color: #1e293b; margin-bottom: 0.15rem;">Received Payment:</div>
-          <div style="height: 22px; border-bottom: 1.5px solid #000000; margin-bottom: 0.2rem;"></div>
-          <div style="font-size: 0.62rem; text-align: center; color: #334155;">\${sig.receivedBy || 'Signature over printed name/Date'}</div>
-        </div>
-      </div>
-    </div>
-  \`;
+  if (typeof setUrlParam === 'function') {
+    setUrlParam('slip', voucherId);
+  }
 
-  const footer = \`
-    <button class="btn btn-secondary" onclick="window.print()">🖨️ Print Official Voucher</button>
-    <button class="btn btn-primary" onclick="closeModal()">Close</button>
-  \`;
+  const body = renderOfficialVoucherSlipMarkup(v);
 
-  openModal(\`Official Voucher Slip — \${v.voucherNumber}\`, body, footer, 'xl');
+  const footer =
+    '<button type="button" class="btn btn-secondary" onclick="window.print()">🖨️ Print Official Voucher</button>' +
+    '<button type="button" class="btn btn-primary" onclick="downloadSingleVoucherPdf(\\\'' + v.id + '\\\')">📥 Download PDF</button>' +
+    '<button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>';
+
+  openModal('Official Voucher Slip — ' + v.voucherNumber, body, footer, 'xl');
 }
 
 /* ========================================================================== */
@@ -2321,6 +2383,9 @@ function handleDeleteVoucher(voucherId, voucherNumber) {
 }
 
 // Global aliases for interoperability across vouchers and accounting views
+window.renderOfficialVoucherSlipMarkup = renderOfficialVoucherSlipMarkup;
+window.generateVoucherPdfBlob = generateVoucherPdfBlob;
+window.downloadSingleVoucherPdf = downloadSingleVoucherPdf;
 window.openOfficialVoucherSlipModal = openVoucherSlipModal;
 window.openNewJournalVoucherModal = openNewJVModal;
 window.openNewContraVoucherModal = openNewContraModal;
