@@ -55,11 +55,13 @@ async function loadVouchers() {
 
     const vouchersJson = await vouchersRes.json();
     cachedPVList = (vouchersJson.data || []).filter((v) => v.voucherType === 'PAYMENT');
+    cachedVouchers = vouchersJson.data || [];
 
     if (accountsRes) {
       try {
         const aj = await accountsRes.json();
         cachedPVAccounts = aj.data || [];
+        cachedAccounts = cachedPVAccounts;
       } catch (e) {}
     }
     if (settingsRes) {
@@ -72,12 +74,14 @@ async function loadVouchers() {
       try {
         const vj = await vendorsRes.json();
         cachedPVVendors = vj.data || [];
+        cachedVendors = cachedPVVendors;
       } catch (e) {}
     }
     if (empRes) {
       try {
         const ej = await empRes.json();
         cachedPVEmployees = ej.data || [];
+        cachedEmployees = cachedPVEmployees;
       } catch (e) {}
     }
 

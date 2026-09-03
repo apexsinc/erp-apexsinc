@@ -12,6 +12,7 @@ import {
   ALL_MODULES,
   DEFAULT_PERMISSION_MATRIX,
   isAdminRole,
+  canPerformAction,
   loadPermissionMatrix,
   loadCrudPermissionMatrix,
   loadAllRoles,
@@ -19,6 +20,7 @@ import {
   SYSTEM_ROLES,
   type Module,
   type RoleCrudMatrix,
+  type CrudAction,
 } from './lib/permissions';
 import { APEXS_LOGO_BASE64 } from './ui/assets/logo';
 
@@ -60,7 +62,40 @@ app.use('/api/inventory/*', authMiddleware, requireModule('inventory'));
 app.use('/api/purchasing/*', authMiddleware, requireModule('purchasing'));
 app.use('/api/inbound/*', authMiddleware, requireModule('inbound'));
 app.use('/api/sales/*', authMiddleware, requireModule('sales'));
-app.use('/api/outbound/*', authMiddleware, requireModule('outbound'));
+app.use('/api/accounting/vouchers/*', authMiddleware, async (c, next) => {
+  const user = c.get('authUser');
+  if (!user) return c.json({ success: false, error: 'Authentication required' }, 401);
+  if (isAdminRole(user.role)) return await next();
+  const db = createDbClient(c.env.DB);
+  const method = c.req.method.toUpperCase();
+  const action: CrudAction = method === 'POST' ? 'create' : (method === 'PUT' || method === 'PATCH') ? 'update' : method === 'DELETE' ? 'delete' : 'read';
+  const hasVoucherPerm = await canPerformAction(db, user.role, 'vouchers', action);
+  const hasAcctPerm = await canPerformAction(db, user.role, 'accounting', action);
+  if (hasVoucherPerm || hasAcctPerm) return await next();
+  return c.json({ success: false, error: `Access Denied: You do not have permission to ${action.toUpperCase()} in vouchers or accounting` }, 403);
+});
+app.use('/api/accounting/vouchers', authMiddleware, async (c, next) => {
+  const user = c.get('authUser');
+  if (!user) return c.json({ success: false, error: 'Authentication required' }, 401);
+  if (isAdminRole(user.role)) return await next();
+  const db = createDbClient(c.env.DB);
+  const method = c.req.method.toUpperCase();
+  const action: CrudAction = method === 'POST' ? 'create' : (method === 'PUT' || method === 'PATCH') ? 'update' : method === 'DELETE' ? 'delete' : 'read';
+  const hasVoucherPerm = await canPerformAction(db, user.role, 'vouchers', action);
+  const hasAcctPerm = await canPerformAction(db, user.role, 'accounting', action);
+  if (hasVoucherPerm || hasAcctPerm) return await next();
+  return c.json({ success: false, error: `Access Denied: You do not have permission to ${action.toUpperCase()} in vouchers or accounting` }, 403);
+});
+app.use('/api/accounting/accounts', authMiddleware, async (c, next) => {
+  const user = c.get('authUser');
+  if (!user) return c.json({ success: false, error: 'Authentication required' }, 401);
+  if (isAdminRole(user.role)) return await next();
+  const db = createDbClient(c.env.DB);
+  const hasVoucherPerm = await canPerformAction(db, user.role, 'vouchers', 'read');
+  const hasAcctPerm = await canPerformAction(db, user.role, 'accounting', 'read');
+  if (hasVoucherPerm || hasAcctPerm) return await next();
+  return c.json({ success: false, error: 'Access Denied: You do not have permission to view Chart of Accounts' }, 403);
+});
 app.use('/api/accounting/*', authMiddleware, requireModule('accounting'));
 app.use('/api/payroll/employees/*', authMiddleware, requireModule('staff'));
 app.use('/api/payroll/employees', authMiddleware, requireModule('staff'));
