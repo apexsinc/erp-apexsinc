@@ -2565,6 +2565,7 @@ app.put(
   zValidator(
     'json',
     z.object({
+      employeeCode: z.string().min(2).optional(),
       firstName: z.string().min(1),
       lastName: z.string().min(1),
       email: z.string().email(),
@@ -2593,6 +2594,17 @@ app.put(
       return c.json({ success: false, error: 'Employee not found' }, 404);
     }
 
+    // Check code collision if modified
+    const newCode = body.employeeCode ? body.employeeCode.toUpperCase().trim() : existing.employeeCode;
+    if (newCode !== existing.employeeCode) {
+      const codeTaken = await db.query.employees.findFirst({
+        where: eq(schema.employees.employeeCode, newCode),
+      });
+      if (codeTaken && codeTaken.id !== id) {
+        return c.json({ success: false, error: 'An employee with that employee code already exists' }, 400);
+      }
+    }
+
     // Check email collision
     if (body.email !== existing.email) {
       const emailTaken = await db.query.employees.findFirst({
@@ -2610,6 +2622,7 @@ app.put(
       db
         .update(schema.employees)
         .set({
+          employeeCode: newCode,
           firstName: body.firstName,
           lastName: body.lastName,
           email: body.email,
