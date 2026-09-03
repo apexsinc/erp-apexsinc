@@ -11,7 +11,8 @@ const MODULE_LABELS = {
   sales: 'Sales & Invoicing',
   outbound: 'Outbound Deliveries',
   accounting: 'Vouchers',
-  payroll: 'Payroll & Staff',
+  payroll: 'Payroll & Compensation',
+  staff: 'Staff & Human Resources',
 };
 
 export const ADMIN_CLIENT_JS = `

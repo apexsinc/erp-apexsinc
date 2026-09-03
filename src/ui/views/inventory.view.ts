@@ -89,7 +89,8 @@ function renderInventoryContent(container) {
         <div class="panel-title">Product Catalog & Stock Levels</div>
         <div class="panel-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
           <button class="btn btn-secondary btn-sm" onclick="exportInventoryCsv()">📥 Export CSV</button>
-          <button class="btn btn-primary btn-sm" onclick="openStockAdjustmentModal()">Stock Adjustment</button>
+          <button class="btn btn-primary btn-sm" onclick="openAddStockModal()">➕ Add Stock</button>
+          <button class="btn btn-secondary btn-sm" onclick="openStockAdjustmentModal()">Stock Adjustment</button>
         </div>
       </div>
       <div style="padding: 0 1.35rem 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
@@ -166,6 +167,126 @@ async function openProductHistoryModal(productId, productName) {
     openModal('Stock Movement Audit: ' + productName, body);
   } catch (err) {
     showToast('Error fetching ledger: ' + err.message, 'danger');
+  }
+}
+
+function openAddStockModal() {
+  if (!state.products.length) {
+    showToast('Please add products first', 'warning');
+    return;
+  }
+  let options = state.products
+    .map((p) => \`<option value="\${p.id}">\${p.sku} - \${p.name} (Current: \${p.onHandStock})</option>\`)
+    .join('');
+  const body = \`
+    <form id="form-add-stock" onsubmit="submitAddStock(event)">
+      <p style="margin: 0 0 1rem; font-size: 0.85rem; color: #64748b;">
+        Use this for stock that isn't coming through a Purchase Order — e.g. legacy products
+        already on hand before this system was in use. If the product has no cost price yet,
+        set one here so its valuation is accurate.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Select Product *</label>
+        <select id="add-stock-product" class="form-select" onchange="handleAddStockProductChange()">\${options}</select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Quantity to Add *</label>
+        <input type="number" id="add-stock-qty" class="form-input" placeholder="10" min="1" required />
+      </div>
+      <div class="form-group" style="display: flex; gap: 0.75rem;">
+        <div style="flex: 2;">
+          <label class="form-label">Unit Cost <span id="add-stock-cost-hint" style="color: #94a3b8; font-weight: normal;"></span></label>
+          <input type="number" id="add-stock-cost" class="form-input" placeholder="0.00" min="0" step="0.01" />
+        </div>
+        <div style="flex: 1;">
+          <label class="form-label">Currency</label>
+          <select id="add-stock-currency" class="form-select">
+            <option value="PHP">PHP</option>
+            <option value="USD">USD</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Reason / Notes</label>
+        <input type="text" id="add-stock-notes" class="form-input" placeholder="Legacy stock on hand, no PO on record" />
+      </div>
+    </form>
+  \`;
+  const footer = \`
+    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="document.getElementById('form-add-stock').requestSubmit()">Add Stock</button>
+  \`;
+  openModal('Add Stock (No PO)', body, footer);
+  handleAddStockProductChange();
+}
+
+function handleAddStockProductChange() {
+  const select = document.getElementById('add-stock-product');
+  const product = (state.products || []).find((p) => p.id === select.value);
+  if (!product) return;
+
+  const costInput = document.getElementById('add-stock-cost');
+  const currencySelect = document.getElementById('add-stock-currency');
+  const hint = document.getElementById('add-stock-cost-hint');
+
+  currencySelect.value = product.costPriceCurrency || 'PHP';
+  if (product.costPriceCents > 0) {
+    costInput.value = (product.costPriceCents / 100).toFixed(2);
+    hint.textContent = '(currently ' + formatCurrency(product.costPriceCents, product.costPriceCurrency) + ')';
+  } else {
+    costInput.value = '';
+    hint.textContent = '(not set yet — recommended for accurate valuation)';
+  }
+}
+
+async function submitAddStock(e) {
+  e.preventDefault();
+  const productId = document.getElementById('add-stock-product').value;
+  const quantity = parseInt(document.getElementById('add-stock-qty').value, 10);
+  const costInput = document.getElementById('add-stock-cost').value;
+  const currency = document.getElementById('add-stock-currency').value;
+  const notes = document.getElementById('add-stock-notes').value || 'Manual stock entry (no PO)';
+
+  if (!quantity || quantity <= 0) {
+    showToast('Quantity must be a positive number', 'warning');
+    return;
+  }
+
+  const unitCostCents = costInput !== '' ? Math.round(parseFloat(costInput) * 100) : undefined;
+
+  try {
+    const movementPayload = {
+      productId,
+      type: 'IN',
+      quantity,
+      referenceType: 'ADJUSTMENT',
+      notes,
+    };
+    if (unitCostCents !== undefined) movementPayload.unitCostCents = unitCostCents;
+
+    const res = await apiFetch('/api/inventory/movements', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(movementPayload),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to add stock');
+
+    if (unitCostCents !== undefined) {
+      const priceRes = await apiFetch('/api/inventory/products/' + productId + '/cost-price', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ costPriceCents: unitCostCents, costPriceCurrency: currency }),
+      });
+      const priceJson = await priceRes.json();
+      if (!priceRes.ok || !priceJson.success) throw new Error(priceJson.error || 'Stock added, but failed to update cost price');
+    }
+
+    closeModal();
+    showToast('Stock added. New balance: ' + json.newOnHandStock, 'success');
+    loadInventory();
+  } catch (err) {
+    showToast(err.message, 'danger');
   }
 }
 

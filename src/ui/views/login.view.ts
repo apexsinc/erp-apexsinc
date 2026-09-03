@@ -23,7 +23,9 @@ export function renderLoginView(turnstileSiteKey?: string): string {
   <div id="login-view" class="login-container" style="display: none;">
     <div class="login-card">
       <div class="login-header">
-        <div class="login-icon-box">A</div>
+        <div class="login-logo-box">
+          <img src="/assets/logo.png" alt="APEXS Logo" />
+        </div>
         <div class="brand-badge">
           <span>Enterprise Platform</span>
         </div>
@@ -174,6 +176,7 @@ function showApp() {
 function applyRolePermissions() {
   const permissions = window.__ROLE_PERMISSIONS__ || {};
   const role = state.user && state.user.role;
+  const allowedTabs = ((role && permissions[role]) || []).slice();
   if (role === 'ADMIN') {
     allowedTabs.push('admin');
     allowedTabs.push('settings');

@@ -48,6 +48,25 @@ export const AUTH_CSS = `
   margin-bottom: 1rem;
 }
 
+.login-logo-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1.25rem auto;
+}
+
+.login-logo-box img {
+  width: 92px;
+  height: 92px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.16));
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.login-logo-box img:hover {
+  transform: scale(1.04) translateY(-2px);
+}
+
 .login-icon-box {
   width: 48px;
   height: 48px;

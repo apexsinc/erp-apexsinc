@@ -76,15 +76,27 @@ function renderSalesContent(container) {
   filteredOrders.forEach((so) => {
     const invoices = so.invoices || [];
     const invoicesHtml = invoices.length
-      ? invoices.map((inv) => \`
-          <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem;">
-            <span class="badge \${inv.status === 'PAID' ? 'badge-success' : inv.status === 'PARTIALLY_PAID' ? 'badge-warning' : 'badge-primary'}" style="font-size: 0.68rem;">\${inv.invoiceNumber}</span>
-            \${inv.status !== 'PAID'
-              ? \`<button class="btn btn-success btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.72rem;" onclick="openRecordReceiptModal('\${inv.id}', '\${inv.invoiceNumber}', \${inv.totalAmountCents - inv.paidAmountCents})">Pay</button>\`
-              : ''
-            }
-          </div>
-        \`).join('')
+      ? invoices
+          .map(
+            (inv) =>
+              '<div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem;">' +
+              '<span class="badge ' +
+              (inv.status === 'PAID' ? 'badge-success' : inv.status === 'PARTIALLY_PAID' ? 'badge-warning' : 'badge-primary') +
+              '" style="font-size: 0.68rem;">' +
+              inv.invoiceNumber +
+              '</span>' +
+              (inv.status !== 'PAID'
+                ? '<button type="button" class="btn btn-success btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.72rem;" onclick="openRecordReceiptModal(\\\'' +
+                  inv.id +
+                  '\\\', \\\'' +
+                  inv.invoiceNumber +
+                  '\\\', ' +
+                  (inv.totalAmountCents - inv.paidAmountCents) +
+                  ')">Pay</button>'
+                : '') +
+              '</div>'
+          )
+          .join('')
       : '<span style="color: #94a3b8; font-size: 0.78rem;">Not yet invoiced</span>';
 
     rowsHtml += \`

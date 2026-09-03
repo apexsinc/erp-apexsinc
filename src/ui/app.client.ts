@@ -8,6 +8,7 @@ import { SALES_CLIENT_JS } from './views/sales.view';
 import { OUTBOUND_CLIENT_JS } from './views/outbound.view';
 import { ACCOUNTING_CLIENT_JS } from './views/accounting.view';
 import { PAYROLL_CLIENT_JS } from './views/payroll.view';
+import { STAFF_CLIENT_JS } from './views/staff.view';
 import { ADMIN_CLIENT_JS } from './views/admin.view';
 import { SETTINGS_CLIENT_JS } from './views/settings.view';
 
@@ -148,11 +149,13 @@ function openModal(title, bodyHtml, footerButtonsHtml = '', size = '') {
   modalFooter.innerHTML = footerButtonsHtml || '<button class="btn btn-secondary" onclick="closeModal()">Close</button>';
   if (modalDialog) modalDialog.className = 'modal-dialog' + (size ? ' modal-dialog-' + size : '');
   backdrop.style.display = 'flex';
+  document.body.classList.add('modal-open');
 }
 
 function closeModal() {
   const backdrop = document.getElementById('modal-backdrop');
   if (backdrop) backdrop.style.display = 'none';
+  document.body.classList.remove('modal-open');
   if (typeof removeUrlParam === 'function' && typeof getUrlParam === 'function' && getUrlParam('slip')) {
     removeUrlParam('slip');
   }
@@ -183,6 +186,7 @@ ${SALES_CLIENT_JS}
 ${OUTBOUND_CLIENT_JS}
 ${ACCOUNTING_CLIENT_JS}
 ${PAYROLL_CLIENT_JS}
+${STAFF_CLIENT_JS}
 ${ADMIN_CLIENT_JS}
 ${SETTINGS_CLIENT_JS}
 
@@ -200,6 +204,7 @@ const ROUTE_TAB_MAP = {
   '/vouchers': 'accounting',
   '/accounting': 'accounting',
   '/payroll': 'payroll',
+  '/staff': 'staff',
   '/admin': 'admin',
   '/settings': 'settings',
 };
@@ -214,6 +219,7 @@ const TAB_ROUTE_MAP = {
   outbound: '/outbound',
   accounting: '/vouchers',
   payroll: '/payroll',
+  staff: '/staff',
   admin: '/admin',
   settings: '/settings',
 };
@@ -260,7 +266,8 @@ function switchTab(tabName, updateHistory = true, keepQueryParams = true) {
     sales: 'Sales (O2C Orders & Invoices)',
     outbound: 'Outbound Deliveries',
     accounting: 'Vouchers',
-    payroll: 'Payroll & Staff',
+    payroll: 'Payroll & Compensation',
+    staff: 'Staff & Human Resources',
     admin: 'Roles & Permissions',
     settings: 'System Settings',
   };
@@ -293,6 +300,7 @@ function switchTab(tabName, updateHistory = true, keepQueryParams = true) {
   if (tabName === 'outbound') loadOutbound();
   if (tabName === 'accounting') loadAccounting();
   if (tabName === 'payroll') loadPayroll();
+  if (tabName === 'staff') loadStaff();
   if (tabName === 'admin') loadAdmin();
   if (tabName === 'settings') loadSettings();
 }

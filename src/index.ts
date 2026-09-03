@@ -9,6 +9,7 @@ import { authMiddleware, requireAdmin, requireModule } from './middleware/auth';
 import { hashPassword, verifyPasswordLegacyAware } from './lib/password';
 import { verifyTurnstileToken } from './lib/turnstile';
 import { ALL_MODULES, DEFAULT_PERMISSION_MATRIX, isAdminRole, loadPermissionMatrix, seedDefaultPermissions, type EditableRole, type Module } from './lib/permissions';
+import { APEXS_LOGO_BASE64 } from './ui/assets/logo';
 
 // Environment Bindings for Cloudflare Workers
 type Bindings = {
@@ -80,9 +81,30 @@ app.get('/outbound', async (c) => c.html(await renderApp(c)));
 app.get('/vouchers', async (c) => c.html(await renderApp(c)));
 app.get('/accounting', async (c) => c.html(await renderApp(c)));
 app.get('/payroll', async (c) => c.html(await renderApp(c)));
+app.get('/staff', async (c) => c.html(await renderApp(c)));
 app.get('/admin', async (c) => c.html(await renderApp(c)));
 app.get('/settings', async (c) => c.html(await renderApp(c)));
 app.get('/settings/*', async (c) => c.html(await renderApp(c)));
+
+// Static Asset & Branding Routes
+app.get('/assets/logo.png', (c) => {
+  const binary = Uint8Array.from(atob(APEXS_LOGO_BASE64.split(',')[1]), (char) => char.charCodeAt(0));
+  return new Response(binary, {
+    headers: {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    },
+  });
+});
+app.get('/favicon.ico', (c) => {
+  const binary = Uint8Array.from(atob(APEXS_LOGO_BASE64.split(',')[1]), (char) => char.charCodeAt(0));
+  return new Response(binary, {
+    headers: {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    },
+  });
+});
 
 /* ========================================================================== */
 /* 0. AUTHENTICATION & ADMIN SYSTEM                                           */
@@ -401,18 +423,26 @@ app.get('/api/inventory/products/:id', async (c) => {
 // PATCH /api/inventory/products/:id/price - Set the Price List selling price
 app.patch(
   '/api/inventory/products/:id/price',
-  zValidator('json', z.object({ sellingPriceCents: z.number().int().nonnegative(), sellingPriceCurrency: z.enum(['USD', 'PHP']) })),
+  zValidator(
+    'json',
+    z.object({
+      sellingPriceCents: z.number().int().nonnegative(),
+      sellingPriceCurrency: z.enum(['USD', 'PHP']).optional(),
+      currency: z.enum(['USD', 'PHP']).optional(),
+    })
+  ),
   async (c) => {
     const db = createDbClient(c.env.DB);
     const id = c.req.param('id');
     const body = c.req.valid('json');
+    const currency = body.sellingPriceCurrency || body.currency || 'PHP';
 
     const product = await db.query.products.findFirst({ where: eq(schema.products.id, id) });
     if (!product) return c.json({ success: false, error: 'Product not found' }, 404);
 
     await db
       .update(schema.products)
-      .set({ sellingPriceCents: body.sellingPriceCents, sellingPriceCurrency: body.sellingPriceCurrency, updatedAt: new Date().toISOString() })
+      .set({ sellingPriceCents: body.sellingPriceCents, sellingPriceCurrency: currency, updatedAt: new Date().toISOString() })
       .where(eq(schema.products.id, id));
 
     const updated = await db.query.products.findFirst({ where: eq(schema.products.id, id) });
@@ -440,6 +470,41 @@ app.patch(
     await db
       .update(schema.products)
       .set({ category: body.category, updatedAt: new Date().toISOString() })
+      .where(eq(schema.products.id, id));
+
+    const updated = await db.query.products.findFirst({ where: eq(schema.products.id, id) });
+    return c.json({ success: true, data: updated });
+  }
+);
+
+// PATCH /api/inventory/products/:id/cost-price - Set the product's cost price
+// Normally populated automatically when a PO is issued (see purchasing below).
+// This lets legacy/pre-existing products that never went through a PO get a
+// cost price recorded when their stock is entered manually.
+app.patch(
+  '/api/inventory/products/:id/cost-price',
+  zValidator(
+    'json',
+    z.object({
+      costPriceCents: z.number().int().nonnegative(),
+      costPriceCurrency: z.enum(['USD', 'PHP']).optional(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const id = c.req.param('id');
+    const body = c.req.valid('json');
+
+    const product = await db.query.products.findFirst({ where: eq(schema.products.id, id) });
+    if (!product) return c.json({ success: false, error: 'Product not found' }, 404);
+
+    await db
+      .update(schema.products)
+      .set({
+        costPriceCents: body.costPriceCents,
+        costPriceCurrency: body.costPriceCurrency || product.costPriceCurrency,
+        updatedAt: new Date().toISOString(),
+      })
       .where(eq(schema.products.id, id));
 
     const updated = await db.query.products.findFirst({ where: eq(schema.products.id, id) });
@@ -1760,6 +1825,354 @@ app.post(
     }, 201);
   }
 );
+
+/* ========================================================================== */
+/* VOUCHER CRUD & ADMIN APPROVAL / DECLINE / RESTORE WORKFLOW                 */
+/* ========================================================================== */
+
+// PATCH /api/accounting/vouchers/:id - Edit Voucher (Admin only)
+app.patch(
+  '/api/accounting/vouchers/:id',
+  requireAdmin,
+  zValidator(
+    'json',
+    z.object({
+      recipientName: z.string().optional(),
+      voucherDate: z.string().optional(),
+      paymentMethod: z.enum(['BANK_TRANSFER', 'CHECK', 'CASH', 'CREDIT_CARD', 'ONLINE', 'DOUBLE_ENTRY']).optional(),
+      notes: z.string().optional(),
+      amountCents: z.number().int().nonnegative().optional(),
+      items: z
+        .array(
+          z.object({
+            invoiceNo: z.string().optional(),
+            description: z.string(),
+            currency: z.string().optional(),
+            amountCents: z.number().int().nonnegative(),
+          })
+        )
+        .optional(),
+      signatories: z
+        .object({
+          preparedBy: z.string().optional(),
+          certifiedBy: z.string().optional(),
+          approvedBy: z.string().optional(),
+          receivedBy: z.string().optional(),
+        })
+        .optional(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const id = c.req.param('id');
+    const body = c.req.valid('json');
+
+    const [pv, rv, jv] = await Promise.all([
+      db.query.paymentVouchers.findFirst({ where: eq(schema.paymentVouchers.id, id) }),
+      db.query.receiptVouchers.findFirst({ where: eq(schema.receiptVouchers.id, id) }),
+      db.query.journalVouchers.findFirst({ where: eq(schema.journalVouchers.id, id) }),
+    ]);
+
+    if (!pv && !rv && !jv) {
+      return c.json({ success: false, error: 'Voucher not found' }, 404);
+    }
+
+    if (pv) {
+      let totalAmountCents = body.amountCents !== undefined ? body.amountCents : pv.amountCents;
+      if (body.items && body.items.length > 0) {
+        totalAmountCents = body.items.reduce((sum, it) => sum + (it.amountCents || 0), 0);
+      }
+
+      await db
+        .update(schema.paymentVouchers)
+        .set({
+          recipientName: body.recipientName !== undefined ? body.recipientName : pv.recipientName,
+          voucherDate: body.voucherDate || pv.voucherDate,
+          paymentMethod: (body.paymentMethod as any) || pv.paymentMethod,
+          notes: body.notes !== undefined ? body.notes : pv.notes,
+          amountCents: totalAmountCents,
+          items: body.items ? JSON.stringify(body.items) : pv.items,
+          signatories: body.signatories ? JSON.stringify(body.signatories) : pv.signatories,
+        })
+        .where(eq(schema.paymentVouchers.id, id));
+
+      if (pv.status === 'POSTED') {
+        const entries = await db.query.journalEntries.findMany({ where: eq(schema.journalEntries.voucherId, id) });
+        for (const entry of entries) {
+          if (entry.debitCents > 0) {
+            await db.update(schema.journalEntries).set({ debitCents: totalAmountCents, entryDate: body.voucherDate || pv.voucherDate }).where(eq(schema.journalEntries.id, entry.id));
+          } else if (entry.creditCents > 0) {
+            await db.update(schema.journalEntries).set({ creditCents: totalAmountCents, entryDate: body.voucherDate || pv.voucherDate }).where(eq(schema.journalEntries.id, entry.id));
+          }
+        }
+      }
+
+      return c.json({ success: true, message: 'Payment Voucher updated successfully' });
+    }
+
+    if (rv) {
+      const totalAmountCents = body.amountCents !== undefined ? body.amountCents : rv.amountCents;
+      await db
+        .update(schema.receiptVouchers)
+        .set({
+          voucherDate: body.voucherDate || rv.voucherDate,
+          paymentMethod: (body.paymentMethod as any) || rv.paymentMethod,
+          notes: body.notes !== undefined ? body.notes : rv.notes,
+          amountCents: totalAmountCents,
+        })
+        .where(eq(schema.receiptVouchers.id, id));
+
+      if (rv.status === 'POSTED') {
+        const entries = await db.query.journalEntries.findMany({ where: eq(schema.journalEntries.voucherId, id) });
+        for (const entry of entries) {
+          if (entry.debitCents > 0) {
+            await db.update(schema.journalEntries).set({ debitCents: totalAmountCents, entryDate: body.voucherDate || rv.voucherDate }).where(eq(schema.journalEntries.id, entry.id));
+          } else if (entry.creditCents > 0) {
+            await db.update(schema.journalEntries).set({ creditCents: totalAmountCents, entryDate: body.voucherDate || rv.voucherDate }).where(eq(schema.journalEntries.id, entry.id));
+          }
+        }
+      }
+
+      return c.json({ success: true, message: 'Receipt Voucher updated successfully' });
+    }
+
+    if (jv) {
+      await db
+        .update(schema.journalVouchers)
+        .set({
+          voucherDate: body.voucherDate || jv.voucherDate,
+          description: body.notes !== undefined ? body.notes : jv.description,
+        })
+        .where(eq(schema.journalVouchers.id, id));
+
+      return c.json({ success: true, message: 'Journal Voucher updated successfully' });
+    }
+  }
+);
+
+// POST /api/accounting/vouchers/:id/approve - Approve Voucher (Admin only)
+app.post('/api/accounting/vouchers/:id/approve', requireAdmin, async (c) => {
+  const db = createDbClient(c.env.DB);
+  const id = c.req.param('id');
+
+  const [pv, rv, jv] = await Promise.all([
+    db.query.paymentVouchers.findFirst({ where: eq(schema.paymentVouchers.id, id) }),
+    db.query.receiptVouchers.findFirst({ where: eq(schema.receiptVouchers.id, id) }),
+    db.query.journalVouchers.findFirst({ where: eq(schema.journalVouchers.id, id) }),
+  ]);
+
+  if (!pv && !rv && !jv) return c.json({ success: false, error: 'Voucher not found' }, 404);
+
+  if (pv) {
+    await db.update(schema.paymentVouchers).set({ status: 'POSTED' }).where(eq(schema.paymentVouchers.id, id));
+    const entries = await db.query.journalEntries.findMany({ where: eq(schema.journalEntries.voucherId, id) });
+    if (entries.length === 0) {
+      const [payAcc, expAcc] = await Promise.all([
+        db.query.accounts.findFirst({ where: eq(schema.accounts.code, '1010') }),
+        db.query.accounts.findFirst({ where: eq(schema.accounts.code, '5020') }),
+      ]);
+      if (payAcc && expAcc) {
+        await db.insert(schema.journalEntries).values([
+          {
+            id: crypto.randomUUID(),
+            voucherType: 'PAYMENT',
+            voucherId: id,
+            accountId: expAcc.id,
+            debitCents: pv.amountCents,
+            creditCents: 0,
+            description: `Payment to ${pv.recipientName || 'Payee'} (${pv.voucherNumber})`,
+            entryDate: pv.voucherDate,
+          },
+          {
+            id: crypto.randomUUID(),
+            voucherType: 'PAYMENT',
+            voucherId: id,
+            accountId: payAcc.id,
+            debitCents: 0,
+            creditCents: pv.amountCents,
+            description: `Disbursement for ${pv.recipientName || 'Payee'} (${pv.voucherNumber})`,
+            entryDate: pv.voucherDate,
+          },
+        ]);
+      }
+    }
+    return c.json({ success: true, message: 'Payment Voucher approved and posted to General Ledger' });
+  }
+
+  if (rv) {
+    await db.update(schema.receiptVouchers).set({ status: 'POSTED' }).where(eq(schema.receiptVouchers.id, id));
+    const entries = await db.query.journalEntries.findMany({ where: eq(schema.journalEntries.voucherId, id) });
+    if (entries.length === 0) {
+      const [cashAcc, arAcc] = await Promise.all([
+        db.query.accounts.findFirst({ where: eq(schema.accounts.code, '1010') }),
+        db.query.accounts.findFirst({ where: eq(schema.accounts.code, '1100') }),
+      ]);
+      if (cashAcc && arAcc) {
+        await db.insert(schema.journalEntries).values([
+          {
+            id: crypto.randomUUID(),
+            voucherType: 'RECEIPT',
+            voucherId: id,
+            accountId: cashAcc.id,
+            debitCents: rv.amountCents,
+            creditCents: 0,
+            description: `Customer Receipt (${rv.voucherNumber})`,
+            entryDate: rv.voucherDate,
+          },
+          {
+            id: crypto.randomUUID(),
+            voucherType: 'RECEIPT',
+            voucherId: id,
+            accountId: arAcc.id,
+            debitCents: 0,
+            creditCents: rv.amountCents,
+            description: `Customer A/R Settlement (${rv.voucherNumber})`,
+            entryDate: rv.voucherDate,
+          },
+        ]);
+      }
+    }
+    return c.json({ success: true, message: 'Receipt Voucher approved and posted to General Ledger' });
+  }
+
+  if (jv) {
+    await db.update(schema.journalVouchers).set({ status: 'POSTED' }).where(eq(schema.journalVouchers.id, id));
+    return c.json({ success: true, message: 'Journal Voucher approved and posted to General Ledger' });
+  }
+});
+
+// POST /api/accounting/vouchers/:id/decline - Decline / Void Voucher (Admin only)
+app.post('/api/accounting/vouchers/:id/decline', requireAdmin, async (c) => {
+  const db = createDbClient(c.env.DB);
+  const id = c.req.param('id');
+
+  const [pv, rv, jv] = await Promise.all([
+    db.query.paymentVouchers.findFirst({ where: eq(schema.paymentVouchers.id, id) }),
+    db.query.receiptVouchers.findFirst({ where: eq(schema.receiptVouchers.id, id) }),
+    db.query.journalVouchers.findFirst({ where: eq(schema.journalVouchers.id, id) }),
+  ]);
+
+  if (!pv && !rv && !jv) return c.json({ success: false, error: 'Voucher not found' }, 404);
+
+  // Mark status as VOID and remove journal entries so ledger equilibrium and financial reports adjust cleanly
+  if (pv) {
+    await db.update(schema.paymentVouchers).set({ status: 'VOID' }).where(eq(schema.paymentVouchers.id, id));
+  } else if (rv) {
+    await db.update(schema.receiptVouchers).set({ status: 'VOID' }).where(eq(schema.receiptVouchers.id, id));
+    if (rv.invoiceId) {
+      await db.update(schema.invoices).set({ status: 'ISSUED' }).where(eq(schema.invoices.id, rv.invoiceId));
+    }
+  } else if (jv) {
+    await db.update(schema.journalVouchers).set({ status: 'VOID' }).where(eq(schema.journalVouchers.id, id));
+  }
+
+  await db.delete(schema.journalEntries).where(eq(schema.journalEntries.voucherId, id));
+
+  return c.json({ success: true, message: 'Voucher declined and voided. Ledger balance adjusted.' });
+});
+
+// POST /api/accounting/vouchers/:id/restore - Restore Declined / Voided Voucher (Admin only)
+app.post('/api/accounting/vouchers/:id/restore', requireAdmin, async (c) => {
+  const db = createDbClient(c.env.DB);
+  const id = c.req.param('id');
+
+  const [pv, rv, jv] = await Promise.all([
+    db.query.paymentVouchers.findFirst({ where: eq(schema.paymentVouchers.id, id) }),
+    db.query.receiptVouchers.findFirst({ where: eq(schema.receiptVouchers.id, id) }),
+    db.query.journalVouchers.findFirst({ where: eq(schema.journalVouchers.id, id) }),
+  ]);
+
+  if (!pv && !rv && !jv) return c.json({ success: false, error: 'Voucher not found' }, 404);
+
+  if (pv) {
+    await db.update(schema.paymentVouchers).set({ status: 'POSTED' }).where(eq(schema.paymentVouchers.id, id));
+    const [payAcc, expAcc] = await Promise.all([
+      db.query.accounts.findFirst({ where: eq(schema.accounts.code, '1010') }),
+      db.query.accounts.findFirst({ where: eq(schema.accounts.code, '5020') }),
+    ]);
+    if (payAcc && expAcc) {
+      await db.insert(schema.journalEntries).values([
+        {
+          id: crypto.randomUUID(),
+          voucherType: 'PAYMENT',
+          voucherId: id,
+          accountId: expAcc.id,
+          debitCents: pv.amountCents,
+          creditCents: 0,
+          description: `Payment to ${pv.recipientName || 'Payee'} (${pv.voucherNumber})`,
+          entryDate: pv.voucherDate,
+        },
+        {
+          id: crypto.randomUUID(),
+          voucherType: 'PAYMENT',
+          voucherId: id,
+          accountId: payAcc.id,
+          debitCents: 0,
+          creditCents: pv.amountCents,
+          description: `Disbursement for ${pv.recipientName || 'Payee'} (${pv.voucherNumber})`,
+          entryDate: pv.voucherDate,
+        },
+      ]);
+    }
+    return c.json({ success: true, message: 'Payment Voucher restored and re-posted to General Ledger' });
+  }
+
+  if (rv) {
+    await db.update(schema.receiptVouchers).set({ status: 'POSTED' }).where(eq(schema.receiptVouchers.id, id));
+    if (rv.invoiceId) {
+      await db.update(schema.invoices).set({ status: 'PAID' }).where(eq(schema.invoices.id, rv.invoiceId));
+    }
+    const [cashAcc, arAcc] = await Promise.all([
+      db.query.accounts.findFirst({ where: eq(schema.accounts.code, '1010') }),
+      db.query.accounts.findFirst({ where: eq(schema.accounts.code, '1100') }),
+    ]);
+    if (cashAcc && arAcc) {
+      await db.insert(schema.journalEntries).values([
+        {
+          id: crypto.randomUUID(),
+          voucherType: 'RECEIPT',
+          voucherId: id,
+          accountId: cashAcc.id,
+          debitCents: rv.amountCents,
+          creditCents: 0,
+          description: `Customer Receipt (${rv.voucherNumber})`,
+          entryDate: rv.voucherDate,
+        },
+        {
+          id: crypto.randomUUID(),
+          voucherType: 'RECEIPT',
+          voucherId: id,
+          accountId: arAcc.id,
+          debitCents: 0,
+          creditCents: rv.amountCents,
+          description: `Customer A/R Settlement (${rv.voucherNumber})`,
+          entryDate: rv.voucherDate,
+        },
+      ]);
+    }
+    return c.json({ success: true, message: 'Receipt Voucher restored and re-posted to General Ledger' });
+  }
+
+  if (jv) {
+    await db.update(schema.journalVouchers).set({ status: 'POSTED' }).where(eq(schema.journalVouchers.id, id));
+    return c.json({ success: true, message: 'Journal Voucher restored and re-posted to General Ledger' });
+  }
+});
+
+// DELETE /api/accounting/vouchers/:id - Delete Voucher Permanently (Admin only)
+app.delete('/api/accounting/vouchers/:id', requireAdmin, async (c) => {
+  const db = createDbClient(c.env.DB);
+  const id = c.req.param('id');
+
+  await Promise.all([
+    db.delete(schema.paymentVouchers).where(eq(schema.paymentVouchers.id, id)),
+    db.delete(schema.receiptVouchers).where(eq(schema.receiptVouchers.id, id)),
+    db.delete(schema.journalVouchers).where(eq(schema.journalVouchers.id, id)),
+    db.delete(schema.journalEntries).where(eq(schema.journalEntries.voucherId, id)),
+  ]);
+
+  return c.json({ success: true, message: 'Voucher permanently deleted' });
+});
 
 // GET /api/accounting/ledger - Full General Ledger
 app.get('/api/accounting/ledger', async (c) => {

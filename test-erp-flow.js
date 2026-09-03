@@ -16,6 +16,7 @@ async function runTests() {
     '/vouchers',
     '/accounting',
     '/payroll',
+    '/staff',
     '/admin',
     '/settings',
     '/vouchers?tab=vouchers-pv',
@@ -35,6 +36,21 @@ async function runTests() {
     }
     console.log(`  ✓ Route ${route.padEnd(30)} -> 200 OK (text/html)`);
   }
+
+  // Check static logo & favicon assets
+  const logoRes = await fetch(`${baseUrl}/assets/logo.png`);
+  if (logoRes.status !== 200 || !logoRes.headers.get('content-type')?.includes('image/png')) {
+    console.error(`❌ Logo check failed: status=${logoRes.status}`);
+    process.exit(1);
+  }
+  console.log(`  ✓ Route /assets/logo.png               -> 200 OK (image/png, ${logoRes.headers.get('content-length') || 'valid'} bytes)`);
+
+  const favRes = await fetch(`${baseUrl}/favicon.ico`);
+  if (favRes.status !== 200) {
+    console.error(`❌ Favicon check failed: status=${favRes.status}`);
+    process.exit(1);
+  }
+  console.log(`  ✓ Route /favicon.ico                   -> 200 OK (image/png)`);
 
   console.log('\n=== 2. SEED CHART OF ACCOUNTS & ADMIN ===');
   const seedRes = await fetch(`${baseUrl}/api/setup/seed`, { method: 'POST' });
@@ -298,6 +314,82 @@ async function runTests() {
   console.log('Total Debits:', `₱${tbData.totalDebitCents / 100}`);
   console.log('Total Credits:', `₱${tbData.totalCreditCents / 100}`);
   console.log('Discrepancy:', `₱${tbData.discrepancyCents / 100}`);
+
+  console.log('\n=== 8.1 VOUCHER CRUD & ADMIN APPROVAL / DECLINE / RESTORE AUDIT ===');
+  // 1. Create a Test Payment Voucher
+  const newPvRes = await fetch(`${baseUrl}/api/accounting/vouchers/payment`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      recipientName: 'Apexs Utilities Provider',
+      recipientType: 'OTHER',
+      currency: 'PHP',
+      amountCents: 50000, // ₱500.00
+      paymentMethod: 'BANK_TRANSFER',
+      notes: 'Monthly high-speed fiber internet subscription',
+      signatories: {
+        preparedBy: 'Administrator',
+        approvedBy: 'Kenneth Brown / CEO',
+      },
+    }),
+  });
+  const newPvData = await newPvRes.json();
+  console.log('Created Test PV:', newPvData.voucherNumber, 'Success:', newPvData.success);
+
+  // Retrieve voucher ID
+  const allVouchersRes = await fetch(`${baseUrl}/api/accounting/vouchers`, { headers: authHeaders });
+  const allVouchersData = await allVouchersRes.json();
+  const testVoucher = allVouchersData.data.find((v) => v.voucherNumber === newPvData.voucherNumber);
+  if (!testVoucher) {
+    console.error('Test voucher not found in registry');
+    process.exit(1);
+  }
+  const testVoucherId = testVoucher.id;
+
+  // 2. Edit Voucher (PATCH)
+  const editRes = await fetch(`${baseUrl}/api/accounting/vouchers/${testVoucherId}`, {
+    method: 'PATCH',
+    headers: authHeaders,
+    body: JSON.stringify({
+      recipientName: 'Apexs Telecom & Cloud ISP',
+      notes: 'Updated: High-speed edge bandwidth',
+      amountCents: 65000, // ₱650.00
+    }),
+  });
+  const editData = await editRes.json();
+  console.log('Edited Test Voucher:', editData.message);
+
+  // 3. Decline Voucher (Void & Ledger Removal)
+  const declineRes = await fetch(`${baseUrl}/api/accounting/vouchers/${testVoucherId}/decline`, {
+    method: 'POST',
+    headers: authHeaders,
+  });
+  const declineData = await declineRes.json();
+  console.log('Declined Voucher (Ledger Removed):', declineData.message);
+
+  // Verify TB after decline
+  const tbAfterDecline = await (await fetch(`${baseUrl}/api/accounting/trial-balance`, { headers: authHeaders })).json();
+  console.log('TB Balanced After Decline?:', tbAfterDecline.isBalanced ? 'YES' : 'NO', 'Discrepancy:', tbAfterDecline.discrepancyCents);
+
+  // 4. Restore Voucher (Re-post & Re-balance)
+  const restoreRes = await fetch(`${baseUrl}/api/accounting/vouchers/${testVoucherId}/restore`, {
+    method: 'POST',
+    headers: authHeaders,
+  });
+  const restoreData = await restoreRes.json();
+  console.log('Restored Voucher (Ledger Restored):', restoreData.message);
+
+  // Verify TB after restore
+  const tbAfterRestore = await (await fetch(`${baseUrl}/api/accounting/trial-balance`, { headers: authHeaders })).json();
+  console.log('TB Balanced After Restore?:', tbAfterRestore.isBalanced ? 'YES' : 'NO', 'Discrepancy:', tbAfterRestore.discrepancyCents);
+
+  // 5. Delete Test Voucher
+  const deleteRes = await fetch(`${baseUrl}/api/accounting/vouchers/${testVoucherId}`, {
+    method: 'DELETE',
+    headers: authHeaders,
+  });
+  const deleteData = await deleteRes.json();
+  console.log('Deleted Test Voucher Permanently:', deleteData.message);
 
   console.log('\n=== 9. EXECUTIVE DASHBOARD ===');
   const dashRes = await fetch(`${baseUrl}/api/dashboard`, {

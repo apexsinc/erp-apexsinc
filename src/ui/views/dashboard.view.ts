@@ -74,7 +74,7 @@ async function loadDashboard() {
           <button class="btn btn-primary btn-sm" onclick="openNewPOModal()">Create Purchase Order</button>
           <button class="btn btn-primary btn-sm" onclick="openNewSalesOrderModal()">Create Sales Order</button>
           <button class="btn btn-primary btn-sm" onclick="openNewPayrollRunModal()">Calculate Payroll</button>
-          <button class="btn btn-secondary btn-sm" onclick="openNewJVModal()">Post Journal Voucher</button>
+          <button class="btn btn-secondary btn-sm" onclick="openNewPaymentVoucherModal()">New Payment Voucher</button>
         </div>
       </div>
 

@@ -2,7 +2,7 @@ export function renderSidebar(): string {
   return `
     <aside class="sidebar">
       <div class="sidebar-brand">
-        <div class="brand-icon">A</div>
+        <img src="/assets/logo.png" alt="Apexs Logo" class="brand-logo-img" />
         <div class="brand-text">
           <h1>Apexs ERP</h1>
           <span>Enterprise System</span>
@@ -46,8 +46,12 @@ export function renderSidebar(): string {
           Vouchers
         </a>
         <a class="nav-item" data-tab="payroll" href="/payroll" onclick="event.preventDefault(); switchTab('payroll')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="6" y1="12" x2="18" y2="12"></line><line x1="12" y1="8" x2="12" y2="16"></line></svg>
+          Payroll
+        </a>
+        <a class="nav-item" data-tab="staff" href="/staff" onclick="event.preventDefault(); switchTab('staff')">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-          Payroll & Staff
+          Staff & HR
         </a>
 
         <div class="nav-section-title">Administration</div>

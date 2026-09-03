@@ -7,7 +7,7 @@ import type { User } from '../db/schema/auth';
  * Sidebar modules gated by role. Keys match the `data-tab` values
  * used by the sidebar nav items and the client-side tab router.
  */
-export const ALL_MODULES = ['dashboard', 'directory', 'inventory', 'purchasing', 'inbound', 'sales', 'outbound', 'accounting', 'payroll'] as const;
+export const ALL_MODULES = ['dashboard', 'directory', 'inventory', 'purchasing', 'inbound', 'sales', 'outbound', 'accounting', 'payroll', 'staff'] as const;
 export type Module = (typeof ALL_MODULES)[number];
 
 export type Role = User['role'];
@@ -24,7 +24,7 @@ type AppAbility = MongoAbility<[Actions, Module]>;
  * further restricted to order fulfillment modules.
  */
 export const DEFAULT_PERMISSION_MATRIX: Record<EditableRole, Module[]> = {
-  MANAGER: ['dashboard', 'directory', 'inventory', 'purchasing', 'inbound', 'sales', 'outbound'],
+  MANAGER: ['dashboard', 'directory', 'inventory', 'purchasing', 'inbound', 'sales', 'outbound', 'staff'],
   STAFF: ['dashboard', 'directory', 'inventory', 'inbound', 'sales', 'outbound'],
 };
 

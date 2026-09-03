@@ -8,5 +8,6 @@ export * from './sales.view';
 export * from './outbound.view';
 export * from './accounting.view';
 export * from './payroll.view';
+export * from './staff.view';
 export * from './admin.view';
 export * from './settings.view';

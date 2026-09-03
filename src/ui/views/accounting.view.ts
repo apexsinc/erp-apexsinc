@@ -7,6 +7,9 @@ let accountingActiveTab = 'vouchers-all';
 let cachedAccounts = [];
 let cachedVouchers = [];
 let cachedLedgerEntries = [];
+let cachedVendors = [];
+let cachedEmployees = [];
+let cachedCustomers = [];
 let cachedProfitLoss = null;
 let cachedBalanceSheet = null;
 let cachedCashFlow = null;
@@ -21,7 +24,7 @@ async function loadAccounting() {
     if (urlTab) accountingActiveTab = urlTab;
     voucherSearchQuery = (typeof getUrlParam === 'function' ? getUrlParam('search') : '') || '';
 
-    const [tbRes, ledgerRes, vouchersRes, accountsRes, settingsRes, plRes, bsRes, cfRes] = await Promise.all([
+    const [tbRes, ledgerRes, vouchersRes, accountsRes, settingsRes, plRes, bsRes, cfRes, vendorsRes, empRes, custRes] = await Promise.all([
       apiFetch('/api/accounting/trial-balance'),
       apiFetch('/api/accounting/ledger'),
       apiFetch('/api/accounting/vouchers'),
@@ -30,6 +33,9 @@ async function loadAccounting() {
       apiFetch('/api/accounting/reports/profit-loss').catch(() => null),
       apiFetch('/api/accounting/reports/balance-sheet').catch(() => null),
       apiFetch('/api/accounting/reports/cash-flow').catch(() => null),
+      apiFetch('/api/purchasing/vendors').catch(() => null),
+      apiFetch('/api/payroll/employees').catch(() => null),
+      apiFetch('/api/sales/customers').catch(() => null),
     ]);
 
     const tbJson = await tbRes.json();
@@ -55,6 +61,24 @@ async function loadAccounting() {
     if (cfRes) {
       try {
         cachedCashFlow = await cfRes.json();
+      } catch (e) {}
+    }
+    if (vendorsRes) {
+      try {
+        const vj = await vendorsRes.json();
+        cachedVendors = vj.data || [];
+      } catch (e) {}
+    }
+    if (empRes) {
+      try {
+        const ej = await empRes.json();
+        cachedEmployees = ej.data || [];
+      } catch (e) {}
+    }
+    if (custRes) {
+      try {
+        const cj = await custRes.json();
+        cachedCustomers = cj.data || [];
       } catch (e) {}
     }
 
@@ -247,6 +271,8 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
     filteredVouchers = vouchers.filter((v) => v.voucherType === 'RECEIPT');
   } else if (accountingActiveTab === 'vouchers-jv') {
     filteredVouchers = vouchers.filter((v) => v.voucherType === 'JOURNAL');
+  } else if (accountingActiveTab === 'vouchers-declined') {
+    filteredVouchers = vouchers.filter((v) => v.status === 'VOID' || v.status === 'DECLINED');
   }
 
   if (voucherSearchQuery) {
@@ -265,11 +291,62 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
     JOURNAL: 'badge-primary',
   };
 
+  const isAdmin = state.user && state.user.role === 'ADMIN';
+
   const voucherRows = filteredVouchers.map((v) => {
     const isPayment = v.voucherType === 'PAYMENT';
     const isReceipt = v.voucherType === 'RECEIPT';
     const amountColor = isPayment ? '#dc2626' : isReceipt ? '#059669' : '#1d4ed8';
     const amountPrefix = isPayment ? '- ' : isReceipt ? '+ ' : '';
+
+    const status = v.status || 'POSTED';
+    let statusBadgeClass = 'badge-success';
+    let statusLabel = 'Posted';
+    if (status === 'VOID' || status === 'DECLINED') {
+      statusBadgeClass = 'badge-danger';
+      statusLabel = 'Declined';
+    } else if (status === 'DRAFT' || status === 'PENDING') {
+      statusBadgeClass = 'badge-warning';
+      statusLabel = 'Pending Approval';
+    }
+
+    let adminButtonsHtml = '';
+    if (isAdmin) {
+      adminButtonsHtml += \`
+        <button type="button" class="icon-btn icon-btn-edit has-tooltip" data-tooltip="Edit Voucher" onclick="openEditVoucherModal('\${v.id}')" aria-label="Edit Voucher">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+        </button>
+      \`;
+
+      if (status === 'DRAFT' || status === 'PENDING') {
+        adminButtonsHtml += \`
+          <button type="button" class="icon-btn icon-btn-approve has-tooltip" data-tooltip="Accept / Approve" onclick="handleApproveVoucher('\${v.id}')" aria-label="Approve Voucher">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          </button>
+          <button type="button" class="icon-btn icon-btn-decline has-tooltip" data-tooltip="Decline Voucher" onclick="handleDeclineVoucher('\${v.id}')" aria-label="Decline Voucher">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        \`;
+      } else if (status === 'POSTED') {
+        adminButtonsHtml += \`
+          <button type="button" class="icon-btn icon-btn-decline has-tooltip" data-tooltip="Decline / Void" onclick="handleDeclineVoucher('\${v.id}')" aria-label="Decline Voucher">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        \`;
+      } else if (status === 'VOID' || status === 'DECLINED') {
+        adminButtonsHtml += \`
+          <button type="button" class="icon-btn icon-btn-restore has-tooltip" data-tooltip="Restore Voucher" onclick="handleRestoreVoucher('\${v.id}')" aria-label="Restore Voucher">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+          </button>
+        \`;
+      }
+
+      adminButtonsHtml += \`
+        <button type="button" class="icon-btn icon-btn-delete has-tooltip" data-tooltip="Delete Voucher" onclick="handleDeleteVoucher('\${v.id}', '\${v.voucherNumber}')" aria-label="Delete Voucher">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+        </button>
+      \`;
+    }
 
     return \`
       <tr>
@@ -281,9 +358,14 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
         <td style="font-weight: 700; color: \${amountColor}; font-family: 'JetBrains Mono', monospace;">
           \${amountPrefix}\${formatCurrency(v.amountCents, v.currency || 'PHP')}
         </td>
-        <td><span class="badge badge-success"><span class="badge-dot"></span>\${v.status || 'POSTED'}</span></td>
+        <td><span class="badge \${statusBadgeClass}"><span class="badge-dot"></span>\${statusLabel}</span></td>
         <td>
-          <button class="btn btn-secondary btn-sm" onclick="openVoucherSlipModal('\${v.id}')">View Official Slip</button>
+          <div class="action-btn-group">
+            <button type="button" class="icon-btn icon-btn-view has-tooltip" data-tooltip="View Official Slip" onclick="openVoucherSlipModal('\${v.id}')" aria-label="View Official Slip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
+            \${adminButtonsHtml}
+          </div>
         </td>
       </tr>
     \`;
@@ -319,9 +401,10 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
 
   const tabs = [
     { id: 'vouchers-all', label: 'All Vouchers', count: vouchers.length },
-    { id: 'vouchers-pv', label: 'Payment Vouchers (PV)', count: vouchers.filter((x) => x.voucherType === 'PAYMENT').length },
-    { id: 'vouchers-rv', label: 'Receipt Vouchers (RV)', count: vouchers.filter((x) => x.voucherType === 'RECEIPT').length },
-    { id: 'vouchers-jv', label: 'Journal Vouchers (JV)', count: vouchers.filter((x) => x.voucherType === 'JOURNAL').length },
+    { id: 'vouchers-pv', label: 'Payment (PV)', count: vouchers.filter((x) => x.voucherType === 'PAYMENT').length },
+    { id: 'vouchers-rv', label: 'Receipt (RV)', count: vouchers.filter((x) => x.voucherType === 'RECEIPT').length },
+    { id: 'vouchers-jv', label: 'Journal (JV)', count: vouchers.filter((x) => x.voucherType === 'JOURNAL').length },
+    { id: 'vouchers-declined', label: 'Declined (Void)', count: vouchers.filter((x) => x.status === 'VOID' || x.status === 'DECLINED').length },
     { id: 'reports-pl', label: '📊 Profit & Loss', count: 'P&L' },
     { id: 'reports-bs', label: '🏛️ Balance Sheet', count: 'BS' },
     { id: 'reports-cf', label: '💵 Cash Flow', count: 'CF' },
@@ -828,10 +911,7 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
             <span class="badge-dot"></span>
             \${isBalanced ? 'Double-Entry Balanced' : 'Ledger Imbalance ($' + (Math.abs(tbJson.discrepancyCents || 0) / 100).toFixed(2) + ')'}
           </span>
-          <button class="btn btn-secondary btn-sm" onclick="openNewContraModal()">Post Contra (Transfer)</button>
-          <button class="btn btn-secondary btn-sm" onclick="openNewPaymentVoucherModal()">New Payment Voucher</button>
-          <button class="btn btn-secondary btn-sm" onclick="openNewReceiptVoucherModal()">New Receipt Voucher</button>
-          <button class="btn btn-primary btn-sm" onclick="openNewJVModal()">Post Journal Voucher</button>
+          <button class="btn btn-primary btn-sm" onclick="openNewPaymentVoucherModal()">+ New Payment Voucher</button>
         </div>
       </div>
 
@@ -891,8 +971,30 @@ function openNewPaymentVoucherModal() {
       <!-- Top Info Grid -->
       <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 0.85rem; margin-bottom: 0.85rem;">
         <div class="form-group" style="margin-bottom: 0;">
-          <label class="form-label" style="font-weight: 700;">Pay to (Recipient / Payee Name) *</label>
-          <input type="text" id="pv-recipient-name" class="form-input" placeholder="e.g. Jaymar Anasco or Acme Supplies" required />
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+            <label class="form-label" style="font-weight: 700; margin-bottom: 0;">Pay to (Recipient / Payee Name) *</label>
+            <span style="font-size: 0.72rem; color: #64748b;">Type or pick from directory</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem;">
+            <input type="text" id="pv-recipient-name" class="form-input" list="pv-payees-datalist" placeholder="e.g. Acme Materials or Sarah Connor" oninput="handlePvPayeeInput(this.value)" required />
+            <select class="form-input" onchange="handlePvQuickPayeeSelect(this.value)" style="font-size: 0.8rem; background-color: #f8fafc;">
+              <option value="">🔍 Directory Pick...</option>
+              <optgroup label="🏢 Vendors / Suppliers (\${cachedVendors.length})">
+                \${cachedVendors.map((v) => \`<option value="VENDOR|\${v.name}">\${v.name} (\${v.vendorCode || 'Vendor'})\</option>\`).join('')}
+              </optgroup>
+              <optgroup label="👷 Employees / Staff (\${cachedEmployees.length})">
+                \${cachedEmployees.map((e) => \`<option value="EMPLOYEE|\${e.firstName} \${e.lastName}">\${e.firstName} \${e.lastName} (\${e.department || 'Staff'})\</option>\`).join('')}
+              </optgroup>
+              <optgroup label="🏬 Customers / Companies (\${cachedCustomers.length})">
+                \${cachedCustomers.map((c) => \`<option value="OTHER|\${c.name}">\${c.name} (\${c.customerCode || 'Client'})\</option>\`).join('')}
+              </optgroup>
+            </select>
+          </div>
+          <datalist id="pv-payees-datalist">
+            \${cachedVendors.map((v) => \`<option value="\${v.name}">Vendor: \${v.name} (\${v.vendorCode || 'Supplier'})\</option>\`).join('')}
+            \${cachedEmployees.map((e) => \`<option value="\${e.firstName} \${e.lastName}">Employee: \${e.firstName} \${e.lastName} (\${e.department || 'Staff'})\</option>\`).join('')}
+            \${cachedCustomers.map((c) => \`<option value="\${c.name}">Customer: \${c.name} (\${c.customerCode || 'Client'})\</option>\`).join('')}
+          </datalist>
         </div>
         <div class="form-group" style="margin-bottom: 0;">
           <label class="form-label">Classification</label>
@@ -1036,6 +1138,35 @@ function openNewPaymentVoucherModal() {
   }, 50);
 }
 
+function handlePvQuickPayeeSelect(val) {
+  if (!val) return;
+  const parts = val.split('|');
+  const type = parts[0];
+  const name = parts.slice(1).join('|');
+  const nameInput = document.getElementById('pv-recipient-name');
+  const typeSelect = document.getElementById('pv-recipient-type');
+  if (nameInput) nameInput.value = name;
+  if (typeSelect && type) typeSelect.value = type;
+}
+
+function handlePvPayeeInput(val) {
+  if (!val) return;
+  const lower = val.trim().toLowerCase();
+  const typeSelect = document.getElementById('pv-recipient-type');
+  if (!typeSelect) return;
+  if (cachedVendors.some((v) => v.name.toLowerCase() === lower)) {
+    typeSelect.value = 'VENDOR';
+  } else if (cachedEmployees.some((e) => (e.firstName + ' ' + e.lastName).toLowerCase() === lower)) {
+    typeSelect.value = 'EMPLOYEE';
+  }
+}
+
+function handleRvQuickPayerSelect(name) {
+  if (!name) return;
+  const nameInput = document.getElementById('rv-payer-name');
+  if (nameInput) nameInput.value = name;
+}
+
 function addPaymentVoucherItemRow(inv = '', desc = '', amt = '') {
   const tbody = document.getElementById('pv-items-tbody');
   if (!tbody) return;
@@ -1172,8 +1303,30 @@ function openNewReceiptVoucherModal() {
   const body = \`
     <form id="form-new-rv" onsubmit="submitNewReceiptVoucher(event)">
       <div class="form-group">
-        <label class="form-label">Payer / Customer Name *</label>
-        <input type="text" id="rv-payer-name" class="form-input" placeholder="e.g. Apex Global Industries or Client Deposit" required />
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+          <label class="form-label" style="font-weight: 700; margin-bottom: 0;">Payer / Customer Name *</label>
+          <span style="font-size: 0.72rem; color: #64748b;">Type or pick from directory</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem;">
+          <input type="text" id="rv-payer-name" class="form-input" list="rv-payers-datalist" placeholder="e.g. Globex Corporation or Client Deposit" required />
+          <select class="form-input" onchange="handleRvQuickPayerSelect(this.value)" style="font-size: 0.8rem; background-color: #f8fafc;">
+            <option value="">🔍 Directory Pick...</option>
+            <optgroup label="🏬 Customers / Companies (\${cachedCustomers.length})">
+              \${cachedCustomers.map((c) => \`<option value="\${c.name}">\${c.name} (\${c.customerCode || 'Client'})\</option>\`).join('')}
+            </optgroup>
+            <optgroup label="🏢 Vendors / Partners (\${cachedVendors.length})">
+              \${cachedVendors.map((v) => \`<option value="\${v.name}">\${v.name} (\${v.vendorCode || 'Vendor'})\</option>\`).join('')}
+            </optgroup>
+            <optgroup label="👷 Employees / Staff (\${cachedEmployees.length})">
+              \${cachedEmployees.map((e) => \`<option value="\${e.firstName} \${e.lastName}">\${e.firstName} \${e.lastName}\</option>\`).join('')}
+            </optgroup>
+          </select>
+        </div>
+        <datalist id="rv-payers-datalist">
+          \${cachedCustomers.map((c) => \`<option value="\${c.name}">Customer: \${c.name} (\${c.customerCode || 'Client'})\</option>\`).join('')}
+          \${cachedVendors.map((v) => \`<option value="\${v.name}">Vendor: \${v.name} (\${v.vendorCode || 'Supplier'})\</option>\`).join('')}
+          \${cachedEmployees.map((e) => \`<option value="\${e.firstName} \${e.lastName}">Employee: \${e.firstName} \${e.lastName}\</option>\`).join('')}
+        </datalist>
       </div>
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
@@ -1560,39 +1713,13 @@ function openVoucherSlipModal(voucherId) {
   const body = \`
     <div class="official-voucher-sheet" style="background: #ffffff; color: #000000; padding: 2rem; font-family: 'Inter', Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 4px; max-width: 840px; margin: 0 auto; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
       
-      <!-- APEXS Header with Pyramid Brand -->
-      <div style="display: flex; justify-content: center; align-items: center; gap: 1.25rem; margin-bottom: 0.6rem;">
-        <!-- Clean Vector SVG APEXS 3D Pyramid Logo -->
-        <svg width="78" height="58" viewBox="0 0 100 75" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink: 0;">
-          <polygon points="50,4 6,66 94,66" fill="url(#pyrGrad1)" stroke="#14532d" stroke-width="1.5" />
-          <line x1="50" y1="4" x2="50" y2="66" stroke="#166534" stroke-width="1.2" />
-          <line x1="42" y1="16" x2="58" y2="16" stroke="#15803d" stroke-width="1" />
-          <line x1="34" y1="28" x2="66" y2="28" stroke="#15803d" stroke-width="1" />
-          <line x1="26" y1="40" x2="74" y2="40" stroke="#15803d" stroke-width="1" />
-          <line x1="17" y1="52" x2="83" y2="52" stroke="#15803d" stroke-width="1" />
-          <line x1="46" y1="16" x2="43" y2="28" stroke="#166534" stroke-width="0.75" />
-          <line x1="54" y1="16" x2="57" y2="28" stroke="#166534" stroke-width="0.75" />
-          <line x1="38" y1="28" x2="35" y2="40" stroke="#166534" stroke-width="0.75" />
-          <line x1="62" y1="28" x2="65" y2="40" stroke="#166534" stroke-width="0.75" />
-          <line x1="30" y1="40" x2="26" y2="52" stroke="#166534" stroke-width="0.75" />
-          <line x1="70" y1="40" x2="74" y2="52" stroke="#166534" stroke-width="0.75" />
-          <line x1="21" y1="52" x2="16" y2="66" stroke="#166534" stroke-width="0.75" />
-          <line x1="79" y1="52" x2="84" y2="66" stroke="#166534" stroke-width="0.75" />
-          <rect x="24" y="44" width="52" height="15" rx="2" fill="#0f172a" fill-opacity="0.85" />
-          <text x="50" y="55" font-family="'Arial Black', Impact, sans-serif" font-size="9" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="1">APEXS</text>
-          <defs>
-            <linearGradient id="pyrGrad1" x1="50" y1="4" x2="50" y2="66" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#86efac" />
-              <stop offset="50%" stop-color="#22c55e" />
-              <stop offset="100%" stop-color="#15803d" />
-            </linearGradient>
-          </defs>
-        </svg>
-
+      <!-- APEXS Header with Official Brand Logo -->
+      <div style="display: flex; justify-content: center; align-items: center; gap: 1.5rem; margin-bottom: 0.75rem;">
+        <img src="/assets/logo.png" alt="APEXS, INC. Logo" style="height: 78px; width: auto; object-fit: contain; flex-shrink: 0;" />
         <div>
-          <div style="font-size: 1.45rem; font-weight: 900; color: #b91c1c; font-family: Arial, Helvetica, sans-serif; letter-spacing: 0.5px; line-height: 1.1;">APEXS, INC.</div>
-          <div style="font-size: 0.85rem; font-weight: 700; font-style: italic; color: #000000; line-height: 1.2;">Applied Expert Systems & Software, Inc.</div>
-          <div style="font-size: 0.82rem; font-style: italic; color: #2563eb; font-weight: 500; font-family: 'Georgia', serif;">We put technology to work for you</div>
+          <div style="font-size: 1.55rem; font-weight: 900; color: #15803d; font-family: Arial, Helvetica, sans-serif; letter-spacing: 0.5px; line-height: 1.1;">APEXS, INC.</div>
+          <div style="font-size: 0.88rem; font-weight: 700; font-style: italic; color: #0f172a; line-height: 1.2;">Applied Expert Systems & Software, Inc.</div>
+          <div style="font-size: 0.82rem; font-style: italic; color: #0284c7; font-weight: 600; font-family: 'Georgia', serif;">“We put technology to work for you”</div>
         </div>
       </div>
 
@@ -1688,5 +1815,310 @@ function openVoucherSlipModal(voucherId) {
   \`;
 
   openModal(\`Official Voucher Slip — \${v.voucherNumber}\`, body, footer, 'xl');
+}
+
+/* ========================================================================== */
+/* VOUCHER CRUD & ADMIN APPROVAL / DECLINE / RESTORE CONTROLLERS              */
+/* ========================================================================== */
+
+function updateEditVoucherTotal() {
+  const rows = document.querySelectorAll('#edit-voucher-items-tbody tr.edit-voucher-item-row');
+  let totalCents = 0;
+  rows.forEach((r) => {
+    const amtInput = r.querySelector('.edit-item-amount');
+    if (amtInput) {
+      const val = parseFloat(amtInput.value || '0');
+      if (!isNaN(val) && val > 0) {
+        totalCents += Math.round(val * 100);
+      }
+    }
+  });
+  const totalDisplay = document.getElementById('edit-voucher-total-display');
+  if (totalDisplay) {
+    totalDisplay.textContent = formatCurrency(totalCents);
+  }
+}
+
+function addEditVoucherRow(invoiceNo, description, amount) {
+  const tbody = document.getElementById('edit-voucher-items-tbody');
+  if (!tbody) return;
+  const tr = document.createElement('tr');
+  tr.className = 'edit-voucher-item-row';
+  tr.innerHTML =
+    '<td>' +
+    '<input type="text" class="form-input edit-item-invoice" style="padding: 0.45rem 0.65rem; font-size: 0.85rem;" placeholder="Inv # / Ref" value="' + (invoiceNo || '') + '" />' +
+    '</td>' +
+    '<td>' +
+    '<input type="text" class="form-input edit-item-desc" style="padding: 0.45rem 0.65rem; font-size: 0.85rem;" placeholder="Account / Description" value="' + (description || '') + '" required />' +
+    '</td>' +
+    '<td>' +
+    '<div style="position: relative;">' +
+    '<span style="position: absolute; left: 0.65rem; top: 50%; transform: translateY(-50%); font-size: 0.82rem; color: #64748b; pointer-events: none;">₱</span>' +
+    '<input type="number" step="0.01" min="0" class="form-input edit-item-amount" style="padding: 0.45rem 0.65rem 0.45rem 1.6rem; font-size: 0.85rem; text-align: right; font-family: monospace;" placeholder="0.00" value="' + (amount || '') + '" oninput="updateEditVoucherTotal()" required />' +
+    '</div>' +
+    '</td>' +
+    '<td style="text-align: center;">' +
+    '<button type="button" class="icon-btn icon-btn-delete has-tooltip" data-tooltip="Remove Row" onclick="removeEditVoucherRow(this)" aria-label="Remove Row">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>' +
+    '</button>' +
+    '</td>';
+  tbody.appendChild(tr);
+  updateEditVoucherTotal();
+}
+
+function removeEditVoucherRow(btn) {
+  const row = btn.closest('tr');
+  const tbody = document.getElementById('edit-voucher-items-tbody');
+  if (row && tbody) {
+    if (tbody.querySelectorAll('tr.edit-voucher-item-row').length <= 1) {
+      showToast('A voucher must have at least one line item', 'warning');
+      return;
+    }
+    row.remove();
+    updateEditVoucherTotal();
+  }
+}
+
+function openEditVoucherModal(voucherId) {
+  const v = cachedVouchers.find((x) => x.id === voucherId);
+  if (!v) {
+    showToast('Voucher not found', 'warning');
+    return;
+  }
+
+  const rawDate = v.voucherDate || v.createdAt;
+  const isoDate = new Date(rawDate).toISOString().split('T')[0];
+  
+  let items = v.items || [];
+  if (typeof items === 'string') {
+    try { items = JSON.parse(items); } catch (_) { items = []; }
+  }
+  if (!items || items.length === 0) {
+    items = [{
+      invoiceNo: '',
+      description: v.notes || (v.recipient ? 'Payment to ' + v.recipient : 'Disbursement Item'),
+      amountCents: v.amountCents || 0,
+    }];
+  }
+
+  let sig = v.signatories || {};
+  if (typeof sig === 'string') {
+    try { sig = JSON.parse(sig); } catch (_) { sig = {}; }
+  }
+
+  let rowsHtml = '';
+  items.forEach((it) => {
+    const inv = it.invoiceNo || '';
+    const desc = it.description || '';
+    const amt = ((it.amountCents || 0) / 100).toFixed(2);
+    rowsHtml +=
+      '<tr class="edit-voucher-item-row">' +
+      '<td><input type="text" class="form-input edit-item-invoice" style="padding: 0.45rem 0.65rem; font-size: 0.85rem;" placeholder="Inv # / Ref" value="' + inv + '" /></td>' +
+      '<td><input type="text" class="form-input edit-item-desc" style="padding: 0.45rem 0.65rem; font-size: 0.85rem;" placeholder="Account / Description" value="' + desc + '" required /></td>' +
+      '<td><div style="position: relative;"><span style="position: absolute; left: 0.65rem; top: 50%; transform: translateY(-50%); font-size: 0.82rem; color: #64748b; pointer-events: none;">₱</span>' +
+      '<input type="number" step="0.01" min="0" class="form-input edit-item-amount" style="padding: 0.45rem 0.65rem 0.45rem 1.6rem; font-size: 0.85rem; text-align: right; font-family: monospace;" placeholder="0.00" value="' + amt + '" oninput="updateEditVoucherTotal()" required /></div></td>' +
+      '<td style="text-align: center;">' +
+      '<button type="button" class="icon-btn icon-btn-delete has-tooltip" data-tooltip="Remove Row" onclick="removeEditVoucherRow(this)" aria-label="Remove Row">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>' +
+      '</button></td>' +
+      '</tr>';
+  });
+
+  let signatoriesHtml = '';
+  if (v.voucherType === 'PAYMENT') {
+    signatoriesHtml =
+      '<div style="border-top: 1px solid var(--border-color); padding-top: 0.85rem; margin-top: 0.85rem;">' +
+      '<div style="font-size: 0.82rem; font-weight: 700; color: #475569; margin-bottom: 0.65rem; text-transform: uppercase; letter-spacing: 0.04em;">✍️ Official Slip Signatories</div>' +
+      '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem;">' +
+      '<div><label class="form-label" style="font-size: 0.76rem;">Prepared by</label><input type="text" id="edit-sig-prep" class="form-input" style="padding: 0.4rem 0.65rem; font-size: 0.82rem;" value="' + (sig.preparedBy || '') + '" placeholder="Administrator / Bookkeeper" /></div>' +
+      '<div><label class="form-label" style="font-size: 0.76rem;">Certified Correct by</label><input type="text" id="edit-sig-cert" class="form-input" style="padding: 0.4rem 0.65rem; font-size: 0.82rem;" value="' + (sig.certifiedBy || '') + '" placeholder="Joy / Senior Admin" /></div>' +
+      '<div><label class="form-label" style="font-size: 0.76rem;">Approved by</label><input type="text" id="edit-sig-appr" class="form-input" style="padding: 0.4rem 0.65rem; font-size: 0.82rem;" value="' + (sig.approvedBy || '') + '" placeholder="Kenneth Brown / CEO" /></div>' +
+      '<div><label class="form-label" style="font-size: 0.76rem;">Received by</label><input type="text" id="edit-sig-recv" class="form-input" style="padding: 0.4rem 0.65rem; font-size: 0.82rem;" value="' + (sig.receivedBy || '') + '" placeholder="Signature over printed name / Date" /></div>' +
+      '</div></div>';
+  }
+
+  const body =
+    '<form id="edit-voucher-form" onsubmit="event.preventDefault(); handleSaveVoucherEdit(\\\'' + v.id + '\\\', \\\'' + v.voucherType + '\\\')">' +
+    '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">' +
+    '<div class="form-group" style="margin-bottom: 0;"><label class="form-label">Voucher Number</label>' +
+    '<input type="text" class="form-input" value="' + v.voucherNumber + '" disabled style="background: #f1f5f9; cursor: not-allowed; font-weight: 700; font-family: monospace;" /></div>' +
+    '<div class="form-group" style="margin-bottom: 0;"><label class="form-label" for="edit-v-date">Voucher Date</label>' +
+    '<input type="date" id="edit-v-date" class="form-input" value="' + isoDate + '" required /></div>' +
+    '</div>' +
+    '<div style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 1rem; margin-bottom: 1.25rem;">' +
+    '<div class="form-group" style="margin-bottom: 0;"><label class="form-label" for="edit-v-recipient">Payee / Recipient / Client</label>' +
+    '<input type="text" id="edit-v-recipient" class="form-input" value="' + (v.recipientName || v.recipient || '') + '" required /></div>' +
+    '<div class="form-group" style="margin-bottom: 0;"><label class="form-label" for="edit-v-method">Payment Method</label>' +
+    '<select id="edit-v-method" class="form-select">' +
+    '<option value="BANK_TRANSFER"' + (v.paymentMethod === 'BANK_TRANSFER' ? ' selected' : '') + '>Bank Transfer</option>' +
+    '<option value="CHECK"' + (v.paymentMethod === 'CHECK' ? ' selected' : '') + '>Check</option>' +
+    '<option value="CASH"' + (v.paymentMethod === 'CASH' ? ' selected' : '') + '>Cash</option>' +
+    '<option value="CREDIT_CARD"' + (v.paymentMethod === 'CREDIT_CARD' ? ' selected' : '') + '>Credit Card</option>' +
+    '<option value="ONLINE"' + (v.paymentMethod === 'ONLINE' ? ' selected' : '') + '>Online Payment</option>' +
+    '<option value="DOUBLE_ENTRY"' + (v.paymentMethod === 'DOUBLE_ENTRY' ? ' selected' : '') + '>Double-Entry Journal</option>' +
+    '</select></div>' +
+    '</div>' +
+    '<div class="form-group" style="margin-bottom: 1.25rem;">' +
+    '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">' +
+    '<label class="form-label" style="margin-bottom: 0; font-weight: 700; font-size: 0.88rem; color: #1e293b;">📋 Line Items Breakdown Table</label>' +
+    '<button type="button" class="btn btn-secondary btn-sm" onclick="addEditVoucherRow()" style="display: flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.75rem; font-size: 0.8rem;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> + Add Line Item</button>' +
+    '</div>' +
+    '<div class="table-container" style="border: 1px solid var(--border-color); border-radius: var(--radius-sm); overflow: hidden; background: #ffffff;">' +
+    '<table class="table" style="margin-bottom: 0;">' +
+    '<thead><tr style="background: #f8fafc;"><th style="width: 26%; font-size: 0.8rem;">Invoice No / Ref</th><th style="width: 46%; font-size: 0.8rem;">Account / Description</th><th style="width: 20%; text-align: right; font-size: 0.8rem;">Amount (₱)</th><th style="width: 8%; text-align: center; font-size: 0.8rem;">Action</th></tr></thead>' +
+    '<tbody id="edit-voucher-items-tbody">' + rowsHtml + '</tbody>' +
+    '<tfoot><tr style="background: #f8fafc; font-weight: 700; border-top: 1.5px solid var(--border-color);"><td colspan="2" style="text-align: right; font-size: 0.85rem; color: #334155;">Total Summary:</td><td style="text-align: right; font-size: 0.92rem; color: var(--primary); font-family: monospace;" id="edit-voucher-total-display">' + formatCurrency(v.amountCents, v.currency || 'PHP') + '</td><td></td></tr></tfoot>' +
+    '</table></div></div>' +
+    '<div class="form-group" style="margin-bottom: 1.25rem;"><label class="form-label" for="edit-v-notes">Memo / Remarks</label>' +
+    '<textarea id="edit-v-notes" class="form-input" rows="2" placeholder="e.g. Corporate Expense breakdown">' + (v.notes || '') + '</textarea></div>' +
+    signatoriesHtml +
+    '</form>';
+
+  const footer =
+    '<button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>' +
+    '<button type="button" class="btn btn-primary" onclick="handleSaveVoucherEdit(\\\'' + v.id + '\\\', \\\'' + v.voucherType + '\\\')">Save Changes</button>';
+
+  openModal('Edit Voucher — ' + v.voucherNumber, body, footer, 'lg');
+}
+
+async function handleSaveVoucherEdit(voucherId, voucherType) {
+  const dateInput = document.getElementById('edit-v-date');
+  const recipientInput = document.getElementById('edit-v-recipient');
+  const methodInput = document.getElementById('edit-v-method');
+  const notesInput = document.getElementById('edit-v-notes');
+
+  const payload = {
+    voucherDate: dateInput ? new Date(dateInput.value).toISOString() : undefined,
+    recipientName: recipientInput ? recipientInput.value.trim() : undefined,
+    paymentMethod: methodInput ? methodInput.value : undefined,
+    notes: notesInput ? notesInput.value.trim() : undefined,
+  };
+
+  // Parse item rows from the table
+  const itemRows = document.querySelectorAll('#edit-voucher-items-tbody tr.edit-voucher-item-row');
+  const items = [];
+  let totalAmountCents = 0;
+
+  itemRows.forEach((row) => {
+    const inv = (row.querySelector('.edit-item-invoice') ? row.querySelector('.edit-item-invoice').value : '').trim();
+    const desc = (row.querySelector('.edit-item-desc') ? row.querySelector('.edit-item-desc').value : '').trim();
+    const amtInput = row.querySelector('.edit-item-amount');
+    const amtVal = parseFloat((amtInput ? amtInput.value : '0') || '0');
+    const amtCents = Math.round(amtVal * 100);
+
+    if (desc && amtCents > 0) {
+      items.push({
+        invoiceNo: inv,
+        description: desc,
+        amountCents: amtCents,
+      });
+      totalAmountCents += amtCents;
+    }
+  });
+
+  if (items.length === 0) {
+    showToast('Please provide at least one valid line item with description and amount', 'warning');
+    return;
+  }
+
+  payload.items = items;
+  payload.amountCents = totalAmountCents;
+
+  // Parse signatories if present
+  const prepEl = document.getElementById('edit-sig-prep');
+  const certEl = document.getElementById('edit-sig-cert');
+  const apprEl = document.getElementById('edit-sig-appr');
+  const recvEl = document.getElementById('edit-sig-recv');
+  if (prepEl || certEl || apprEl || recvEl) {
+    payload.signatories = {
+      preparedBy: prepEl ? prepEl.value.trim() : '',
+      certifiedBy: certEl ? certEl.value.trim() : '',
+      approvedBy: apprEl ? apprEl.value.trim() : '',
+      receivedBy: recvEl ? recvEl.value.trim() : '',
+    };
+  }
+
+  try {
+    const res = await apiFetch('/api/accounting/vouchers/' + voucherId, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      showToast(json.error || 'Failed to update voucher', 'danger');
+      return;
+    }
+    closeModal();
+    showToast('Voucher and line items table updated successfully', 'success');
+    loadAccounting();
+  } catch (err) {
+    showToast('Network error: ' + err.message, 'danger');
+  }
+}
+
+async function handleApproveVoucher(voucherId) {
+  try {
+    const res = await apiFetch('/api/accounting/vouchers/' + voucherId + '/approve', { method: 'POST' });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      showToast(json.error || 'Failed to approve voucher', 'danger');
+      return;
+    }
+    showToast('Voucher approved and posted to General Ledger', 'success');
+    loadAccounting();
+  } catch (err) {
+    showToast('Network error: ' + err.message, 'danger');
+  }
+}
+
+async function handleDeclineVoucher(voucherId) {
+  if (!confirm('Are you sure you want to decline this voucher? Its double-entry ledger impact will be removed.')) return;
+
+  try {
+    const res = await apiFetch('/api/accounting/vouchers/' + voucherId + '/decline', { method: 'POST' });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      showToast(json.error || 'Failed to decline voucher', 'danger');
+      return;
+    }
+    showToast('Voucher declined and ledger adjusted', 'warning');
+    loadAccounting();
+  } catch (err) {
+    showToast('Network error: ' + err.message, 'danger');
+  }
+}
+
+async function handleRestoreVoucher(voucherId) {
+  try {
+    const res = await apiFetch('/api/accounting/vouchers/' + voucherId + '/restore', { method: 'POST' });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      showToast(json.error || 'Failed to restore voucher', 'danger');
+      return;
+    }
+    showToast('Voucher restored and re-posted to General Ledger', 'success');
+    loadAccounting();
+  } catch (err) {
+    showToast('Network error: ' + err.message, 'danger');
+  }
+}
+
+async function handleDeleteVoucher(voucherId, voucherNumber) {
+  if (!confirm('Are you sure you want to permanently delete voucher ' + (voucherNumber || '') + '? This action cannot be undone.')) return;
+
+  try {
+    const res = await apiFetch('/api/accounting/vouchers/' + voucherId, { method: 'DELETE' });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      showToast(json.error || 'Failed to delete voucher', 'danger');
+      return;
+    }
+    showToast('Voucher deleted permanently', 'info');
+    loadAccounting();
+  } catch (err) {
+    showToast('Network error: ' + err.message, 'danger');
+  }
 }
 `;
