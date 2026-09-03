@@ -4,6 +4,7 @@ export function renderInventoryView(): string {
 
 export const INVENTORY_CLIENT_JS = `
 let inventorySearchQuery = '';
+let inventoryCategoryTab = 'all';
 
 async function loadInventory() {
   const container = document.getElementById('view-inventory');
@@ -12,9 +13,14 @@ async function loadInventory() {
   try {
     inventorySearchQuery = (typeof getUrlParam === 'function' ? getUrlParam('search') : '') || '';
 
-    const res = await apiFetch('/api/inventory/products');
-    const json = await res.json();
-    state.products = json.data || [];
+    const [productsRes, categoriesRes] = await Promise.all([
+      apiFetch('/api/inventory/products'),
+      apiFetch('/api/inventory/categories'),
+    ]);
+    const productsJson = await productsRes.json();
+    const categoriesJson = await categoriesRes.json();
+    state.products = productsJson.data || [];
+    state.productCategories = categoriesJson.data || [];
 
     renderInventoryContent(container);
   } catch (err) {
@@ -38,7 +44,7 @@ function exportInventoryCsv() {
   const rows = (state.products || []).map((p) => [
     p.sku,
     p.name,
-    p.category?.name || 'General',
+    p.category || 'General',
     p.unitOfMeasure,
     p.costPriceCents ? (p.costPriceCents / 100).toFixed(2) + ' ' + (p.costPriceCurrency || 'PHP') : '0.00',
     p.sellingPriceCents ? (p.sellingPriceCents / 100).toFixed(2) + ' ' + (p.sellingPriceCurrency || 'PHP') : '0.00',
@@ -49,13 +55,22 @@ function exportInventoryCsv() {
 }
 
 function renderInventoryContent(container) {
+  // inventoryCategoryTab may point at a category that's since been renamed/removed —
+  // fall back to "all" rather than showing an empty table.
+  if (inventoryCategoryTab !== 'all' && !(state.productCategories || []).some((c) => c.name === inventoryCategoryTab)) {
+    inventoryCategoryTab = 'all';
+  }
+
   let filteredProducts = state.products || [];
+  if (inventoryCategoryTab !== 'all') {
+    filteredProducts = filteredProducts.filter((p) => p.category === inventoryCategoryTab);
+  }
   if (inventorySearchQuery) {
     filteredProducts = filteredProducts.filter((p) => {
       const sku = (p.sku || '').toLowerCase();
       const name = (p.name || '').toLowerCase();
       const uom = (p.unitOfMeasure || '').toLowerCase();
-      const cat = (p.category?.name || '').toLowerCase();
+      const cat = (p.category || '').toLowerCase();
       return sku.includes(inventorySearchQuery) || name.includes(inventorySearchQuery) || uom.includes(inventorySearchQuery) || cat.includes(inventorySearchQuery);
     });
   }
@@ -66,6 +81,7 @@ function renderInventoryContent(container) {
       <tr>
         <td><strong style="font-family: 'JetBrains Mono', monospace;">\${p.sku}</strong></td>
         <td><strong>\${p.name}</strong></td>
+        <td>\${p.category || '<span style="color: #94a3b8;">—</span>'}</td>
         <td>\${p.unitOfMeasure}</td>
         <td>\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.75rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8;">Not purchased yet</span>'}</td>
         <td>\${p.sellingPriceCents > 0 ? formatCurrency(p.sellingPriceCents, p.sellingPriceCurrency) : '<span style="color: #94a3b8;">Not set</span>'}</td>
@@ -76,8 +92,9 @@ function renderInventoryContent(container) {
           </span>
         </td>
         <td><strong>\${formatCurrency(p.inventoryValuationCents)}</strong></td>
-        <td>
+        <td style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
           <button class="btn btn-secondary btn-sm" onclick="openProductHistoryModal('\${p.id}', '\${p.name}')">History</button>
+          <button class="btn btn-secondary btn-sm" onclick="openChangeCategoryModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}', '\${(p.category || '').replace(/'/g, "\\\\'")}')">Category</button>
         </td>
       </tr>
     \`;
@@ -101,12 +118,14 @@ function renderInventoryContent(container) {
           <input type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search SKU, product name..." value="\${inventorySearchQuery}" oninput="handleInventorySearch(this.value)" />
         </div>
       </div>
+      <div id="inventory-category-tabs" style="padding: 0 1.35rem 1rem;"></div>
       <div class="table-responsive">
         <table class="data-table">
           <thead>
             <tr>
               <th>SKU</th>
               <th>Product Name</th>
+              <th>Category</th>
               <th>UOM</th>
               <th>Cost Price</th>
               <th>Selling Price</th>
@@ -116,10 +135,42 @@ function renderInventoryContent(container) {
             </tr>
           </thead>
           <tbody>
-            \${rowsHtml || '<tr><td colspan="8" style="text-align: center; color: #64748b; padding: 2rem;">No products matching search criteria.</td></tr>'}
+            \${rowsHtml || '<tr><td colspan="9" style="text-align: center; color: #64748b; padding: 2rem;">No products matching search criteria.</td></tr>'}
           </tbody>
         </table>
       </div>
+    </div>
+  \`;
+  renderInventoryCategoryTabs();
+}
+
+// Category pill filter for the Inventory table — same UX as the Directory
+// Products tab's category tabs, scoped to Inventory's own product list/state
+// so switching categories here never touches Directory's filter state.
+function renderInventoryCategoryTabs() {
+  const wrap = document.getElementById('inventory-category-tabs');
+  if (!wrap) return;
+
+  const countFor = (catName) => (state.products || []).filter((p) => p.category === catName).length;
+
+  const pills = [
+    { key: 'all', label: 'All Products', count: (state.products || []).length },
+    ...(state.productCategories || []).map((c) => ({ key: c.name, label: c.name, count: countFor(c.name) })),
+  ];
+
+  const pillsHtml = pills.map((p) => {
+    const active = inventoryCategoryTab === p.key;
+    return \`
+      <button type="button" onclick="inventoryCategoryTab = '\${p.key.replace(/'/g, "\\\\'")}'; renderInventoryContent(document.getElementById('view-inventory'));" style="padding: 0.4rem 0.9rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; border: 1px solid \${active ? 'var(--primary)' : 'var(--border-color)'}; background: \${active ? 'var(--primary)' : '#f8fafc'}; color: \${active ? '#ffffff' : 'var(--text-main)'}; cursor: pointer; transition: var(--transition);">
+        \${p.label} <span style="opacity: 0.75;">(\${p.count})</span>
+      </button>
+    \`;
+  }).join('');
+
+  wrap.innerHTML = \`
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; border-top: 1px dashed var(--border-color); padding-top: 1rem;">
+      \${pillsHtml}
+      <button type="button" onclick="openAddCategoryModal()" style="padding: 0.4rem 0.9rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; border: 1px dashed var(--border-color); background: transparent; color: #64748b; cursor: pointer;">+ Add Category</button>
     </div>
   \`;
 }

@@ -2412,33 +2412,33 @@ app.post(
   '/api/payroll/employees',
   zValidator(
     'json',
-    z
-      .object({
-        employeeCode: z.string().min(2),
-        firstName: z.string().min(1),
-        lastName: z.string().min(1),
-        email: z.string().email(),
-        phone: z.string().optional(),
-        department: z.string().min(1),
-        position: z.string().min(1),
-        hireDate: z.string().default(() => new Date().toISOString()),
-        bankAccountNumber: z.string().optional(),
-        bankName: z.string().optional(),
-        salary: z
-          .object({
-            baseSalaryCents: z.number().int().positive(),
-            allowancesCents: z.number().int().nonnegative().default(0),
-            deductionsCents: z.number().int().nonnegative().default(0),
-          })
-          .optional(),
-        createUserAccount: z.boolean().default(false),
-        userRole: z.enum(['ADMIN', 'MANAGER', 'STAFF']).default('STAFF'),
-        password: z.string().min(8).optional(),
-      })
-      .refine((data) => !data.createUserAccount || !!data.password, {
-        message: 'Password is required to create a login account',
-        path: ['password'],
-      })
+    z.object({
+      employeeCode: z.string().min(2),
+      firstName: z.string().min(1),
+      lastName: z.string().min(1),
+      email: z.string().email(),
+      phone: z.string().optional(),
+      department: z.string().min(1),
+      position: z.string().min(1),
+      hireDate: z.string().default(() => new Date().toISOString().slice(0, 10)),
+      bankAccountNumber: z.string().optional(),
+      bankName: z.string().optional(),
+      salary: z
+        .object({
+          baseSalaryCents: z.number().int().positive(),
+          allowancesCents: z.number().int().nonnegative().default(0),
+          deductionsCents: z.number().int().nonnegative().default(0),
+        })
+        .optional(),
+      baseSalaryCents: z.number().int().positive().optional(),
+      allowancesCents: z.number().int().nonnegative().optional(),
+      deductionsCents: z.number().int().nonnegative().optional(),
+      createUserAccount: z.boolean().optional(),
+      createAccount: z.boolean().optional(),
+      userRole: z.enum(['ADMIN', 'MANAGER', 'STAFF']).optional(),
+      role: z.enum(['ADMIN', 'MANAGER', 'STAFF']).optional(),
+      password: z.string().min(8).optional(),
+    })
   ),
   async (c) => {
     const db = createDbClient(c.env.DB);
@@ -2449,10 +2449,17 @@ app.post(
       return c.json({ success: false, error: 'An employee with that email already exists' }, 400);
     }
 
+    const shouldCreateAccount = body.createUserAccount || body.createAccount;
+    const accountRole = body.userRole || body.role || 'STAFF';
+
+    if (shouldCreateAccount && !body.password) {
+      return c.json({ success: false, error: 'Password is required to create a login account' }, 400);
+    }
+
     let userId: string | undefined;
     const batchStatements: any[] = [];
 
-    if (body.createUserAccount) {
+    if (shouldCreateAccount) {
       const existingUser = await db.query.users.findFirst({ where: eq(schema.users.email, body.email.toLowerCase()) });
       if (existingUser) {
         return c.json({ success: false, error: 'A user account with that email already exists' }, 400);
@@ -2464,7 +2471,7 @@ app.post(
           email: body.email.toLowerCase(),
           name: `${body.firstName} ${body.lastName}`,
           passwordHash: await hashPassword(body.password!),
-          role: body.userRole,
+          role: accountRole,
         })
       );
     }
@@ -2487,15 +2494,19 @@ app.post(
       })
     );
 
-    if (body.salary) {
-      const net = body.salary.baseSalaryCents + body.salary.allowancesCents - body.salary.deductionsCents;
+    const baseSalary = body.salary?.baseSalaryCents ?? body.baseSalaryCents ?? 0;
+    const allowances = body.salary?.allowancesCents ?? body.allowancesCents ?? 0;
+    const deductions = body.salary?.deductionsCents ?? body.deductionsCents ?? 0;
+
+    if (baseSalary > 0) {
+      const net = baseSalary + allowances - deductions;
       batchStatements.push(
         db.insert(schema.salaryStructures).values({
           id: crypto.randomUUID(),
           employeeId,
-          baseSalaryCents: body.salary.baseSalaryCents,
-          allowancesCents: body.salary.allowancesCents,
-          deductionsCents: body.salary.deductionsCents,
+          baseSalaryCents: baseSalary,
+          allowancesCents: allowances,
+          deductionsCents: deductions,
           netSalaryCents: net,
         })
       );
@@ -2511,18 +2522,218 @@ app.post(
     const { user, ...employeeSafe } = created as NonNullable<typeof created>;
     const safeUser = user ? (({ passwordHash, ...rest }) => rest)(user) : null;
 
-    return c.json({ success: true, data: { ...employeeSafe, user: safeUser } }, 201);
+    return c.json({ success: true, data: { ...employeeSafe, user: safeUser }, userCreated: !!userId, userRole: accountRole }, 201);
   }
 );
 
 // GET /api/payroll/employees - List Employees
 app.get('/api/payroll/employees', async (c) => {
   const db = createDbClient(c.env.DB);
+  const statusParam = c.req.query('status');
   const emps = await db.query.employees.findMany({
-    where: eq(schema.employees.status, 'ACTIVE'),
-    with: { salaryStructures: true },
+    where: statusParam ? eq(schema.employees.status, statusParam as any) : undefined,
+    with: { salaryStructures: true, user: true },
+    orderBy: [asc(schema.employees.employeeCode)],
   });
-  return c.json({ success: true, count: emps.length, data: emps });
+  const safeEmps = emps.map((emp) => {
+    const { user, ...rest } = emp;
+    const safeUser = user ? (({ passwordHash, ...uRest }) => uRest)(user) : null;
+    return { ...rest, user: safeUser };
+  });
+  return c.json({ success: true, count: safeEmps.length, data: safeEmps });
+});
+
+// GET /api/payroll/employees/:id - Get Single Employee
+app.get('/api/payroll/employees/:id', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const id = c.req.param('id');
+  const emp = await db.query.employees.findFirst({
+    where: eq(schema.employees.id, id),
+    with: { salaryStructures: true, user: true },
+  });
+  if (!emp) {
+    return c.json({ success: false, error: 'Employee not found' }, 404);
+  }
+  const { user, ...rest } = emp;
+  const safeUser = user ? (({ passwordHash, ...uRest }) => uRest)(user) : null;
+  return c.json({ success: true, data: { ...rest, user: safeUser } });
+});
+
+// PUT /api/payroll/employees/:id - Update Employee & Salary Structure
+app.put(
+  '/api/payroll/employees/:id',
+  zValidator(
+    'json',
+    z.object({
+      firstName: z.string().min(1),
+      lastName: z.string().min(1),
+      email: z.string().email(),
+      phone: z.string().optional(),
+      department: z.string().min(1),
+      position: z.string().min(1),
+      status: z.enum(['ACTIVE', 'ON_LEAVE', 'TERMINATED']).default('ACTIVE'),
+      hireDate: z.string().optional(),
+      bankAccountNumber: z.string().optional(),
+      bankName: z.string().optional(),
+      baseSalaryCents: z.number().int().nonnegative().optional(),
+      allowancesCents: z.number().int().nonnegative().optional(),
+      deductionsCents: z.number().int().nonnegative().optional(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const id = c.req.param('id');
+    const body = c.req.valid('json');
+
+    const existing = await db.query.employees.findFirst({
+      where: eq(schema.employees.id, id),
+      with: { salaryStructures: true, user: true },
+    });
+    if (!existing) {
+      return c.json({ success: false, error: 'Employee not found' }, 404);
+    }
+
+    // Check email collision
+    if (body.email !== existing.email) {
+      const emailTaken = await db.query.employees.findFirst({
+        where: eq(schema.employees.email, body.email),
+      });
+      if (emailTaken && emailTaken.id !== id) {
+        return c.json({ success: false, error: 'An employee with that email already exists' }, 400);
+      }
+    }
+
+    const now = new Date().toISOString();
+    const batchStatements: any[] = [];
+
+    batchStatements.push(
+      db
+        .update(schema.employees)
+        .set({
+          firstName: body.firstName,
+          lastName: body.lastName,
+          email: body.email,
+          phone: body.phone,
+          department: body.department,
+          position: body.position,
+          status: body.status,
+          hireDate: body.hireDate || existing.hireDate,
+          bankAccountNumber: body.bankAccountNumber,
+          bankName: body.bankName,
+          updatedAt: now,
+        })
+        .where(eq(schema.employees.id, id))
+    );
+
+    // Update or insert salary structure
+    if (body.baseSalaryCents !== undefined) {
+      const base = body.baseSalaryCents;
+      const allow = body.allowancesCents ?? 0;
+      const deduct = body.deductionsCents ?? 0;
+      const net = base + allow - deduct;
+
+      const existingSalary = existing.salaryStructures[0];
+      if (existingSalary) {
+        batchStatements.push(
+          db
+            .update(schema.salaryStructures)
+            .set({
+              baseSalaryCents: base,
+              allowancesCents: allow,
+              deductionsCents: deduct,
+              netSalaryCents: net,
+              updatedAt: now,
+            })
+            .where(eq(schema.salaryStructures.id, existingSalary.id))
+        );
+      } else {
+        batchStatements.push(
+          db.insert(schema.salaryStructures).values({
+            id: crypto.randomUUID(),
+            employeeId: id,
+            baseSalaryCents: base,
+            allowancesCents: allow,
+            deductionsCents: deduct,
+            netSalaryCents: net,
+            effectiveDate: now,
+          })
+        );
+      }
+    }
+
+    // If status is TERMINATED and has linked user, deactivate user
+    if (body.status === 'TERMINATED' && existing.userId) {
+      batchStatements.push(
+        db.update(schema.users).set({ isActive: false }).where(eq(schema.users.id, existing.userId))
+      );
+    } else if (body.status === 'ACTIVE' && existing.userId) {
+      batchStatements.push(
+        db.update(schema.users).set({ isActive: true }).where(eq(schema.users.id, existing.userId))
+      );
+    }
+
+    await db.batch(batchStatements as any);
+
+    const updated = await db.query.employees.findFirst({
+      where: eq(schema.employees.id, id),
+      with: { salaryStructures: true, user: true },
+    });
+
+    const { user, ...empSafe } = updated as NonNullable<typeof updated>;
+    const safeUser = user ? (({ passwordHash, ...rest }) => rest)(user) : null;
+
+    return c.json({ success: true, message: 'Employee updated successfully', data: { ...empSafe, user: safeUser } });
+  }
+);
+
+// DELETE /api/payroll/employees/:id - Delete or Deactivate Employee
+app.delete('/api/payroll/employees/:id', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const id = c.req.param('id');
+
+  const existing = await db.query.employees.findFirst({
+    where: eq(schema.employees.id, id),
+  });
+  if (!existing) {
+    return c.json({ success: false, error: 'Employee not found' }, 404);
+  }
+
+  // Check if employee has payrollItems records
+  const payrollItem = await db.query.payrollItems.findFirst({
+    where: eq(schema.payrollItems.employeeId, id),
+  });
+
+  if (payrollItem) {
+    // Soft delete: set status to TERMINATED
+    await db
+      .update(schema.employees)
+      .set({
+        status: 'TERMINATED',
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(schema.employees.id, id));
+
+    if (existing.userId) {
+      await db.update(schema.users).set({ isActive: false }).where(eq(schema.users.id, existing.userId));
+    }
+
+    return c.json({
+      success: true,
+      message: `Employee ${existing.employeeCode} has historical payroll records. Status updated to TERMINATED and login access revoked.`,
+      softDeleted: true,
+    });
+  }
+
+  // Hard delete: no historical payroll records
+  await db.delete(schema.employees).where(eq(schema.employees.id, id));
+  if (existing.userId) {
+    await db.delete(schema.users).where(eq(schema.users.id, existing.userId));
+  }
+
+  return c.json({
+    success: true,
+    message: `Employee ${existing.employeeCode} successfully deleted from the system.`,
+  });
 });
 
 // POST /api/payroll/runs - Create Payroll Run Batch
