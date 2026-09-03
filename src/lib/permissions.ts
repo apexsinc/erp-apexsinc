@@ -302,6 +302,173 @@ export async function canPerformAction(
   return Boolean(crud[role]?.[mod]?.[action]);
 }
 
+/** Ensures user_permissions table exists in the database. */
+export async function ensureUserPermissionsTable(db: Database): Promise<void> {
+  try {
+    const { sql } = await import('drizzle-orm');
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS user_permissions (
+        id text PRIMARY KEY NOT NULL,
+        user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        module text NOT NULL,
+        can_create integer DEFAULT 0 NOT NULL,
+        can_read integer DEFAULT 0 NOT NULL,
+        can_update integer DEFAULT 0 NOT NULL,
+        can_delete integer DEFAULT 0 NOT NULL,
+        updated_at text NOT NULL
+      );
+    `);
+    await db.run(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS user_permissions_user_module_unique ON user_permissions (user_id, module);
+    `);
+  } catch (err) {
+    // ignore
+  }
+}
+
+/** Fetches any custom user-level module permission overrides. */
+export async function getUserCustomPermissions(
+  db: Database,
+  userId: string
+): Promise<{ hasCustomOverrides: boolean; permissions: Record<Module, ModuleCrudPermissions> | null }> {
+  try {
+    const rows = await db.query.userPermissions.findMany({
+      where: (up, { eq }) => eq(up.userId, userId),
+    });
+
+    if (!rows || rows.length === 0) {
+      return { hasCustomOverrides: false, permissions: null };
+    }
+
+    const permissions = getEmptyCrudMap();
+    for (const r of rows) {
+      const mod = r.module as Module;
+      if (ALL_MODULES.includes(mod)) {
+        permissions[mod] = {
+          create: Boolean(r.canCreate),
+          read: Boolean(r.canRead),
+          update: Boolean(r.canUpdate),
+          delete: Boolean(r.canDelete),
+        };
+      }
+    }
+
+    return { hasCustomOverrides: true, permissions };
+  } catch (err) {
+    await ensureUserPermissionsTable(db);
+    return { hasCustomOverrides: false, permissions: null };
+  }
+}
+
+/** Computes the full effective 12-module CRUD matrix for a specific user (merging custom overrides with base role). */
+export async function getUserEffectiveCrudMatrix(
+  db: Database,
+  userId: string,
+  baseRole: Role
+): Promise<{ hasCustomOverrides: boolean; crud: Record<Module, ModuleCrudPermissions> }> {
+  if (isAdminRole(baseRole)) {
+    return { hasCustomOverrides: false, crud: getFullAdminCrudMap() };
+  }
+
+  const [roleMatrix, userCustom] = await Promise.all([
+    loadCrudPermissionMatrix(db),
+    getUserCustomPermissions(db, userId),
+  ]);
+
+  const baseCrud = roleMatrix[baseRole] || DEFAULT_CRUD_MATRIX[baseRole] || getEmptyCrudMap();
+
+  if (!userCustom.hasCustomOverrides || !userCustom.permissions) {
+    return { hasCustomOverrides: false, crud: baseCrud };
+  }
+
+  return { hasCustomOverrides: true, crud: userCustom.permissions };
+}
+
+/** Evaluates whether a specific authenticated user can perform an action on a module (respecting custom user overrides). */
+export async function canUserPerformAction(
+  db: Database,
+  user: { id: string; role: Role },
+  mod: Module,
+  action: CrudAction
+): Promise<boolean> {
+  if (isAdminRole(user.role)) return true;
+
+  try {
+    const customRow = await db.query.userPermissions.findFirst({
+      where: (up, { eq, and }) => and(eq(up.userId, user.id), eq(up.module, mod)),
+    });
+
+    if (customRow) {
+      if (action === 'create') return Boolean(customRow.canCreate);
+      if (action === 'read') return Boolean(customRow.canRead);
+      if (action === 'update') return Boolean(customRow.canUpdate);
+      if (action === 'delete') return Boolean(customRow.canDelete);
+    }
+  } catch (err) {
+    await ensureUserPermissionsTable(db);
+  }
+
+  return canPerformAction(db, user.role, mod, action);
+}
+
+/** Evaluates whether a specific authenticated user can view a module. */
+export async function canUserViewModule(
+  db: Database,
+  user: { id: string; role: Role },
+  mod: Module
+): Promise<boolean> {
+  return canUserPerformAction(db, user, mod, 'read');
+}
+
+/** Gets list of visible modules for a specific user (accounting for custom permissions). */
+export async function getUserVisibleModules(
+  db: Database,
+  user: { id: string; role: Role }
+): Promise<Module[]> {
+  const { crud } = await getUserEffectiveCrudMatrix(db, user.id, user.role);
+  return ALL_MODULES.filter((m) => crud[m]?.read);
+}
+
+/** Saves or clears user-specific custom module permissions. */
+export async function saveUserCustomPermissions(
+  db: Database,
+  userId: string,
+  permissions: Record<Module, ModuleCrudPermissions> | null
+): Promise<void> {
+  await ensureUserPermissionsTable(db);
+  const { eq } = await import('drizzle-orm');
+
+  // 1. Clear existing overrides
+  await db.delete(schema.userPermissions).where(eq(schema.userPermissions.userId, userId));
+
+  // 2. If null / empty, user reverts to base role
+  if (!permissions) {
+    return;
+  }
+
+  // 3. Insert fresh override records
+  const now = new Date().toISOString();
+  const rowsToInsert: schema.NewUserPermission[] = [];
+
+  for (const mod of ALL_MODULES) {
+    const p = permissions[mod] || { create: false, read: false, update: false, delete: false };
+    rowsToInsert.push({
+      id: crypto.randomUUID(),
+      userId,
+      module: mod,
+      canCreate: Boolean(p.create),
+      canRead: Boolean(p.read),
+      canUpdate: Boolean(p.update),
+      canDelete: Boolean(p.delete),
+      updatedAt: now,
+    });
+  }
+
+  if (rowsToInsert.length > 0) {
+    await db.insert(schema.userPermissions).values(rowsToInsert);
+  }
+}
+
 /** Idempotently inserts default roles and default permission rows. */
 export async function seedDefaultPermissions(db: Database): Promise<void> {
   // 1. Seed system roles in roles table
@@ -363,5 +530,27 @@ export async function seedDefaultPermissions(db: Database): Promise<void> {
     }
   } catch (err) {
     console.error('Error seeding role_permissions table:', err);
+  }
+
+  // 3. Ensure user_permissions table and unique index exist
+  try {
+    const { sql } = await import('drizzle-orm');
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS user_permissions (
+        id text PRIMARY KEY NOT NULL,
+        user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        module text NOT NULL,
+        can_create integer DEFAULT 0 NOT NULL,
+        can_read integer DEFAULT 0 NOT NULL,
+        can_update integer DEFAULT 0 NOT NULL,
+        can_delete integer DEFAULT 0 NOT NULL,
+        updated_at text NOT NULL
+      );
+    `);
+    await db.run(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS user_permissions_user_module_unique ON user_permissions (user_id, module);
+    `);
+  } catch (err) {
+    // table already exists or driver handled
   }
 }

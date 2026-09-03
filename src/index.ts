@@ -17,6 +17,11 @@ import {
   loadCrudPermissionMatrix,
   loadAllRoles,
   seedDefaultPermissions,
+  getUserCustomPermissions,
+  getUserEffectiveCrudMatrix,
+  getUserVisibleModules,
+  saveUserCustomPermissions,
+  ensureUserPermissionsTable,
   SYSTEM_ROLES,
   type Module,
   type RoleCrudMatrix,
@@ -244,7 +249,18 @@ app.post('/api/auth/logout', async (c) => {
 
 app.get('/api/auth/me', async (c) => {
   const authUser = c.get('authUser');
-  return c.json({ success: true, user: authUser });
+  const db = createDbClient(c.env.DB);
+  const effective = await getUserEffectiveCrudMatrix(db, authUser.id, authUser.role);
+  const visibleModules = ALL_MODULES.filter((m) => effective.crud[m]?.read);
+  return c.json({
+    success: true,
+    user: {
+      ...authUser,
+      hasCustomPermissions: effective.hasCustomOverrides,
+      permissions: effective.crud,
+      visibleModules,
+    },
+  });
 });
 
 /* ========================================================================== */
@@ -3308,15 +3324,110 @@ app.get('/api/dashboard', async (c) => {
 /* 9. ADMINISTRATION — USER & ROLE PERMISSION MANAGEMENT (ADMIN only)         */
 /* ========================================================================== */
 
-// GET /api/admin/users - List all user accounts
+// GET /api/admin/users - List all user accounts with custom permissions status
 app.get('/api/admin/users', async (c) => {
   const db = createDbClient(c.env.DB);
+  let allUserPerms: schema.UserPermission[] = [];
+  try {
+    allUserPerms = await db.query.userPermissions.findMany();
+  } catch (err) {
+    await ensureUserPermissionsTable(db);
+    try {
+      allUserPerms = await db.query.userPermissions.findMany();
+    } catch (e) {
+      allUserPerms = [];
+    }
+  }
+
   const users = await db.query.users.findMany({ orderBy: [desc(schema.users.createdAt)] });
+
+  const userPermCounts = new Map<string, number>();
+  for (const up of allUserPerms) {
+    userPermCounts.set(up.userId, (userPermCounts.get(up.userId) || 0) + 1);
+  }
+
   return c.json({
     success: true,
-    data: users.map(({ passwordHash, ...safe }) => safe),
+    data: users.map(({ passwordHash, ...safe }) => ({
+      ...safe,
+      hasCustomPermissions: (userPermCounts.get(safe.id) || 0) > 0,
+      customPermissionCount: userPermCounts.get(safe.id) || 0,
+    })),
   });
 });
+
+// GET /api/admin/users/:id/permissions - Get employee custom/effective permissions
+app.get('/api/admin/users/:id/permissions', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const userId = c.req.param('id');
+  const target = await db.query.users.findFirst({ where: eq(schema.users.id, userId) });
+  if (!target) return c.json({ success: false, error: 'User not found' }, 404);
+
+  const userCustom = await getUserCustomPermissions(db, userId);
+  const effective = await getUserEffectiveCrudMatrix(db, userId, target.role);
+
+  return c.json({
+    success: true,
+    userId: target.id,
+    name: target.name,
+    email: target.email,
+    baseRole: target.role,
+    hasCustomOverrides: userCustom.hasCustomOverrides,
+    customPermissions: userCustom.permissions,
+    effectivePermissions: effective.crud,
+  });
+});
+
+// PUT /api/admin/users/:id/permissions - Set employee custom permissions or revert to base role
+app.put(
+  '/api/admin/users/:id/permissions',
+  zValidator(
+    'json',
+    z.object({
+      mode: z.enum(['ROLE', 'CUSTOM']),
+      permissions: z
+        .record(
+          z.string(),
+          z.object({
+            create: z.boolean(),
+            read: z.boolean(),
+            update: z.boolean(),
+            delete: z.boolean(),
+          })
+        )
+        .optional(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const userId = c.req.param('id');
+    const { mode, permissions } = c.req.valid('json');
+
+    const target = await db.query.users.findFirst({ where: eq(schema.users.id, userId) });
+    if (!target) return c.json({ success: false, error: 'User not found' }, 404);
+
+    if (mode === 'ROLE') {
+      await saveUserCustomPermissions(db, userId, null);
+    } else {
+      await saveUserCustomPermissions(db, userId, (permissions as any) || null);
+    }
+
+    // Invalidate active sessions so new permissions take effect immediately
+    await db.delete(schema.sessions).where(eq(schema.sessions.userId, userId));
+
+    const updatedEffective = await getUserEffectiveCrudMatrix(db, userId, target.role);
+
+    return c.json({
+      success: true,
+      message:
+        mode === 'ROLE'
+          ? 'Reverted to base role permissions'
+          : 'Custom employee permissions updated successfully',
+      hasCustomOverrides: mode === 'CUSTOM',
+      effectivePermissions: updatedEffective.crud,
+    });
+  }
+);
 
 // PATCH /api/admin/users/:id - Update name/role/active status (and optionally reset password)
 app.patch(

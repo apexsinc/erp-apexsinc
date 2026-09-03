@@ -129,6 +129,8 @@ function renderAdminPanel(container) {
   state.adminUsers.forEach((u) => {
     const roleItem = (state.roles || []).find((r) => r.code === u.role);
     const roleName = roleItem?.name || u.role;
+    const isCustom = Boolean(u.hasCustomPermissions);
+    const customCount = u.customPermissionCount || 0;
 
     userRows += \`
       <tr>
@@ -139,12 +141,28 @@ function renderAdminPanel(container) {
             \${u.role}
           </span>
         </td>
+        <td>
+          \${
+            u.role === 'ADMIN'
+              ? '<span class="badge badge-primary" title="System Administrator has full access to all modules">Full Admin</span>'
+              : isCustom
+              ? \`<span class="badge badge-warning" style="cursor: pointer;" onclick="openUserCustomPermissionsModal('\${u.id}')" title="Customized module permissions enabled for this employee">⚙️ Custom (\${customCount} mods)</span>\`
+              : \`<span class="badge badge-neutral" style="cursor: pointer;" onclick="openUserCustomPermissionsModal('\${u.id}')" title="Inheriting base role permissions">Role Default (\${u.role})</span>\`
+          }
+        </td>
         <td><span class="badge \${u.isActive ? 'badge-success' : 'badge-danger'}"><span class="badge-dot"></span>\${u.isActive ? 'Active' : 'Deactivated'}</span></td>
         <td>
           <div style="display: inline-flex; gap: 0.35rem;">
+            \${
+              u.role !== 'ADMIN'
+                ? \`<button class="btn btn-secondary btn-sm" onclick="openUserCustomPermissionsModal('\${u.id}')" title="Configure Custom Permissions for this Employee">
+                    ⚙️ Permissions
+                  </button>\`
+                : ''
+            }
             <button class="btn btn-secondary btn-sm" onclick="openAdminEditUserModal('\${u.id}')" title="Edit Role & Reset Password">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-              Edit / Password
+              Edit
             </button>
             \${u.isActive
               ? \`<button class="btn btn-danger btn-sm" onclick="toggleUserActive('\${u.id}', false)" \${u.id === state.user.id ? 'disabled title=\"You cannot deactivate yourself\"' : ''}>Deactivate</button>\`
@@ -290,13 +308,14 @@ function renderAdminPanel(container) {
             <tr>
               <th>Name</th>
               <th>Email</th>
-              <th>Role</th>
+              <th>Base Role</th>
+              <th>Permissions</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            \${userRows || '<tr><td colspan="5" style="text-align: center;">No users found.</td></tr>'}
+            \${userRows || '<tr><td colspan="6" style="text-align: center;">No users found.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -793,6 +812,235 @@ async function submitAdminEditUser(e, userId) {
 
     closeModal();
     showToast('User account updated successfully', 'success');
+    loadAdmin();
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
+}
+
+// =============================================================================
+// EMPLOYEE-SPECIFIC CUSTOM PERMISSIONS MODAL
+// =============================================================================
+
+async function openUserCustomPermissionsModal(userId) {
+  const u = (state.adminUsers || []).find((x) => x.id === userId);
+  if (!u) {
+    showToast('User not found', 'warning');
+    return;
+  }
+
+  showToast('Loading employee permissions...', 'info');
+
+  try {
+    const res = await apiFetch('/api/admin/users/' + userId + '/permissions');
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to fetch user permissions');
+
+    const baseRole = json.baseRole;
+    const isCustom = Boolean(json.hasCustomOverrides);
+    const effectiveCrud = json.effectivePermissions || {};
+
+    const categories = ['Operations', 'Finance & HR', 'Administration'];
+    let matrixRows = '';
+
+    categories.forEach((cat) => {
+      const catModules = (state.adminModules || []).filter((m) => (MODULE_CONFIG[m]?.category || 'Operations') === cat);
+      if (catModules.length === 0) return;
+
+      matrixRows += \`
+        <tr style="background: #f8fafc;">
+          <td colspan="5" style="padding: 0.4rem 0.75rem; font-weight: 700; font-size: 0.75rem; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color);">
+            \${cat}
+          </td>
+        </tr>
+      \`;
+
+      catModules.forEach((mod) => {
+        const info = MODULE_CONFIG[mod] || { name: mod, route: '/' + mod, description: '' };
+        const p = effectiveCrud[mod] || { create: false, read: false, update: false, delete: false };
+
+        matrixRows += \`
+          <tr>
+            <td style="padding: 0.5rem 0.75rem;">
+              <div style="display: flex; align-items: center; gap: 0.4rem;">
+                <span style="font-weight: 700; color: #1e293b; font-size: 0.85rem;">\${info.name}</span>
+                <span class="badge badge-neutral" style="font-family: monospace; font-size: 0.7rem; padding: 0.1rem 0.35rem;">\${info.route}</span>
+              </div>
+              <div style="font-size: 0.72rem; color: #64748b; line-height: 1.3; margin-top: 0.15rem;">\${info.description}</div>
+            </td>
+            <td style="text-align: center; vertical-align: middle; width: 60px;">
+              <input type="checkbox" id="userperm-\${mod}-c" \${p.create ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--primary);" />
+            </td>
+            <td style="text-align: center; vertical-align: middle; width: 60px;">
+              <input type="checkbox" id="userperm-\${mod}-r" \${p.read ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--primary);" />
+            </td>
+            <td style="text-align: center; vertical-align: middle; width: 60px;">
+              <input type="checkbox" id="userperm-\${mod}-u" \${p.update ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--primary);" />
+            </td>
+            <td style="text-align: center; vertical-align: middle; width: 60px;">
+              <input type="checkbox" id="userperm-\${mod}-d" \${p.delete ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--primary);" />
+            </td>
+          </tr>
+        \`;
+      });
+    });
+
+    const body = \`
+      <form id="form-user-custom-perms" onsubmit="submitUserCustomPermissions(event, '\${userId}')">
+        <!-- User Info Header -->
+        <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.85rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-size: 0.95rem; font-weight: 700; color: #1e293b;">\${u.name}</div>
+            <div style="font-size: 0.78rem; color: #64748b;">\${u.email}</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 0.72rem; color: #64748b; font-weight: 600;">Base Role</div>
+            <span class="badge \${getRoleBadgeClass(baseRole)}">\${baseRole}</span>
+          </div>
+        </div>
+
+        <!-- Mode Selection Options -->
+        <div style="margin-bottom: 1rem;">
+          <label class="form-label" style="font-weight: 700; margin-bottom: 0.4rem;">Permission Configuration Mode</label>
+          <div style="display: flex; flex-direction: column; gap: 0.5rem; background: #ffffff; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.75rem;">
+            <label style="display: flex; align-items: flex-start; gap: 0.6rem; cursor: pointer;">
+              <input type="radio" name="user-perm-mode" value="ROLE" \${!isCustom ? 'checked' : ''} onchange="toggleUserPermMode('ROLE')" style="margin-top: 3px; accent-color: var(--primary);" />
+              <div>
+                <div style="font-weight: 600; font-size: 0.85rem; color: #1e293b;">Inherit Base Role Permissions (\${baseRole})</div>
+                <div style="font-size: 0.75rem; color: #64748b;">Automatically follows whatever permissions are configured for the \${baseRole} group.</div>
+              </div>
+            </label>
+            <label style="display: flex; align-items: flex-start; gap: 0.6rem; cursor: pointer;">
+              <input type="radio" name="user-perm-mode" value="CUSTOM" \${isCustom ? 'checked' : ''} onchange="toggleUserPermMode('CUSTOM')" style="margin-top: 3px; accent-color: var(--primary);" />
+              <div>
+                <div style="font-weight: 600; font-size: 0.85rem; color: #1e293b;">Customized Specific Permissions (Employee Override)</div>
+                <div style="font-size: 0.75rem; color: #64748b;">Set fine-grained Create, Read, Update, Delete access specifically for this employee without creating or changing a role group.</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Custom CRUD Matrix Wrapper -->
+        <div id="user-custom-perm-matrix-wrapper" style="display: \${isCustom ? 'block' : 'none'};">
+          <div style="font-weight: 700; font-size: 0.88rem; color: #1e293b; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+            <span>Module Access & CRUD Overrides</span>
+            <div style="display: flex; gap: 0.35rem;">
+              <button type="button" class="btn btn-secondary btn-sm" style="font-size: 0.72rem; padding: 0.2rem 0.5rem;" onclick="bulkSetUserPerms('all')">Select All</button>
+              <button type="button" class="btn btn-secondary btn-sm" style="font-size: 0.72rem; padding: 0.2rem 0.5rem;" onclick="bulkSetUserPerms('readonly')">Read Only</button>
+              <button type="button" class="btn btn-secondary btn-sm" style="font-size: 0.72rem; padding: 0.2rem 0.5rem;" onclick="copyRolePermsToUser('\${baseRole}')">Reset to Role (\${baseRole})</button>
+              <button type="button" class="btn btn-secondary btn-sm" style="font-size: 0.72rem; padding: 0.2rem 0.5rem;" onclick="bulkSetUserPerms('none')">Clear All</button>
+            </div>
+          </div>
+          <div class="table-responsive" style="max-height: 340px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-sm);">
+            <table class="data-table" style="font-size: 0.8rem;">
+              <thead>
+                <tr>
+                  <th>Module</th>
+                  <th style="text-align: center; width: 60px;">C</th>
+                  <th style="text-align: center; width: 60px;">R</th>
+                  <th style="text-align: center; width: 60px;">U</th>
+                  <th style="text-align: center; width: 60px;">D</th>
+                </tr>
+              </thead>
+              <tbody>
+                \${matrixRows}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </form>
+    \`;
+
+    const footer = \`
+      <div style="display: flex; gap: 0.5rem; justify-content: flex-end; width: 100%;">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" form="form-user-custom-perms" class="btn btn-primary">Save Employee Permissions</button>
+      </div>
+    \`;
+
+    openModal('Custom Permissions — ' + u.name, body, footer, 'lg');
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
+}
+
+function toggleUserPermMode(mode) {
+  const wrapper = document.getElementById('user-custom-perm-matrix-wrapper');
+  if (wrapper) {
+    wrapper.style.display = mode === 'CUSTOM' ? 'block' : 'none';
+  }
+}
+
+function bulkSetUserPerms(action) {
+  (state.adminModules || []).forEach((mod) => {
+    const c = document.getElementById('userperm-' + mod + '-c');
+    const r = document.getElementById('userperm-' + mod + '-r');
+    const u = document.getElementById('userperm-' + mod + '-u');
+    const d = document.getElementById('userperm-' + mod + '-d');
+
+    if (action === 'all') {
+      if (c) c.checked = true;
+      if (r) r.checked = true;
+      if (u) u.checked = true;
+      if (d) d.checked = true;
+    } else if (action === 'readonly') {
+      if (c) c.checked = false;
+      if (r) r.checked = true;
+      if (u) u.checked = false;
+      if (d) d.checked = false;
+    } else if (action === 'none') {
+      if (c) c.checked = false;
+      if (r) r.checked = false;
+      if (u) u.checked = false;
+      if (d) d.checked = false;
+    }
+  });
+}
+
+function copyRolePermsToUser(baseRole) {
+  const roleCrud = (state.adminCrudMatrix || {})[baseRole] || {};
+  (state.adminModules || []).forEach((mod) => {
+    const p = roleCrud[mod] || { create: false, read: false, update: false, delete: false };
+    const c = document.getElementById('userperm-' + mod + '-c');
+    const r = document.getElementById('userperm-' + mod + '-r');
+    const u = document.getElementById('userperm-' + mod + '-u');
+    const d = document.getElementById('userperm-' + mod + '-d');
+
+    if (c) c.checked = Boolean(p.create);
+    if (r) r.checked = Boolean(p.read);
+    if (u) u.checked = Boolean(p.update);
+    if (d) d.checked = Boolean(p.delete);
+  });
+}
+
+async function submitUserCustomPermissions(e, userId) {
+  e.preventDefault();
+  const modeEl = document.querySelector('input[name="user-perm-mode"]:checked');
+  const mode = modeEl ? modeEl.value : 'ROLE';
+
+  const permissions = {};
+  if (mode === 'CUSTOM') {
+    (state.adminModules || []).forEach((mod) => {
+      permissions[mod] = {
+        create: Boolean(document.getElementById('userperm-' + mod + '-c')?.checked),
+        read: Boolean(document.getElementById('userperm-' + mod + '-r')?.checked),
+        update: Boolean(document.getElementById('userperm-' + mod + '-u')?.checked),
+        delete: Boolean(document.getElementById('userperm-' + mod + '-d')?.checked),
+      };
+    });
+  }
+
+  try {
+    const res = await apiFetch('/api/admin/users/' + userId + '/permissions', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode, permissions }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to update employee permissions');
+
+    closeModal();
+    showToast(json.message || 'Permissions updated successfully', 'success');
     loadAdmin();
   } catch (err) {
     showToast(err.message, 'danger');

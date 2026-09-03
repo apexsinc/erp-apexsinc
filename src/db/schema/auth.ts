@@ -101,3 +101,34 @@ export const rolePermissions = sqliteTable(
 
 export type RolePermission = typeof rolePermissions.$inferSelect;
 export type NewRolePermission = typeof rolePermissions.$inferInsert;
+
+/**
+ * User-specific custom module CRUD permission overrides.
+ * Allows fine-grained per-employee permissions without changing their base role.
+ */
+export const userPermissions = sqliteTable(
+  'user_permissions',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    module: text('module', {
+      enum: ['dashboard', 'directory', 'inventory', 'purchasing', 'inbound', 'sales', 'outbound', 'vouchers', 'accounting', 'payroll', 'staff', 'settings'],
+    }).notNull(),
+    canCreate: integer('can_create', { mode: 'boolean' }).notNull().default(false),
+    canRead: integer('can_read', { mode: 'boolean' }).notNull().default(false),
+    canUpdate: integer('can_update', { mode: 'boolean' }).notNull().default(false),
+    canDelete: integer('can_delete', { mode: 'boolean' }).notNull().default(false),
+    updatedAt: text('updated_at')
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => [uniqueIndex('user_permissions_user_module_unique').on(table.userId, table.module)]
+);
+
+export type UserPermission = typeof userPermissions.$inferSelect;
+export type NewUserPermission = typeof userPermissions.$inferInsert;
+

@@ -622,6 +622,65 @@ async function runTests() {
   console.log('Manager Inventory CRUD:', JSON.stringify(permsData.crudMatrix.MANAGER.inventory));
   console.log('Staff Inventory CRUD:', JSON.stringify(permsData.crudMatrix.STAFF.inventory));
   console.log('Custom Role Accounting CRUD:', JSON.stringify(permsData.crudMatrix[customRoleCode]?.accounting));
+
+  console.log('\n=== 10.2 EMPLOYEE-SPECIFIC CUSTOM PERMISSIONS AUDIT ===');
+  // 1. Get user list and pick a non-admin user (or create a test staff user if needed)
+  const adminUsersRes = await fetch(`${baseUrl}/api/admin/users`, { headers: authHeaders });
+  const adminUsersData = await adminUsersRes.json();
+  if (!adminUsersData.success || !Array.isArray(adminUsersData.data)) {
+    console.error('Failed to get admin users:', adminUsersData);
+    process.exit(1);
+  }
+  const staffUser = adminUsersData.data.find((u) => u.role !== 'ADMIN') || adminUsersData.data[0];
+  const testUserId = staffUser.id;
+  console.log('Testing Custom Permissions for User:', staffUser.name, '(', staffUser.email, ') Base Role:', staffUser.role);
+
+  // 2. Fetch initial user permissions
+  const getUserPermsRes = await fetch(`${baseUrl}/api/admin/users/${testUserId}/permissions`, { headers: authHeaders });
+  const userPermsData = await getUserPermsRes.json();
+  if (!userPermsData.success) {
+    console.error('Failed to get user permissions:', userPermsData);
+    process.exit(1);
+  }
+  console.log('Initial Has Custom Overrides?:', userPermsData.hasCustomOverrides);
+
+  // 3. Set custom permissions on the employee (granting custom inventory & vouchers access)
+  const setCustomRes = await fetch(`${baseUrl}/api/admin/users/${testUserId}/permissions`, {
+    method: 'PUT',
+    headers: authHeaders,
+    body: JSON.stringify({
+      mode: 'CUSTOM',
+      permissions: {
+        inventory: { create: true, read: true, update: true, delete: true },
+        vouchers: { create: false, read: true, update: false, delete: false },
+        dashboard: { create: false, read: true, update: false, delete: false },
+      },
+    }),
+  });
+  const setCustomData = await setCustomRes.json();
+  if (!setCustomData.success) {
+    console.error('Failed to set custom user permissions:', setCustomData);
+    process.exit(1);
+  }
+  console.log('Set Custom Permissions Message:', setCustomData.message);
+  console.log('Custom Permissions Effective Inventory:', JSON.stringify(setCustomData.effectivePermissions.inventory));
+
+  // 4. Verify in user list that badge indicates custom permissions
+  const verifyUsersRes = await fetch(`${baseUrl}/api/admin/users`, { headers: authHeaders });
+  const verifyUsersData = await verifyUsersRes.json();
+  const updatedUser = verifyUsersData.data.find((u) => u.id === testUserId);
+  console.log('User hasCustomPermissions in list?:', updatedUser?.hasCustomPermissions, 'Count:', updatedUser?.customPermissionCount);
+
+  // 5. Revert user back to base role defaults
+  const revertRes = await fetch(`${baseUrl}/api/admin/users/${testUserId}/permissions`, {
+    method: 'PUT',
+    headers: authHeaders,
+    body: JSON.stringify({ mode: 'ROLE' }),
+  });
+  const revertData = await revertRes.json();
+  console.log('Revert User Permissions Message:', revertData.message);
+  console.log('Reverted Has Custom Overrides?:', revertData.hasCustomOverrides);
+
   // 1. Profit & Loss (Income Statement)
   const plRes = await fetch(`${baseUrl}/api/accounting/reports/profit-loss`, { headers: authHeaders });
   const plData = await plRes.json();

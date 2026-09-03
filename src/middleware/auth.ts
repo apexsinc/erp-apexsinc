@@ -2,7 +2,7 @@ import { createMiddleware } from 'hono/factory';
 import { eq, and, gt } from 'drizzle-orm';
 import { createDbClient } from '../db/client';
 import * as schema from '../db/schema';
-import { canPerformAction, canViewModule, isAdminRole, type CrudAction, type Module } from '../lib/permissions';
+import { canPerformAction, canUserPerformAction, canViewModule, isAdminRole, type CrudAction, type Module } from '../lib/permissions';
 
 type Bindings = { DB: D1Database };
 type AuthUser = { id: string; email: string; name: string; role: schema.User['role'] };
@@ -75,7 +75,7 @@ export function requireModule(mod: Module, explicitAction?: CrudAction) {
     }
 
     const db = createDbClient(c.env.DB);
-    const allowed = await canPerformAction(db, user.role, mod, action);
+    const allowed = await canUserPerformAction(db, user, mod, action);
     if (!allowed) {
       return c.json(
         {
