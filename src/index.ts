@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { eq, desc, asc } from 'drizzle-orm';
-import { createDbClient } from './db/client';
+import { eq, desc, asc, like, and, ne } from 'drizzle-orm';
+import { createDbClient, type Database } from './db/client';
 import * as schema from './db/schema';
 import { renderAppHtml } from './ui';
 import { authMiddleware, requireAdmin, requireModule } from './middleware/auth';
@@ -13,6 +13,7 @@ import {
   DEFAULT_PERMISSION_MATRIX,
   isAdminRole,
   canPerformAction,
+  canUserPerformAction,
   loadPermissionMatrix,
   loadCrudPermissionMatrix,
   loadAllRoles,
@@ -56,56 +57,105 @@ app.onError((err, c) => {
   );
 });
 
+// Helper middleware allowing access if user has permission in either vouchers or accounting
+function requireVoucherOrAccounting(explicitAction?: CrudAction) {
+  return async (c: any, next: any) => {
+    const user = c.get('authUser');
+    if (!user) return c.json({ success: false, error: 'Authentication required' }, 401);
+    if (isAdminRole(user.role)) return await next();
+    let action: CrudAction = explicitAction || 'read';
+    if (!explicitAction) {
+      const method = c.req.method.toUpperCase();
+      if (method === 'POST') action = 'create';
+      else if (method === 'PUT' || method === 'PATCH') action = 'update';
+      else if (method === 'DELETE') action = 'delete';
+      else action = 'read';
+    }
+    // Every employee should be able to see/read vouchers
+    if (action === 'read') return await next();
+
+    const db = createDbClient(c.env.DB);
+    const hasVoucherPerm = await canUserPerformAction(db, user, 'vouchers', action);
+    const hasAcctPerm = await canUserPerformAction(db, user, 'accounting', action);
+    if (hasVoucherPerm || hasAcctPerm) return await next();
+    return c.json(
+      {
+        success: false,
+        error: `Access Denied: You do not have permission to ${action.toUpperCase()} in vouchers or accounting`,
+      },
+      403
+    );
+  };
+}
+
 // Role-Based Route Access Control Middlewares
 app.use('/api/auth/me', authMiddleware);
 app.use('/api/admin/*', authMiddleware, requireAdmin);
-app.use('/api/settings/*', authMiddleware, requireModule('settings'));
+app.use('/api/settings/vouchers', authMiddleware, async (c, next) => {
+  if (c.req.method.toUpperCase() === 'GET') {
+    const user = c.get('authUser');
+    if (!user) return c.json({ success: false, error: 'Authentication required' }, 401);
+    return await next();
+  }
+  return await next();
+});
+app.use('/api/settings/*', authMiddleware, async (c, next) => {
+  const path = c.req.path;
+  if (path === '/api/settings/vouchers' && c.req.method.toUpperCase() === 'GET') {
+    return await next();
+  }
+  return requireModule('settings')(c, next);
+});
 app.use('/api/settings', authMiddleware, requireModule('settings'));
 app.use('/api/dashboard/*', authMiddleware, requireModule('dashboard'));
 app.use('/api/directory/*', authMiddleware, requireModule('directory'));
 app.use('/api/inventory/*', authMiddleware, requireModule('inventory'));
-app.use('/api/purchasing/*', authMiddleware, requireModule('purchasing'));
+app.use('/api/purchasing/*', authMiddleware, async (c, next) => {
+  if (c.req.method === 'GET' && c.req.path === '/api/purchasing/vendors') {
+    return await next();
+  }
+  return requireModule('purchasing')(c, next);
+});
 app.use('/api/inbound/*', authMiddleware, requireModule('inbound'));
 app.use('/api/sales/*', authMiddleware, requireModule('sales'));
 app.use('/api/outbound/*', authMiddleware, requireModule('outbound'));
-app.use('/api/accounting/vouchers/*', authMiddleware, async (c, next) => {
-  const user = c.get('authUser');
-  if (!user) return c.json({ success: false, error: 'Authentication required' }, 401);
-  if (isAdminRole(user.role)) return await next();
-  const db = createDbClient(c.env.DB);
-  const method = c.req.method.toUpperCase();
-  const action: CrudAction = method === 'POST' ? 'create' : (method === 'PUT' || method === 'PATCH') ? 'update' : method === 'DELETE' ? 'delete' : 'read';
-  const hasVoucherPerm = await canPerformAction(db, user.role, 'vouchers', action);
-  const hasAcctPerm = await canPerformAction(db, user.role, 'accounting', action);
-  if (hasVoucherPerm || hasAcctPerm) return await next();
-  return c.json({ success: false, error: `Access Denied: You do not have permission to ${action.toUpperCase()} in vouchers or accounting` }, 403);
-});
-app.use('/api/accounting/vouchers', authMiddleware, async (c, next) => {
-  const user = c.get('authUser');
-  if (!user) return c.json({ success: false, error: 'Authentication required' }, 401);
-  if (isAdminRole(user.role)) return await next();
-  const db = createDbClient(c.env.DB);
-  const method = c.req.method.toUpperCase();
-  const action: CrudAction = method === 'POST' ? 'create' : (method === 'PUT' || method === 'PATCH') ? 'update' : method === 'DELETE' ? 'delete' : 'read';
-  const hasVoucherPerm = await canPerformAction(db, user.role, 'vouchers', action);
-  const hasAcctPerm = await canPerformAction(db, user.role, 'accounting', action);
-  if (hasVoucherPerm || hasAcctPerm) return await next();
-  return c.json({ success: false, error: `Access Denied: You do not have permission to ${action.toUpperCase()} in vouchers or accounting` }, 403);
-});
+app.use('/api/accounting/vouchers/*', authMiddleware, requireVoucherOrAccounting());
+app.use('/api/accounting/vouchers', authMiddleware, requireVoucherOrAccounting());
 app.use('/api/accounting/accounts', authMiddleware, async (c, next) => {
   const user = c.get('authUser');
   if (!user) return c.json({ success: false, error: 'Authentication required' }, 401);
-  if (isAdminRole(user.role)) return await next();
-  const db = createDbClient(c.env.DB);
-  const hasVoucherPerm = await canPerformAction(db, user.role, 'vouchers', 'read');
-  const hasAcctPerm = await canPerformAction(db, user.role, 'accounting', 'read');
-  if (hasVoucherPerm || hasAcctPerm) return await next();
-  return c.json({ success: false, error: 'Access Denied: You do not have permission to view Chart of Accounts' }, 403);
+  return await next();
 });
-app.use('/api/accounting/*', authMiddleware, requireModule('accounting'));
+app.use('/api/accounting/*', authMiddleware, async (c, next) => {
+  const path = c.req.path;
+  if (
+    path === '/api/accounting/vouchers' ||
+    path.startsWith('/api/accounting/vouchers/') ||
+    path === '/api/accounting/accounts' ||
+    path.startsWith('/api/accounting/accounts/')
+  ) {
+    return await next();
+  }
+  return requireModule('accounting')(c, next);
+});
+app.use('/api/payroll/employees', authMiddleware, async (c, next) => {
+  if (c.req.method === 'GET') {
+    return await next();
+  }
+  return requireModule('staff')(c, next);
+});
 app.use('/api/payroll/employees/*', authMiddleware, requireModule('staff'));
-app.use('/api/payroll/employees', authMiddleware, requireModule('staff'));
-app.use('/api/payroll/*', authMiddleware, requireModule('payroll'));
+app.use('/api/payroll/*', authMiddleware, async (c, next) => {
+  const path = c.req.path;
+  if (path === '/api/payroll/employees' || path.startsWith('/api/payroll/employees/')) {
+    return await next();
+  }
+  return requireModule('payroll')(c, next);
+});
+
+function isLocalRequest(c: { req: any }): boolean {
+  return !c.req.header('cf-ray') || !!c.req.header('mf-original-hostname') || c.req.header('cf-connecting-ip') === '127.0.0.1';
+}
 
 // UI Web Application Entrypoint (Served directly at edge)
 async function renderApp(c: { req: any; env: Bindings }) {
@@ -113,8 +163,7 @@ async function renderApp(c: { req: any; env: Bindings }) {
   const rolePermissions = await loadPermissionMatrix(db);
   const crudMatrix = await loadCrudPermissionMatrix(db);
   const allRoles = await loadAllRoles(db);
-  const host = (c.req.header('host') || '').toLowerCase();
-  const isProduction = host.startsWith('app.apexsinc.com');
+  const isProduction = !isLocalRequest(c);
   const turnstileSiteKey = isProduction ? c.env.TURNSTILE_SITE_KEY : undefined;
   return renderAppHtml(rolePermissions, { turnstileSiteKey, crudMatrix, roles: allRoles });
 }
@@ -175,7 +224,8 @@ app.post(
     const db = createDbClient(c.env.DB);
     const body = c.req.valid('json');
 
-    if (c.env.TURNSTILE_SECRET_KEY) {
+    const isProduction = !isLocalRequest(c);
+    if ((isProduction || body.cfTurnstileToken) && c.env.TURNSTILE_SECRET_KEY) {
       const verified =
         !!body.cfTurnstileToken &&
         (await verifyTurnstileToken(c.env.TURNSTILE_SECRET_KEY, body.cfTurnstileToken, c.req.header('CF-Connecting-IP')));
@@ -1168,57 +1218,137 @@ app.post(
   }
 );
 
-// POST /api/sales/invoices - Issue an Invoice for an already-delivered Delivery Receipt.
-// Delivery (Outbound) only ever moves stock; billing the customer for what
-// was delivered is this separate, later step, triggered on demand from Sales.
+// POST /api/sales/invoices - Issue an Invoice for an already-delivered Delivery Receipt, or upfront for a Sales Order.
+// Delivery (Outbound) decrements physical stock upon DR confirmation;
+// if an invoice is issued upfront for a Sales Order, no stock is moved yet.
 app.post(
   '/api/sales/invoices',
-  zValidator('json', z.object({ deliveryReceiptId: z.string().uuid() })),
+  zValidator(
+    'json',
+    z
+      .object({
+        deliveryReceiptId: z.string().uuid().optional(),
+        salesOrderId: z.string().uuid().optional(),
+        dueDate: z.string().optional(),
+        notes: z.string().optional(),
+      })
+      .refine((data) => Boolean(data.deliveryReceiptId || data.salesOrderId), {
+        message: 'Either deliveryReceiptId or salesOrderId must be provided',
+      })
+  ),
   async (c) => {
     const db = createDbClient(c.env.DB);
     const body = c.req.valid('json');
 
-    const dr = await db.query.deliveryReceipts.findFirst({
-      where: eq(schema.deliveryReceipts.id, body.deliveryReceiptId),
-      with: { items: true, salesOrder: true },
-    });
-    if (!dr) return c.json({ success: false, error: 'Delivery receipt not found' }, 404);
-    if (dr.invoiceId) return c.json({ success: false, error: 'This delivery receipt has already been invoiced' }, 400);
-
     const invoiceId = crypto.randomUUID();
     const invoiceNumber = 'INV-' + Date.now().toString().slice(-6);
-    const totalAmountCents = dr.items.reduce((acc, item) => acc + item.quantity * item.unitPriceCents, 0);
+    let salesOrderId: string;
+    let customerId: string;
+    let currency: 'USD' | 'PHP';
+    let totalAmountCents = 0;
+    let revenueDescription = '';
+    const batchStatements: any[] = [];
 
-    const invoiceInsert = db.insert(schema.invoices).values({
-      id: invoiceId,
-      invoiceNumber,
-      salesOrderId: dr.salesOrderId,
-      customerId: dr.salesOrder.customerId,
-      status: 'ISSUED',
-      currency: dr.salesOrder.currency,
-      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      totalAmountCents,
-      paidAmountCents: 0,
-    });
+    if (body.deliveryReceiptId) {
+      // Flow A: Issue Invoice for an already-delivered DR
+      const dr = await db.query.deliveryReceipts.findFirst({
+        where: eq(schema.deliveryReceipts.id, body.deliveryReceiptId),
+        with: { items: true, salesOrder: true },
+      });
+      if (!dr) return c.json({ success: false, error: 'Delivery receipt not found' }, 404);
+      if (dr.invoiceId) return c.json({ success: false, error: 'This delivery receipt has already been invoiced' }, 400);
 
-    const batchStatements: any[] = [invoiceInsert];
+      salesOrderId = dr.salesOrderId;
+      customerId = dr.salesOrder.customerId;
+      currency = dr.salesOrder.currency;
+      totalAmountCents = dr.items.reduce((acc, item) => acc + item.quantity * item.unitPriceCents, 0);
+      revenueDescription = 'Revenue from delivery ' + dr.drNumber;
 
-    for (const item of dr.items) {
+      const invoiceInsert = db.insert(schema.invoices).values({
+        id: invoiceId,
+        invoiceNumber,
+        salesOrderId,
+        customerId,
+        status: 'ISSUED',
+        currency,
+        dueDate: body.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        totalAmountCents,
+        paidAmountCents: 0,
+        notes: body.notes || dr.notes,
+      });
+      batchStatements.push(invoiceInsert);
+
+      for (const item of dr.items) {
+        batchStatements.push(
+          db.insert(schema.invoiceItems).values({
+            id: crypto.randomUUID(),
+            invoiceId,
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPriceCents: item.unitPriceCents,
+            subtotalCents: item.quantity * item.unitPriceCents,
+          })
+        );
+      }
+
       batchStatements.push(
-        db.insert(schema.invoiceItems).values({
-          id: crypto.randomUUID(),
-          invoiceId,
-          productId: item.productId,
-          quantity: item.quantity,
-          unitPriceCents: item.unitPriceCents,
-          subtotalCents: item.quantity * item.unitPriceCents,
-        })
+        db.update(schema.deliveryReceipts).set({ invoiceId }).where(eq(schema.deliveryReceipts.id, dr.id))
       );
-    }
+    } else {
+      // Flow B: Issue Invoice directly from Sales Order upfront (goods not yet delivered; stock remains intact)
+      const so = await db.query.salesOrders.findFirst({
+        where: eq(schema.salesOrders.id, body.salesOrderId!),
+        with: { items: { with: { product: true } }, customer: true, invoices: true },
+      });
+      if (!so) return c.json({ success: false, error: 'Sales Order not found' }, 404);
+      if (so.status === 'CANCELLED') {
+        return c.json({ success: false, error: 'Cannot issue invoice for a cancelled order' }, 400);
+      }
 
-    batchStatements.push(
-      db.update(schema.deliveryReceipts).set({ invoiceId }).where(eq(schema.deliveryReceipts.id, dr.id))
-    );
+      // Check if SO already has an active invoice
+      const activeInvoice = (so.invoices || []).find((inv) => inv.status !== 'CANCELLED');
+      if (activeInvoice) {
+        return c.json({
+          success: false,
+          error: `Sales Order ${so.soNumber} already has an active invoice (${activeInvoice.invoiceNumber}).`,
+          invoiceId: activeInvoice.id,
+          invoiceNumber: activeInvoice.invoiceNumber,
+        }, 400);
+      }
+
+      salesOrderId = so.id;
+      customerId = so.customerId;
+      currency = so.currency;
+      totalAmountCents = so.totalAmountCents;
+      revenueDescription = 'Revenue for sales order ' + so.soNumber;
+
+      const invoiceInsert = db.insert(schema.invoices).values({
+        id: invoiceId,
+        invoiceNumber,
+        salesOrderId,
+        customerId,
+        status: 'ISSUED',
+        currency,
+        dueDate: body.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        totalAmountCents,
+        paidAmountCents: 0,
+        notes: body.notes || so.notes,
+      });
+      batchStatements.push(invoiceInsert);
+
+      for (const item of so.items) {
+        batchStatements.push(
+          db.insert(schema.invoiceItems).values({
+            id: crypto.randomUUID(),
+            invoiceId,
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPriceCents: item.unitPriceCents,
+            subtotalCents: item.subtotalCents,
+          })
+        );
+      }
+    }
 
     // Double-Entry Accounting: Accounts Receivable (1300) Debit, Sales Revenue (4010) Credit
     const arAccount = await db.query.accounts.findFirst({ where: eq(schema.accounts.code, '1300') });
@@ -1258,7 +1388,7 @@ app.post(
           accountId: revAccount.id,
           debitCents: 0,
           creditCents: totalAmountCents,
-          description: 'Revenue from delivery ' + dr.drNumber,
+          description: revenueDescription,
         })
       );
     }
@@ -1267,7 +1397,7 @@ app.post(
 
     return c.json({
       success: true,
-      message: 'Invoice issued for ' + dr.drNumber + '.',
+      message: 'Invoice ' + invoiceNumber + ' issued successfully.',
       invoiceId,
       invoiceNumber,
       totalAmountCents,
@@ -1293,9 +1423,27 @@ app.get('/api/outbound/orders', async (c) => {
   const orders = await db.query.salesOrders.findMany({
     where: (soTable, { inArray }) => inArray(soTable.status, ['CONFIRMED', 'PACKED', 'PARTIALLY_FULFILLED', 'FULFILLED']),
     orderBy: [desc(schema.salesOrders.createdAt)],
-    with: { customer: true, items: { with: { product: true } } },
+    with: { customer: true, items: { with: { product: true } }, invoices: true },
   });
   return c.json({ success: true, data: await attachDeliveryReceipts(db, orders) });
+});
+
+// GET /api/outbound/receipts - List all issued Delivery Receipts with line items & invoice link
+app.get('/api/outbound/receipts', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const receipts = await db.query.deliveryReceipts.findMany({
+    orderBy: [desc(schema.deliveryReceipts.createdAt)],
+    with: {
+      salesOrder: {
+        with: { customer: true },
+      },
+      invoice: true,
+      items: {
+        with: { product: true },
+      },
+    },
+  });
+  return c.json({ success: true, data: receipts });
 });
 
 // POST /api/outbound/orders/:id/mark-packed - Step 1: order picked and ready to ship
@@ -1316,13 +1464,141 @@ app.post('/api/outbound/orders/:id/mark-packed', async (c) => {
 
   const updated = await db.query.salesOrders.findFirst({
     where: eq(schema.salesOrders.id, soId),
-    with: { customer: true, items: { with: { product: true } } },
+    with: { customer: true, items: { with: { product: true } }, invoices: true },
   });
   return c.json({ success: true, data: updated });
 });
 
+// Core logic to issue a Delivery Receipt against a Sales Order
+async function executeDeliveryReceipt(
+  db: ReturnType<typeof createDbClient>,
+  soId: string,
+  body: {
+    notes?: string;
+    receivedBy?: string;
+    invoiceId?: string;
+    items: Array<{ soItemId: string; quantityShipped: number }>;
+  }
+) {
+  const so = await db.query.salesOrders.findFirst({
+    where: eq(schema.salesOrders.id, soId),
+    with: { items: { with: { product: true } }, invoices: true },
+  });
+  if (!so) return { error: 'Sales Order not found', status: 404 as const };
+  if (so.status !== 'CONFIRMED' && so.status !== 'PACKED' && so.status !== 'PARTIALLY_FULFILLED') {
+    return { error: `Cannot deliver from status ${so.status}. Order must be confirmed or packed.`, status: 400 as const };
+  }
+
+  // Validate every line before writing anything: can't deliver more than what's still
+  // owed on the order, and — unlike receiving inbound stock — can't deliver more than
+  // what's actually on hand.
+  for (const shipItem of body.items) {
+    const soItem = so.items.find((i) => i.id === shipItem.soItemId);
+    if (!soItem) return { error: 'Sales order item not found: ' + shipItem.soItemId, status: 400 as const };
+
+    const remaining = soItem.quantity - soItem.quantityShipped;
+    if (shipItem.quantityShipped > remaining) {
+      return {
+        error: `Cannot deliver ${shipItem.quantityShipped} of ${soItem.product.name}; only ${remaining} remain on this order.`,
+        status: 400 as const,
+      };
+    }
+
+    const onHand = await getProductStockBalance(db, soItem.productId);
+    if (shipItem.quantityShipped > onHand) {
+      return {
+        error: `Insufficient stock for ${soItem.product.name}: ${onHand} available, ${shipItem.quantityShipped} requested.`,
+        status: 400 as const,
+      };
+    }
+  }
+
+  // Auto-link to existing invoice if one exists on this Sales Order
+  let resolvedInvoiceId: string | null = body.invoiceId || null;
+  if (!resolvedInvoiceId && so.invoices && so.invoices.length > 0) {
+    const activeInvoice = so.invoices.find((inv) => inv.status !== 'CANCELLED');
+    if (activeInvoice) {
+      resolvedInvoiceId = activeInvoice.id;
+    }
+  }
+
+  const deliveryReceiptId = crypto.randomUUID();
+  const drNumber = 'DR-' + Date.now().toString().slice(-6);
+
+  const drInsert = db.insert(schema.deliveryReceipts).values({
+    id: deliveryReceiptId,
+    drNumber,
+    salesOrderId: so.id,
+    invoiceId: resolvedInvoiceId,
+    receivedBy: body.receivedBy,
+    notes: body.notes,
+  });
+
+  const batchStatements: any[] = [drInsert];
+  const updatedQtyByItemId = new Map<string, number>();
+
+  for (const shipItem of body.items) {
+    const soItem = so.items.find((i) => i.id === shipItem.soItemId)!;
+
+    batchStatements.push(
+      db.insert(schema.deliveryReceiptItems).values({
+        id: crypto.randomUUID(),
+        deliveryReceiptId,
+        salesOrderItemId: soItem.id,
+        productId: soItem.productId,
+        quantity: shipItem.quantityShipped,
+        unitPriceCents: soItem.unitPriceCents,
+      })
+    );
+
+    // Decrement inventory via stock movement
+    batchStatements.push(
+      db.insert(schema.stockMovements).values({
+        id: crypto.randomUUID(),
+        productId: soItem.productId,
+        type: 'OUT',
+        quantity: shipItem.quantityShipped,
+        unitCostCents: soItem.product.costPriceCents,
+        referenceType: 'SO_DELIVERY',
+        referenceId: drNumber,
+        notes: 'Delivery for ' + so.soNumber,
+      })
+    );
+
+    // Update SO Item quantity delivered
+    const updatedQty = soItem.quantityShipped + shipItem.quantityShipped;
+    updatedQtyByItemId.set(soItem.id, updatedQty);
+    batchStatements.push(
+      db.update(schema.salesOrderItems).set({ quantityShipped: updatedQty }).where(eq(schema.salesOrderItems.id, soItem.id))
+    );
+  }
+
+  // A SO is only fully FULFILLED once every line item's delivered quantity meets its
+  // ordered quantity; otherwise it's PARTIALLY_FULFILLED so the remainder still shows
+  // up in Delivery Receipts.
+  const isFullyDelivered = so.items.every((item) => (updatedQtyByItemId.get(item.id) ?? item.quantityShipped) >= item.quantity);
+  batchStatements.push(
+    db
+      .update(schema.salesOrders)
+      .set({
+        status: isFullyDelivered ? 'FULFILLED' : 'PARTIALLY_FULFILLED',
+        packedAt: so.packedAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(schema.salesOrders.id, soId))
+  );
+
+  await db.batch(batchStatements as any);
+
+  return {
+    deliveryReceiptId,
+    drNumber,
+    invoiceId: resolvedInvoiceId,
+  };
+}
+
 // POST /api/outbound/orders/:id/deliver - Step 2: confirm delivered quantity, decrement inventory,
-// issue a Delivery Receipt. No invoice or journal entry is created here — see POST /api/sales/invoices.
+// issue a Delivery Receipt.
 app.post(
   '/api/outbound/orders/:id/deliver',
   zValidator(
@@ -1330,6 +1606,7 @@ app.post(
     z.object({
       notes: z.string().optional(),
       receivedBy: z.string().optional(),
+      invoiceId: z.string().uuid().optional(),
       items: z.array(
         z.object({
           soItemId: z.string().uuid(),
@@ -1343,108 +1620,55 @@ app.post(
     const soId = c.req.param('id');
     const body = c.req.valid('json');
 
-    const so = await db.query.salesOrders.findFirst({
-      where: eq(schema.salesOrders.id, soId),
-      with: { items: { with: { product: true } } },
-    });
-    if (!so) return c.json({ success: false, error: 'Sales Order not found' }, 404);
-    if (so.status !== 'PACKED' && so.status !== 'PARTIALLY_FULFILLED') {
-      return c.json({ success: false, error: `Cannot deliver from status ${so.status}. Mark as packed first.` }, 400);
+    const result = await executeDeliveryReceipt(db, soId, body);
+    if ('error' in result) {
+      return c.json({ success: false, error: result.error }, result.status);
     }
-
-    // Validate every line before writing anything: can't deliver more than what's still
-    // owed on the order, and — unlike receiving inbound stock — can't deliver more than
-    // what's actually on hand.
-    for (const shipItem of body.items) {
-      const soItem = so.items.find((i) => i.id === shipItem.soItemId);
-      if (!soItem) return c.json({ success: false, error: 'Sales order item not found: ' + shipItem.soItemId }, 400);
-
-      const remaining = soItem.quantity - soItem.quantityShipped;
-      if (shipItem.quantityShipped > remaining) {
-        return c.json(
-          { success: false, error: `Cannot deliver ${shipItem.quantityShipped} of ${soItem.product.name}; only ${remaining} remain on this order.` },
-          400
-        );
-      }
-
-      const onHand = await getProductStockBalance(db, soItem.productId);
-      if (shipItem.quantityShipped > onHand) {
-        return c.json(
-          { success: false, error: `Insufficient stock for ${soItem.product.name}: ${onHand} available, ${shipItem.quantityShipped} requested.` },
-          400
-        );
-      }
-    }
-
-    const deliveryReceiptId = crypto.randomUUID();
-    const drNumber = 'DR-' + Date.now().toString().slice(-6);
-
-    const drInsert = db.insert(schema.deliveryReceipts).values({
-      id: deliveryReceiptId,
-      drNumber,
-      salesOrderId: so.id,
-      receivedBy: body.receivedBy,
-      notes: body.notes,
-    });
-
-    const batchStatements: any[] = [drInsert];
-    const updatedQtyByItemId = new Map<string, number>();
-
-    for (const shipItem of body.items) {
-      const soItem = so.items.find((i) => i.id === shipItem.soItemId)!;
-
-      batchStatements.push(
-        db.insert(schema.deliveryReceiptItems).values({
-          id: crypto.randomUUID(),
-          deliveryReceiptId,
-          salesOrderItemId: soItem.id,
-          productId: soItem.productId,
-          quantity: shipItem.quantityShipped,
-          unitPriceCents: soItem.unitPriceCents,
-        })
-      );
-
-      // Decrement inventory via stock movement
-      batchStatements.push(
-        db.insert(schema.stockMovements).values({
-          id: crypto.randomUUID(),
-          productId: soItem.productId,
-          type: 'OUT',
-          quantity: shipItem.quantityShipped,
-          unitCostCents: soItem.product.costPriceCents,
-          referenceType: 'SO_DELIVERY',
-          referenceId: drNumber,
-          notes: 'Delivery for ' + so.soNumber,
-        })
-      );
-
-      // Update SO Item quantity delivered
-      const updatedQty = soItem.quantityShipped + shipItem.quantityShipped;
-      updatedQtyByItemId.set(soItem.id, updatedQty);
-      batchStatements.push(
-        db.update(schema.salesOrderItems).set({ quantityShipped: updatedQty }).where(eq(schema.salesOrderItems.id, soItem.id))
-      );
-    }
-
-    // A SO is only fully FULFILLED once every line item's delivered quantity meets its
-    // ordered quantity; otherwise it's PARTIALLY_FULFILLED so the remainder still shows
-    // up in Delivery Receipts.
-    const isFullyDelivered = so.items.every((item) => (updatedQtyByItemId.get(item.id) ?? item.quantityShipped) >= item.quantity);
-    batchStatements.push(
-      db
-        .update(schema.salesOrders)
-        .set({ status: isFullyDelivered ? 'FULFILLED' : 'PARTIALLY_FULFILLED', updatedAt: new Date().toISOString() })
-        .where(eq(schema.salesOrders.id, soId))
-    );
-
-    await db.batch(batchStatements as any);
 
     return c.json({
       success: true,
       message: 'Delivery Receipt issued and stock ledger updated.',
-      deliveryReceiptId,
-      drNumber,
+      deliveryReceiptId: result.deliveryReceiptId,
+      drNumber: result.drNumber,
+      invoiceId: result.invoiceId,
     });
+  }
+);
+
+// POST /api/outbound/receipts - Create a Delivery Receipt directly
+app.post(
+  '/api/outbound/receipts',
+  zValidator(
+    'json',
+    z.object({
+      salesOrderId: z.string().uuid(),
+      invoiceId: z.string().uuid().optional(),
+      notes: z.string().optional(),
+      receivedBy: z.string().optional(),
+      items: z.array(
+        z.object({
+          soItemId: z.string().uuid(),
+          quantityShipped: z.number().int().positive(),
+        })
+      ).min(1),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const body = c.req.valid('json');
+
+    const result = await executeDeliveryReceipt(db, body.salesOrderId, body);
+    if ('error' in result) {
+      return c.json({ success: false, error: result.error }, result.status);
+    }
+
+    return c.json({
+      success: true,
+      message: 'Delivery Receipt issued and stock ledger updated.',
+      deliveryReceiptId: result.deliveryReceiptId,
+      drNumber: result.drNumber,
+      invoiceId: result.invoiceId,
+    }, 201);
   }
 );
 
@@ -1502,8 +1726,7 @@ async function generateNextPaymentVoucherNumber(db: any): Promise<string> {
   const prefix = `${currentYear}-`;
 
   const existing = await db.query.paymentVouchers.findMany({
-    orderBy: [desc(schema.paymentVouchers.createdAt)],
-    limit: 100,
+    where: like(schema.paymentVouchers.voucherNumber, `${prefix}%`),
   });
 
   let maxSeq = 0;
@@ -1517,9 +1740,18 @@ async function generateNextPaymentVoucherNumber(db: any): Promise<string> {
     }
   }
 
-  // Next sequential number with 6-digit padding (or start at 440 if existing sample)
-  const nextSeq = (maxSeq + 1).toString().padStart(6, '0');
-  return `${prefix}${nextSeq}`;
+  // Ensure next sequential candidate is strictly unique and never duplicates
+  let candidateSeq = maxSeq + 1;
+  while (true) {
+    const candidate = `${prefix}${candidateSeq.toString().padStart(6, '0')}`;
+    const taken = await db.query.paymentVouchers.findFirst({
+      where: eq(schema.paymentVouchers.voucherNumber, candidate),
+    });
+    if (!taken) {
+      return candidate;
+    }
+    candidateSeq++;
+  }
 }
 
 // GET /api/accounting/vouchers - Unified Voucher Registry (PV, RV, JV)
@@ -1527,7 +1759,9 @@ app.get('/api/accounting/vouchers', async (c) => {
   const db = createDbClient(c.env.DB);
   const typeFilter = c.req.query('type'); // 'PAYMENT', 'RECEIPT', 'JOURNAL', or all
 
-  const [pvs, rvs, jvs, allEntries, allAccounts] = await Promise.all([
+  await ensureVoucherHistoryTable(db);
+
+  const [pvs, rvs, jvs, allEntries, allAccounts, allHistory] = await Promise.all([
     db.query.paymentVouchers.findMany({ orderBy: [desc(schema.paymentVouchers.createdAt)] }),
     db.query.receiptVouchers.findMany({
       orderBy: [desc(schema.receiptVouchers.createdAt)],
@@ -1536,7 +1770,15 @@ app.get('/api/accounting/vouchers', async (c) => {
     db.query.journalVouchers.findMany({ orderBy: [desc(schema.journalVouchers.createdAt)] }),
     db.query.journalEntries.findMany({ with: { account: true } }),
     db.query.accounts.findMany(),
+    db.query.voucherHistory.findMany({ columns: { voucherId: true } }).catch(() => []),
   ]);
+
+  const historyCounts: Record<string, number> = {};
+  for (const h of allHistory) {
+    if (h.voucherId) {
+      historyCounts[h.voucherId] = (historyCounts[h.voucherId] || 0) + 1;
+    }
+  }
 
   const vouchers: any[] = [];
 
@@ -1581,6 +1823,7 @@ app.get('/api/accounting/vouchers', async (c) => {
         signatories: parsedSignatories,
         createdAt: pv.createdAt,
         entries,
+        historyCount: historyCounts[pv.id] || 0,
       });
     });
   }
@@ -1605,6 +1848,7 @@ app.get('/api/accounting/vouchers', async (c) => {
         notes: rv.notes,
         createdAt: rv.createdAt,
         entries,
+        historyCount: historyCounts[rv.id] || 0,
       });
     });
   }
@@ -1630,6 +1874,7 @@ app.get('/api/accounting/vouchers', async (c) => {
         notes: jv.description,
         createdAt: jv.createdAt,
         entries,
+        historyCount: historyCounts[jv.id] || 0,
       });
     });
   }
@@ -1653,6 +1898,64 @@ app.get('/api/accounting/vouchers', async (c) => {
     },
   });
 });
+
+/** Ensures voucher_history table and index exist in the database. */
+export async function ensureVoucherHistoryTable(db: Database): Promise<void> {
+  try {
+    const { sql } = await import('drizzle-orm');
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS voucher_history (
+        id text PRIMARY KEY NOT NULL,
+        voucher_id text NOT NULL,
+        voucher_type text NOT NULL,
+        voucher_number text,
+        action text NOT NULL,
+        changed_by_user_id text,
+        changed_by_user_name text NOT NULL,
+        changed_by_user_email text,
+        summary text NOT NULL,
+        changes text,
+        created_at text NOT NULL
+      );
+    `);
+    await db.run(sql`
+      CREATE INDEX IF NOT EXISTS voucher_history_voucher_id_idx ON voucher_history (voucher_id);
+    `);
+  } catch (err) {
+    // ignore
+  }
+}
+
+interface VoucherHistoryEntryParams {
+  voucherId: string;
+  voucherType: 'PAYMENT' | 'RECEIPT' | 'JOURNAL';
+  voucherNumber?: string | null;
+  action: 'CREATED' | 'UPDATED' | 'APPROVED' | 'VOIDED' | 'RESTORED';
+  user?: { id?: string; name?: string; email?: string } | null;
+  summary: string;
+  changes?: Record<string, { old: any; new: any }> | null;
+}
+
+async function recordVoucherHistory(db: Database, params: VoucherHistoryEntryParams): Promise<void> {
+  try {
+    await ensureVoucherHistoryTable(db);
+    await db.insert(schema.voucherHistory).values({
+      id: crypto.randomUUID(),
+      voucherId: params.voucherId,
+      voucherType: params.voucherType,
+      voucherNumber: params.voucherNumber || null,
+      action: params.action,
+      changedByUserId: params.user?.id || null,
+      changedByUserName: params.user?.name || params.user?.email || 'System / Admin',
+      changedByUserEmail: params.user?.email || null,
+      summary: params.summary,
+      changes: params.changes ? JSON.stringify(params.changes) : null,
+      createdAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('Failed to record voucher history:', err);
+  }
+}
 
 // POST /api/accounting/vouchers/payment - Create Payment Voucher (PV)
 app.post(
@@ -1713,7 +2016,17 @@ app.post(
     }
 
     const pvId = crypto.randomUUID();
-    const voucherNumber = body.voucherNumber?.trim() || (await generateNextPaymentVoucherNumber(db));
+    let voucherNumber = body.voucherNumber?.trim();
+    if (voucherNumber) {
+      const dup = await db.query.paymentVouchers.findFirst({
+        where: eq(schema.paymentVouchers.voucherNumber, voucherNumber),
+      });
+      if (dup) {
+        return c.json({ success: false, error: `Voucher #${voucherNumber} already exists. Please choose a unique voucher number.` }, 409);
+      }
+    } else {
+      voucherNumber = await generateNextPaymentVoucherNumber(db);
+    }
     const voucherDate = body.voucherDate || new Date().toISOString();
 
     const tagPrefix = body.tag ? `[${body.tag}] ` : '';
@@ -1760,6 +2073,16 @@ app.post(
     });
 
     await db.batch([pvInsert, debitLeg, creditLeg]);
+
+    const authUser = c.get('authUser');
+    await recordVoucherHistory(db, {
+      voucherId: pvId,
+      voucherType: 'PAYMENT',
+      voucherNumber,
+      action: 'CREATED',
+      user: authUser,
+      summary: `Created Payment Voucher for ${body.recipientName} (${body.currency || 'PHP'} ${(totalAmountCents / 100).toFixed(2)})`,
+    });
 
     return c.json(
       {
@@ -1835,6 +2158,16 @@ app.post(
 
     await db.batch([rvInsert, debitLeg, creditLeg]);
 
+    const authUser = c.get('authUser');
+    await recordVoucherHistory(db, {
+      voucherId: rvId,
+      voucherType: 'RECEIPT',
+      voucherNumber,
+      action: 'CREATED',
+      user: authUser,
+      summary: `Created Receipt Voucher for ${body.payerName} (₱${(body.amountCents / 100).toFixed(2)})`,
+    });
+
     return c.json({
       success: true,
       message: 'Receipt Voucher posted successfully',
@@ -1906,6 +2239,16 @@ app.post(
     });
 
     await db.batch([jvInsert, debitLeg, creditLeg]);
+
+    const authUser = c.get('authUser');
+    await recordVoucherHistory(db, {
+      voucherId: jvId,
+      voucherType: 'JOURNAL',
+      voucherNumber: cvNumber,
+      action: 'CREATED',
+      user: authUser,
+      summary: `Created Contra Voucher: ${body.description} (₱${(body.amountCents / 100).toFixed(2)})`,
+    });
 
     return c.json({
       success: true,
@@ -1985,6 +2328,16 @@ app.post(
 
     await db.batch([jvInsert, ...entryInserts]);
 
+    const authUser = c.get('authUser');
+    await recordVoucherHistory(db, {
+      voucherId: jvId,
+      voucherType: 'JOURNAL',
+      voucherNumber: jvNumber,
+      action: 'CREATED',
+      user: authUser,
+      summary: `Created Journal Voucher: ${body.description} (₱${(totalDebit / 100).toFixed(2)})`,
+    });
+
     return c.json({
       success: true,
       message: 'Journal Voucher created and posted.',
@@ -2004,9 +2357,14 @@ app.patch(
   zValidator(
     'json',
     z.object({
+      voucherNumber: z.string().optional(),
       recipientName: z.string().optional(),
+      recipientType: z.enum(['VENDOR', 'EMPLOYEE', 'OTHER']).optional(),
+      currency: z.enum(['PHP', 'USD']).optional(),
       voucherDate: z.string().optional(),
       paymentMethod: z.string().optional(),
+      tag: z.string().optional(),
+      status: z.enum(['DRAFT', 'POSTED', 'VOID']).optional(),
       notes: z.string().optional(),
       amountCents: z.number().int().nonnegative().optional(),
       items: z
@@ -2033,6 +2391,7 @@ app.patch(
     const db = createDbClient(c.env.DB);
     const id = c.req.param('id');
     const body = c.req.valid('json');
+    const authUser = c.get('authUser');
 
     const [pv, rv, jv] = await Promise.all([
       db.query.paymentVouchers.findFirst({ where: eq(schema.paymentVouchers.id, id) }),
@@ -2045,18 +2404,135 @@ app.patch(
     }
 
     if (pv) {
+      // Track granular field differences
+      const changes: Record<string, { old: any; new: any }> = {};
+      const summaryParts: string[] = [];
+
+      let finalVoucherNumber = pv.voucherNumber;
+      if (body.voucherNumber !== undefined && body.voucherNumber.trim() !== '') {
+        const trimmedVoucherNumber = body.voucherNumber.trim();
+        if (trimmedVoucherNumber !== pv.voucherNumber) {
+          if (pv.status !== 'DRAFT') {
+            return c.json(
+              { success: false, error: 'Voucher number can only be changed while the voucher is in DRAFT status.' },
+              400
+            );
+          }
+          const existingPv = await db.query.paymentVouchers.findFirst({
+            where: and(
+              eq(schema.paymentVouchers.voucherNumber, trimmedVoucherNumber),
+              ne(schema.paymentVouchers.id, id)
+            ),
+          });
+          if (existingPv) {
+            return c.json(
+              { success: false, error: `Voucher # "${trimmedVoucherNumber}" is already in use by another voucher. Please choose a unique voucher number.` },
+              409
+            );
+          }
+          changes['voucherNumber'] = { old: pv.voucherNumber, new: trimmedVoucherNumber };
+          summaryParts.push(`voucher # changed from "${pv.voucherNumber}" to "${trimmedVoucherNumber}"`);
+          finalVoucherNumber = trimmedVoucherNumber;
+        }
+      }
+
       let totalAmountCents = body.amountCents !== undefined ? body.amountCents : pv.amountCents;
       if (body.items && body.items.length > 0) {
         totalAmountCents = body.items.reduce((sum, it) => sum + (it.amountCents || 0), 0);
       }
 
+      let finalNotes = body.notes !== undefined ? body.notes : pv.notes;
+      if (body.tag !== undefined) {
+        let cleanNotes = finalNotes || '';
+        if (cleanNotes.startsWith('[') && cleanNotes.includes(']')) {
+          cleanNotes = cleanNotes.slice(cleanNotes.indexOf(']') + 1).trim();
+        }
+        const tagTrimmed = body.tag.trim();
+        const tagPrefix = tagTrimmed ? `[${tagTrimmed}] ` : '';
+        finalNotes = tagTrimmed ? `${tagPrefix}${cleanNotes}`.trim() : (cleanNotes || null);
+      }
+
+      if (totalAmountCents !== pv.amountCents) {
+        changes['amountCents'] = { old: pv.amountCents, new: totalAmountCents };
+        const curr = body.currency || pv.currency || 'PHP';
+        const sym = curr === 'USD' ? '$' : '₱';
+        summaryParts.push(`amount changed from ${sym}${(pv.amountCents / 100).toFixed(2)} to ${sym}${(totalAmountCents / 100).toFixed(2)}`);
+      }
+
+      if (body.recipientName !== undefined && body.recipientName !== (pv.recipientName || '')) {
+        changes['recipientName'] = { old: pv.recipientName || '', new: body.recipientName };
+        summaryParts.push(`recipient changed to "${body.recipientName}"`);
+      }
+
+      if (body.recipientType !== undefined && body.recipientType !== pv.recipientType) {
+        changes['recipientType'] = { old: pv.recipientType, new: body.recipientType };
+        summaryParts.push(`classification changed to ${body.recipientType}`);
+      }
+
+      if (body.currency !== undefined && body.currency !== pv.currency) {
+        changes['currency'] = { old: pv.currency, new: body.currency };
+        summaryParts.push(`currency changed to ${body.currency}`);
+      }
+
+      if (body.voucherDate !== undefined) {
+        const oldDate = pv.voucherDate ? pv.voucherDate.slice(0, 10) : '';
+        const newDate = body.voucherDate.slice(0, 10);
+        if (oldDate !== newDate) {
+          changes['voucherDate'] = { old: oldDate, new: newDate };
+          summaryParts.push(`voucher date changed to ${newDate}`);
+        }
+      }
+
+      if (body.paymentMethod !== undefined && body.paymentMethod !== pv.paymentMethod) {
+        changes['paymentMethod'] = { old: pv.paymentMethod, new: body.paymentMethod };
+        summaryParts.push(`payment method changed to ${body.paymentMethod}`);
+      }
+
+      if (body.status !== undefined && body.status !== pv.status) {
+        changes['status'] = { old: pv.status, new: body.status };
+        summaryParts.push(`status changed from ${pv.status} to ${body.status}`);
+      }
+
+      if (finalNotes !== (pv.notes || null)) {
+        changes['notes'] = { old: pv.notes || '', new: finalNotes || '' };
+        summaryParts.push(`memo/notes updated`);
+      }
+
+      if (body.items !== undefined) {
+        const oldItemsStr = pv.items || '[]';
+        const newItemsStr = JSON.stringify(body.items);
+        if (oldItemsStr !== newItemsStr) {
+          changes['items'] = {
+            old: (() => { try { return JSON.parse(oldItemsStr); } catch (_) { return []; } })(),
+            new: body.items,
+          };
+          summaryParts.push(`line items updated (${body.items.length} item${body.items.length === 1 ? '' : 's'})`);
+        }
+      }
+
+      if (body.signatories !== undefined) {
+        const oldSigStr = pv.signatories || '{}';
+        const newSigStr = JSON.stringify(body.signatories);
+        if (oldSigStr !== newSigStr) {
+          changes['signatories'] = {
+            old: (() => { try { return JSON.parse(oldSigStr); } catch (_) { return {}; } })(),
+            new: body.signatories,
+          };
+          summaryParts.push(`signatories updated`);
+        }
+      }
+
       await db
         .update(schema.paymentVouchers)
         .set({
+          voucherNumber: finalVoucherNumber,
           recipientName: body.recipientName !== undefined ? body.recipientName : pv.recipientName,
+          recipientType: body.recipientType !== undefined ? body.recipientType : pv.recipientType,
+          currency: body.currency || pv.currency,
           voucherDate: body.voucherDate || pv.voucherDate,
           paymentMethod: (body.paymentMethod as any) || pv.paymentMethod,
-          notes: body.notes !== undefined ? body.notes : pv.notes,
+          status: body.status || pv.status,
+          notes: finalNotes,
           amountCents: totalAmountCents,
           items: body.items ? JSON.stringify(body.items) : pv.items,
           signatories: body.signatories ? JSON.stringify(body.signatories) : pv.signatories,
@@ -2074,11 +2550,53 @@ app.patch(
         }
       }
 
+      if (Object.keys(changes).length > 0) {
+        const summary = summaryParts.length > 0 ? `Edited: ${summaryParts.join(', ')}` : 'Edited voucher details';
+        await recordVoucherHistory(db, {
+          voucherId: id,
+          voucherType: 'PAYMENT',
+          voucherNumber: finalVoucherNumber,
+          action: 'UPDATED',
+          user: authUser,
+          summary,
+          changes,
+        });
+      }
+
       return c.json({ success: true, message: 'Payment Voucher updated successfully' });
     }
 
     if (rv) {
       const totalAmountCents = body.amountCents !== undefined ? body.amountCents : rv.amountCents;
+
+      const changes: Record<string, { old: any; new: any }> = {};
+      const summaryParts: string[] = [];
+
+      if (totalAmountCents !== rv.amountCents) {
+        changes['amountCents'] = { old: rv.amountCents, new: totalAmountCents };
+        const sym = '₱';
+        summaryParts.push(`amount changed from ${sym}${(rv.amountCents / 100).toFixed(2)} to ${sym}${(totalAmountCents / 100).toFixed(2)}`);
+      }
+
+      if (body.voucherDate !== undefined) {
+        const oldDate = rv.voucherDate ? rv.voucherDate.slice(0, 10) : '';
+        const newDate = body.voucherDate.slice(0, 10);
+        if (oldDate !== newDate) {
+          changes['voucherDate'] = { old: oldDate, new: newDate };
+          summaryParts.push(`voucher date changed to ${newDate}`);
+        }
+      }
+
+      if (body.paymentMethod !== undefined && body.paymentMethod !== rv.paymentMethod) {
+        changes['paymentMethod'] = { old: rv.paymentMethod, new: body.paymentMethod };
+        summaryParts.push(`payment method changed to ${body.paymentMethod}`);
+      }
+
+      if (body.notes !== undefined && body.notes !== (rv.notes || '')) {
+        changes['notes'] = { old: rv.notes || '', new: body.notes };
+        summaryParts.push(`notes updated`);
+      }
+
       await db
         .update(schema.receiptVouchers)
         .set({
@@ -2100,10 +2618,40 @@ app.patch(
         }
       }
 
+      if (Object.keys(changes).length > 0) {
+        const summary = summaryParts.length > 0 ? `Edited: ${summaryParts.join(', ')}` : 'Edited voucher details';
+        await recordVoucherHistory(db, {
+          voucherId: id,
+          voucherType: 'RECEIPT',
+          voucherNumber: rv.voucherNumber,
+          action: 'UPDATED',
+          user: authUser,
+          summary,
+          changes,
+        });
+      }
+
       return c.json({ success: true, message: 'Receipt Voucher updated successfully' });
     }
 
     if (jv) {
+      const changes: Record<string, { old: any; new: any }> = {};
+      const summaryParts: string[] = [];
+
+      if (body.voucherDate !== undefined) {
+        const oldDate = jv.voucherDate ? jv.voucherDate.slice(0, 10) : '';
+        const newDate = body.voucherDate.slice(0, 10);
+        if (oldDate !== newDate) {
+          changes['voucherDate'] = { old: oldDate, new: newDate };
+          summaryParts.push(`voucher date changed to ${newDate}`);
+        }
+      }
+
+      if (body.notes !== undefined && body.notes !== (jv.description || '')) {
+        changes['description'] = { old: jv.description || '', new: body.notes };
+        summaryParts.push(`description updated`);
+      }
+
       await db
         .update(schema.journalVouchers)
         .set({
@@ -2112,13 +2660,26 @@ app.patch(
         })
         .where(eq(schema.journalVouchers.id, id));
 
+      if (Object.keys(changes).length > 0) {
+        const summary = summaryParts.length > 0 ? `Edited: ${summaryParts.join(', ')}` : 'Edited voucher details';
+        await recordVoucherHistory(db, {
+          voucherId: id,
+          voucherType: 'JOURNAL',
+          voucherNumber: jv.jvNumber,
+          action: 'UPDATED',
+          user: authUser,
+          summary,
+          changes,
+        });
+      }
+
       return c.json({ success: true, message: 'Journal Voucher updated successfully' });
     }
   }
 );
 
 // POST /api/accounting/vouchers/:id/approve - Approve Voucher
-app.post('/api/accounting/vouchers/:id/approve', requireModule('accounting', 'update'), async (c) => {
+app.post('/api/accounting/vouchers/:id/approve', requireVoucherOrAccounting('update'), async (c) => {
   const db = createDbClient(c.env.DB);
   const id = c.req.param('id');
 
@@ -2129,6 +2690,11 @@ app.post('/api/accounting/vouchers/:id/approve', requireModule('accounting', 'up
   ]);
 
   if (!pv && !rv && !jv) return c.json({ success: false, error: 'Voucher not found' }, 404);
+
+  const authUser = c.get('authUser');
+  const voucherNumber = pv?.voucherNumber || rv?.voucherNumber || jv?.jvNumber || null;
+  const voucherType = pv ? 'PAYMENT' : (rv ? 'RECEIPT' : 'JOURNAL');
+  const oldStatus = (pv || rv || jv)!.status;
 
   if (pv) {
     await db.update(schema.paymentVouchers).set({ status: 'POSTED' }).where(eq(schema.paymentVouchers.id, id));
@@ -2163,6 +2729,15 @@ app.post('/api/accounting/vouchers/:id/approve', requireModule('accounting', 'up
         ]);
       }
     }
+    await recordVoucherHistory(db, {
+      voucherId: id,
+      voucherType,
+      voucherNumber,
+      action: 'APPROVED',
+      user: authUser,
+      summary: 'Approved voucher and posted to General Ledger',
+      changes: { status: { old: oldStatus, new: 'POSTED' } },
+    });
     return c.json({ success: true, message: 'Payment Voucher approved and posted to General Ledger' });
   }
 
@@ -2199,17 +2774,35 @@ app.post('/api/accounting/vouchers/:id/approve', requireModule('accounting', 'up
         ]);
       }
     }
+    await recordVoucherHistory(db, {
+      voucherId: id,
+      voucherType,
+      voucherNumber,
+      action: 'APPROVED',
+      user: authUser,
+      summary: 'Approved voucher and posted to General Ledger',
+      changes: { status: { old: oldStatus, new: 'POSTED' } },
+    });
     return c.json({ success: true, message: 'Receipt Voucher approved and posted to General Ledger' });
   }
 
   if (jv) {
     await db.update(schema.journalVouchers).set({ status: 'POSTED' }).where(eq(schema.journalVouchers.id, id));
+    await recordVoucherHistory(db, {
+      voucherId: id,
+      voucherType,
+      voucherNumber,
+      action: 'APPROVED',
+      user: authUser,
+      summary: 'Approved voucher and posted to General Ledger',
+      changes: { status: { old: oldStatus, new: 'POSTED' } },
+    });
     return c.json({ success: true, message: 'Journal Voucher approved and posted to General Ledger' });
   }
 });
 
 // POST /api/accounting/vouchers/:id/decline - Decline / Void Voucher
-app.post('/api/accounting/vouchers/:id/decline', requireModule('accounting', 'update'), async (c) => {
+app.post('/api/accounting/vouchers/:id/decline', requireVoucherOrAccounting('update'), async (c) => {
   const db = createDbClient(c.env.DB);
   const id = c.req.param('id');
 
@@ -2220,6 +2813,11 @@ app.post('/api/accounting/vouchers/:id/decline', requireModule('accounting', 'up
   ]);
 
   if (!pv && !rv && !jv) return c.json({ success: false, error: 'Voucher not found' }, 404);
+
+  const authUser = c.get('authUser');
+  const voucherNumber = pv?.voucherNumber || rv?.voucherNumber || jv?.jvNumber || null;
+  const voucherType = pv ? 'PAYMENT' : (rv ? 'RECEIPT' : 'JOURNAL');
+  const oldStatus = (pv || rv || jv)!.status;
 
   // Mark status as VOID and remove journal entries so ledger equilibrium and financial reports adjust cleanly
   if (pv) {
@@ -2235,11 +2833,21 @@ app.post('/api/accounting/vouchers/:id/decline', requireModule('accounting', 'up
 
   await db.delete(schema.journalEntries).where(eq(schema.journalEntries.voucherId, id));
 
+  await recordVoucherHistory(db, {
+    voucherId: id,
+    voucherType,
+    voucherNumber,
+    action: 'VOIDED',
+    user: authUser,
+    summary: 'Declined and voided voucher. Ledger balance adjusted.',
+    changes: { status: { old: oldStatus, new: 'VOID' } },
+  });
+
   return c.json({ success: true, message: 'Voucher declined and voided. Ledger balance adjusted.' });
 });
 
 // POST /api/accounting/vouchers/:id/restore - Restore Declined / Voided Voucher
-app.post('/api/accounting/vouchers/:id/restore', requireModule('accounting', 'update'), async (c) => {
+app.post('/api/accounting/vouchers/:id/restore', requireVoucherOrAccounting('update'), async (c) => {
   const db = createDbClient(c.env.DB);
   const id = c.req.param('id');
 
@@ -2250,6 +2858,11 @@ app.post('/api/accounting/vouchers/:id/restore', requireModule('accounting', 'up
   ]);
 
   if (!pv && !rv && !jv) return c.json({ success: false, error: 'Voucher not found' }, 404);
+
+  const authUser = c.get('authUser');
+  const voucherNumber = pv?.voucherNumber || rv?.voucherNumber || jv?.jvNumber || null;
+  const voucherType = pv ? 'PAYMENT' : (rv ? 'RECEIPT' : 'JOURNAL');
+  const oldStatus = (pv || rv || jv)!.status;
 
   if (pv) {
     await db.update(schema.paymentVouchers).set({ status: 'POSTED' }).where(eq(schema.paymentVouchers.id, id));
@@ -2281,6 +2894,15 @@ app.post('/api/accounting/vouchers/:id/restore', requireModule('accounting', 'up
         },
       ]);
     }
+    await recordVoucherHistory(db, {
+      voucherId: id,
+      voucherType,
+      voucherNumber,
+      action: 'RESTORED',
+      user: authUser,
+      summary: 'Restored voucher and re-posted to General Ledger',
+      changes: { status: { old: oldStatus, new: 'POSTED' } },
+    });
     return c.json({ success: true, message: 'Payment Voucher restored and re-posted to General Ledger' });
   }
 
@@ -2317,17 +2939,35 @@ app.post('/api/accounting/vouchers/:id/restore', requireModule('accounting', 'up
         },
       ]);
     }
+    await recordVoucherHistory(db, {
+      voucherId: id,
+      voucherType,
+      voucherNumber,
+      action: 'RESTORED',
+      user: authUser,
+      summary: 'Restored voucher and re-posted to General Ledger',
+      changes: { status: { old: oldStatus, new: 'POSTED' } },
+    });
     return c.json({ success: true, message: 'Receipt Voucher restored and re-posted to General Ledger' });
   }
 
   if (jv) {
     await db.update(schema.journalVouchers).set({ status: 'POSTED' }).where(eq(schema.journalVouchers.id, id));
+    await recordVoucherHistory(db, {
+      voucherId: id,
+      voucherType,
+      voucherNumber,
+      action: 'RESTORED',
+      user: authUser,
+      summary: 'Journal Voucher restored and re-posted to General Ledger',
+      changes: { status: { old: oldStatus, new: 'POSTED' } },
+    });
     return c.json({ success: true, message: 'Journal Voucher restored and re-posted to General Ledger' });
   }
 });
 
 // DELETE /api/accounting/vouchers/:id - Delete Voucher Permanently
-app.delete('/api/accounting/vouchers/:id', requireModule('accounting', 'delete'), async (c) => {
+app.delete('/api/accounting/vouchers/:id', requireVoucherOrAccounting('delete'), async (c) => {
   const db = createDbClient(c.env.DB);
   const id = c.req.param('id');
 
@@ -2336,9 +2976,44 @@ app.delete('/api/accounting/vouchers/:id', requireModule('accounting', 'delete')
     db.delete(schema.receiptVouchers).where(eq(schema.receiptVouchers.id, id)),
     db.delete(schema.journalVouchers).where(eq(schema.journalVouchers.id, id)),
     db.delete(schema.journalEntries).where(eq(schema.journalEntries.voucherId, id)),
+    db.delete(schema.voucherHistory).where(eq(schema.voucherHistory.voucherId, id)),
   ]);
 
   return c.json({ success: true, message: 'Voucher permanently deleted' });
+});
+
+// GET /api/accounting/vouchers/:id/history - Get revision history for a voucher
+app.get('/api/accounting/vouchers/:id/history', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const id = c.req.param('id');
+  await ensureVoucherHistoryTable(db);
+
+  try {
+    const history = await db.query.voucherHistory.findMany({
+      where: eq(schema.voucherHistory.voucherId, id),
+      orderBy: [desc(schema.voucherHistory.createdAt)],
+    });
+
+    return c.json({
+      success: true,
+      data: history.map((item) => {
+        let parsedChanges = null;
+        if (item.changes) {
+          try {
+            parsedChanges = JSON.parse(item.changes);
+          } catch (_) {
+            parsedChanges = null;
+          }
+        }
+        return {
+          ...item,
+          changes: parsedChanges,
+        };
+      }),
+    });
+  } catch (err: any) {
+    return c.json({ success: true, data: [] });
+  }
 });
 
 // GET /api/accounting/ledger - Full General Ledger

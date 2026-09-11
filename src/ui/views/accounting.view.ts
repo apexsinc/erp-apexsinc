@@ -3,7 +3,7 @@ export function renderAccountingView(): string {
 }
 
 export const ACCOUNTING_CLIENT_JS = `
-let accountingActiveTab = 'vouchers-rv';
+let accountingActiveTab = 'vouchers-pv';
 let cachedAccounts = [];
 let cachedVouchers = [];
 let cachedLedgerEntries = [];
@@ -13,11 +13,22 @@ let cachedCustomers = [];
 let cachedProfitLoss = null;
 let cachedBalanceSheet = null;
 let cachedCashFlow = null;
+function getCurrentAccountingYear() {
+  return new Date().getFullYear().toString();
+}
+
 let voucherSearchQuery = '';
-let voucherYearFilter = '2026';
+let voucherYearFilter = getCurrentAccountingYear();
+let voucherActiveViewMode = 'table';
+try {
+  const saved = localStorage.getItem('apexs_acc_voucher_view_mode');
+  voucherActiveViewMode = (saved === 'cards' || saved === 'table') ? saved : 'table';
+} catch (e) {
+  voucherActiveViewMode = 'table';
+}
 
 function getVoucherYear(v) {
-  if (!v) return '2026';
+  if (!v) return getCurrentAccountingYear();
   const rawDate = v.voucherDate || v.createdAt;
   if (rawDate) {
     const d = new Date(rawDate);
@@ -35,7 +46,7 @@ function getVoucherYear(v) {
       return match4[1];
     }
   }
-  return '2026';
+  return getCurrentAccountingYear();
 }
 
 async function loadAccounting() {
@@ -46,7 +57,10 @@ async function loadAccounting() {
     const urlTab = typeof getUrlParam === 'function' ? getUrlParam('tab') : null;
     if (urlTab) accountingActiveTab = urlTab;
     voucherSearchQuery = (typeof getUrlParam === 'function' ? getUrlParam('search') : '') || '';
-    voucherYearFilter = (typeof getUrlParam === 'function' ? getUrlParam('year') : null) || '2026';
+    voucherYearFilter = getCurrentAccountingYear();
+    if (typeof setUrlParam === 'function') {
+      setUrlParam('year', null);
+    }
 
     const [tbRes, ledgerRes, vouchersRes, accountsRes, settingsRes, plRes, bsRes, cfRes, vendorsRes, empRes, custRes] = await Promise.all([
       apiFetch('/api/accounting/trial-balance'),
@@ -138,9 +152,32 @@ function switchAccountingTab(tab) {
 }
 
 function handleVoucherSearch(query) {
-  voucherSearchQuery = query.toLowerCase();
+  voucherSearchQuery = (query || '').toLowerCase();
   if (typeof setUrlParam === 'function') {
     setUrlParam('search', voucherSearchQuery || null);
+  }
+  const searchInput = document.getElementById('accounting-voucher-search-input');
+  const selStart = searchInput ? searchInput.selectionStart : null;
+  const selEnd = searchInput ? searchInput.selectionEnd : null;
+
+  const container = document.getElementById('view-accounting');
+  if (container && state.trialBalance) {
+    renderAccountingContent(container, state.trialBalance, state.trialBalance.accounts || [], cachedLedgerEntries, cachedVouchers, cachedAccounts);
+  }
+
+  const newSearchInput = document.getElementById('accounting-voucher-search-input');
+  if (newSearchInput && selStart !== null) {
+    newSearchInput.focus();
+    try {
+      newSearchInput.setSelectionRange(selStart, selEnd);
+    } catch (e) {}
+  }
+}
+
+function handleVoucherYearFilter(year) {
+  voucherYearFilter = year;
+  if (typeof setUrlParam === 'function') {
+    setUrlParam('year', voucherYearFilter === getCurrentAccountingYear() ? null : voucherYearFilter);
   }
   const container = document.getElementById('view-accounting');
   if (container && state.trialBalance) {
@@ -148,11 +185,11 @@ function handleVoucherSearch(query) {
   }
 }
 
-function handleVoucherYearFilter(year) {
-  voucherYearFilter = year;
-  if (typeof setUrlParam === 'function') {
-    setUrlParam('year', voucherYearFilter === '2026' ? null : voucherYearFilter);
-  }
+function handleVoucherActiveViewMode(mode) {
+  voucherActiveViewMode = mode;
+  try {
+    localStorage.setItem('apexs_acc_voucher_view_mode', mode);
+  } catch (e) {}
   const container = document.getElementById('view-accounting');
   if (container && state.trialBalance) {
     renderAccountingContent(container, state.trialBalance, state.trialBalance.accounts || [], cachedLedgerEntries, cachedVouchers, cachedAccounts);
@@ -304,15 +341,21 @@ function exportCashFlowCsv() {
 function renderAccountingContent(container, tbJson, accounts, entries, vouchers, rawAccounts) {
   const isBalanced = tbJson.isBalanced;
 
-  // Extract all available years dynamically from vouchers
-  const allYearsSet = new Set(['2026', '2025', '2024', '2023']);
+  // Generate years from current year up to 2030 (plus any existing voucher years)
+  const currentYear = getCurrentAccountingYear();
+  const currentYearNum = parseInt(currentYear, 10);
+  const allYearsSet = new Set();
+  for (let y = currentYearNum; y <= 2030; y++) {
+    allYearsSet.add(y.toString());
+  }
   (vouchers || []).forEach((v) => {
-    allYearsSet.add(getVoucherYear(v));
+    const vy = getVoucherYear(v);
+    if (vy) allYearsSet.add(vy);
   });
-  const availableYears = Array.from(allYearsSet).sort((a, b) => parseInt(b, 10) - parseInt(a, 10));
+  const availableYears = Array.from(allYearsSet).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
 
   const yearFilterOptions = availableYears
-    .map((y) => '<option value="' + y + '"' + (voucherYearFilter === y ? ' selected' : '') + '>' + y + (y === '2026' ? ' (Current)' : '') + '</option>')
+    .map((y) => '<option value="' + y + '"' + (voucherYearFilter === y ? ' selected' : '') + '>' + y + (y === currentYear ? ' (Current)' : '') + '</option>')
     .concat(['<option value="ALL"' + (voucherYearFilter === 'ALL' ? ' selected' : '') + '>All Years</option>'])
     .join('');
 
@@ -381,10 +424,9 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
     else if (tag === 'PAYROLL_RUN') tag = 'Payroll';
     else if (tag === 'INVOICE' || tag === 'SALES_INVOICE') tag = 'Sales Invoice';
     else if (tag === 'CONTRA_TRANSFER') tag = 'Contra Transfer';
-
-    let tagBadgeHtml = '<span style="color: #cbd5e1; font-size: 0.82rem;">—</span>';
+    let tagBadgeHtml = '<span style="color: #cbd5e1; font-size: 0.8rem;">—</span>';
     if (tag) {
-      tagBadgeHtml = \`<span class="badge badge-neutral" style="font-size: 0.72rem; padding: 0.15rem 0.5rem; background: #f1f5f9; border: 1px solid #e2e8f0; color: #475569; font-weight: 600; white-space: nowrap;"><span style="color: #94a3b8; margin-right: 2px;">#</span>\${tag}</span>\`;
+      tagBadgeHtml = \`<span class="badge badge-neutral" style="font-size: 0.7rem; padding: 0.15rem 0.45rem; background: #f1f5f9; border: 1px solid #e2e8f0; color: #475569; font-weight: 600; white-space: nowrap; max-width: 95px; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: middle;" title="#\${tag}"><span style="color: #94a3b8; margin-right: 2px;">#</span>\${tag}</span>\`;
     }
 
     // Extract remarks / notes with tooltip & ellipsis (...)
@@ -394,8 +436,8 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
     }
     const cleanRemarks = remarksText.trim();
     const remarksHtml = cleanRemarks
-      ? \`<div style="max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.82rem; color: #64748b;" title="\${cleanRemarks.replace(/"/g, '&quot;')}">\${cleanRemarks}</div>\`
-      : \`<span style="color: #cbd5e1; font-size: 0.82rem;">—</span>\`;
+      ? \`<div style="max-width: 105px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.78rem; color: #64748b;" title="\${cleanRemarks.replace(/"/g, '&quot;')}">\${cleanRemarks}</div>\`
+      : \`<span style="color: #cbd5e1; font-size: 0.8rem;">—</span>\`;
 
     const status = v.status || 'POSTED';
     let statusBadgeClass = 'badge-success';
@@ -453,21 +495,38 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
 
     return \`
       <tr>
-        <td><strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #0f172a;">\${v.voucherNumber}</strong></td>
-        <td><span style="font-size: 0.83rem; color: #334155; font-weight: 500; white-space: nowrap;">\${formattedDate}</span></td>
-        <td><span class="badge \${voucherTypeBadges[v.voucherType] || 'badge-neutral'}"><span class="badge-dot"></span>\${v.voucherType}</span></td>
-        <td><strong style="font-size: 0.84rem; color: #1e293b;">\${v.recipient || '-'}</strong></td>
-        <td>\${tagBadgeHtml}</td>
-        <td>\${remarksHtml}</td>
-        <td><span style="font-size: 0.8rem; color: #64748b; white-space: nowrap;">\${(v.paymentMethod || 'STANDARD').replace('_', ' ')}</span></td>
-        <td style="font-weight: 700; color: \${amountColor}; font-family: 'JetBrains Mono', monospace; font-size: 0.88rem; white-space: nowrap;">
+        <td class="td-voucher-num" data-label="Voucher #">
+          <div style="display: flex; align-items: center; gap: 0.45rem;">
+            <span style="font-size: 1.05rem; line-height: 1;">🧾</span>
+            <strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.88rem; color: #0f172a;">\${v.voucherNumber}</strong>
+          </div>
+          <div class="pv-card-amount" style="font-weight: 800; color: \${amountColor}; font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; white-space: nowrap;">
+            \${amountPrefix}\${formatCurrency(v.amountCents, v.currency || 'PHP')}
+          </div>
+        </td>
+        <td class="td-date" data-label="Date"><span style="font-size: 0.83rem; color: #334155; font-weight: 500; white-space: nowrap;">\${formattedDate}</span></td>
+        <td class="td-type" data-label="Type"><span class="badge \${voucherTypeBadges[v.voucherType] || 'badge-neutral'}"><span class="badge-dot"></span>\${v.voucherType}</span></td>
+        <td class="td-recipient" data-label="Payee / Payer">
+          <div style="max-width: 135px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 0.35rem;" title="\${escapeHtml(v.recipient || '-')}">
+            <span style="color: #64748b; font-size: 0.85rem; flex-shrink: 0;">🏢</span>
+            <strong style="font-size: 0.84rem; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">\${escapeHtml(v.recipient || '-')}</strong>
+          </div>
+        </td>
+        <td class="td-tag" data-label="Tag / Category">\${tagBadgeHtml}</td>
+        <td class="td-remarks" data-label="Remarks">\${remarksHtml}</td>
+        <td class="td-method" data-label="Payment Method"><span class="badge badge-neutral" style="font-size: 0.74rem; white-space: nowrap;">\${(v.paymentMethod || 'STANDARD').replace('_', ' ')}</span></td>
+        <td class="td-amount" data-label="Total Amount" style="font-weight: 700; color: \${amountColor}; font-family: 'JetBrains Mono', monospace; font-size: 0.88rem; white-space: nowrap;">
           \${amountPrefix}\${formatCurrency(v.amountCents, v.currency || 'PHP')}
         </td>
-        <td><span class="badge \${statusBadgeClass}"><span class="badge-dot"></span>\${statusLabel}</span></td>
-        <td>
+        <td class="td-status" data-label="Status"><span class="badge \${statusBadgeClass}"><span class="badge-dot"></span>\${statusLabel}</span></td>
+        <td class="td-actions" data-label="Actions">
           <div class="action-btn-group">
             <button type="button" class="icon-btn icon-btn-view has-tooltip" data-tooltip="View Official Slip" onclick="openVoucherSlipModal('\${v.id}')" aria-label="View Official Slip">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
+            <button type="button" class="icon-btn btn-history-badge-container has-tooltip" data-tooltip="Voucher History & Audit Trail (\${v.historyCount || 0} record\${(v.historyCount || 0) === 1 ? '' : 's'})" onclick="openVoucherHistoryModal('\${v.id}')" aria-label="Voucher History">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 15px; height: 15px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              <span class="history-count-badge \${(v.historyCount || 0) > 0 ? 'has-records' : 'zero-records'}">\${v.historyCount || 0}</span>
             </button>
             \${adminButtonsHtml}
           </div>
@@ -505,6 +564,7 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
   });
 
   const tabs = [
+    { id: 'vouchers-pv', label: '📤 Payments (PV)', count: vouchers.filter((x) => x.voucherType === 'PAYMENT').length },
     { id: 'vouchers-rv', label: '📥 Receipts (RV)', count: vouchers.filter((x) => x.voucherType === 'RECEIPT').length },
     { id: 'vouchers-jv', label: '⚖️ Journals (JV)', count: vouchers.filter((x) => x.voucherType === 'JOURNAL').length },
     { id: 'vouchers-declined', label: '🚫 Declined (Void)', count: vouchers.filter((x) => x.status === 'VOID' || x.status === 'DECLINED').length },
@@ -551,25 +611,37 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
   let mainSectionHtml = '';
 
   if (accountingActiveTab.startsWith('vouchers')) {
+    const accViewClass = voucherActiveViewMode === 'cards' ? ' view-mode-cards' : (voucherActiveViewMode === 'table' ? ' view-mode-table' : '');
     mainSectionHtml = \`
       <div style="padding: 0.75rem 1.35rem 0.5rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
-        <div style="display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap; flex: 1;">
+        <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; flex: 1;">
           <div style="flex: 1; max-width: 320px; min-width: 180px;">
-            <input type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search voucher #, payee, or notes..." value="\${voucherSearchQuery}" oninput="handleVoucherSearch(this.value)" />
+            <input id="accounting-voucher-search-input" type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search voucher #, payee, or notes..." value="\${voucherSearchQuery}" oninput="handleVoucherSearch(this.value)" />
           </div>
-          <div style="display: flex; align-items: center; gap: 0.45rem;">
+          <div style="display: flex; align-items: center; gap: 0.4rem;">
             <label style="font-size: 0.8rem; font-weight: 700; color: #475569; white-space: nowrap;">📅 Year:</label>
-            <select class="form-select" style="padding: 0.42rem 0.75rem; font-size: 0.82rem; font-weight: 600; min-width: 140px; border-radius: 6px;" onchange="handleVoucherYearFilter(this.value)">
+            <select class="form-select" style="padding: 0.42rem 0.75rem; font-size: 0.82rem; font-weight: 600; min-width: 130px; border-radius: 6px;" onchange="handleVoucherYearFilter(this.value)">
               \${yearFilterOptions}
             </select>
+          </div>
+          <div class="btn-view-mode-group" title="Switch table display layout">
+            <button type="button" class="btn-view-mode\${voucherActiveViewMode === 'table' ? ' active' : ''}" onclick="handleVoucherActiveViewMode('table')" title="Compact Table View">
+              ☰ Table
+            </button>
+            <button type="button" class="btn-view-mode\${voucherActiveViewMode === 'cards' ? ' active' : ''}" onclick="handleVoucherActiveViewMode('cards')" title="Cascade Wrap Cards View">
+              ⊞ Wrap Cards
+            </button>
+            <button type="button" class="btn-view-mode" onclick="if (typeof loadAccounting === 'function') loadAccounting(); if (typeof loadVouchers === 'function') loadVouchers();" title="Reload Vouchers" aria-label="Reload Vouchers" style="display: inline-flex; align-items: center; justify-content: center; padding: 0.35rem 0.6rem; font-size: 0.85rem;">
+              🔄
+            </button>
           </div>
         </div>
         <div>
           \${exportButtonHtml}
         </div>
       </div>
-      <div class="table-responsive">
-        <table class="data-table">
+      <div class="table-responsive table-responsive-cascade">
+        <table class="data-table responsive-cascade-table pv-compact-table\${accViewClass}">
           <thead>
             <tr>
               <th>Voucher #</th>
@@ -581,11 +653,11 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
               <th>Payment Method</th>
               <th>Total Amount</th>
               <th>Status</th>
-              <th>Actions</th>
+              <th style="text-align: right;" class="th-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
-            \${(voucherRows && voucherRows.length > 0) ? voucherRows.join('') : '<tr><td colspan="10" style="text-align: center; color: #64748b; padding: 2.5rem;">No vouchers found' + (voucherYearFilter !== 'ALL' ? ' for year ' + voucherYearFilter : '') + ' in this category.</td></tr>'}
+            \${(voucherRows && voucherRows.length > 0) ? voucherRows.join('') : '<tr class="empty-row"><td colspan="10" style="text-align: center; color: #64748b; padding: 2.5rem;">No vouchers found' + (voucherYearFilter !== 'ALL' ? ' for year ' + voucherYearFilter : '') + ' in this category.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -1046,14 +1118,13 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
 /* ========================================================================== */
 /* VOUCHER MODALS & ACTIONS                                                   */
 /* ========================================================================== */
-
 function openNewPaymentVoucherModal() {
-  const accountOptions = cachedAccounts.map((a) => \`<option value="\${a.code}">\${a.code} - \${a.name} (\${a.type})</option>\`).join('');
+  const accountOptions = cachedAccounts.map((a) => \`<option value="\${a.code}">\${a.code} - \${a.name} (\${a.type})\</option>\`).join('');
   const todayStr = new Date().toISOString().slice(0, 10);
 
   const vSettings = window.cachedVoucherSettings || {};
   const sign = vSettings['vouchers.signatories'] || {};
-  const prepVal = sign.preparedBy || 'Administrator';
+  const prepVal = (typeof state !== 'undefined' && state.user && state.user.name) || sign.preparedBy || 'Administrator';
   const certVal = sign.certifiedBy || 'Joy/Admin';
   const appVal = sign.approvedBy || 'Kenneth Brown/CEO';
   const recVal = sign.receivedBy || 'Signature over printed name/Date';
@@ -1069,12 +1140,34 @@ function openNewPaymentVoucherModal() {
       ];
   const methodOptions = methods
     .filter((m) => m.isActive !== false)
-    .map((m) => \`<option value="\${m.id}">\${m.name}</option>\`)
+    .map((m) => \`<option value="\${m.id}">\${m.name}\</option>\`)
     .join('');
 
-  const tags = (vSettings['vouchers.tags'] && Array.isArray(vSettings['vouchers.tags'])) ? vSettings['vouchers.tags'] : [];
+  const presetTags = [
+    'Operating Expense (OPEX)',
+    'Capital Expenditure (CAPEX)',
+    'PO Procurement',
+    'Payroll',
+    'Rent / Lease',
+    'Utilities',
+    'Utilities & Power',
+    'Logistics & Freight',
+    'Office Supplies',
+    'Software & Subscriptions',
+    'Marketing / Advertising',
+    'Legal & Professional',
+    'Travel & Representation',
+    'Repair & Maintenance',
+    'Taxes & Licenses',
+    'Direct Materials',
+    'Subcontracting',
+    'Salaries & Compensation',
+    'Petty Cash Replenishment',
+  ];
+  const customTags = (vSettings['vouchers.tags'] && Array.isArray(vSettings['vouchers.tags'])) ? vSettings['vouchers.tags'] : [];
+  const allTagsList = Array.from(new Set(customTags.concat(presetTags)));
   const tagOptions = ['<option value="">-- No Tag / General --</option>']
-    .concat(tags.map((t) => \`<option value="\${t}">\${t}</option>\`))
+    .concat(allTagsList.map((t) => \`<option value="\${escapeHtml(t)}">\${escapeHtml(t)}\</option>\`))
     .join('');
 
   const defAccounts = vSettings['vouchers.default_accounts'] || {};
@@ -1100,7 +1193,12 @@ function openNewPaymentVoucherModal() {
           <div class="form-group" style="margin-bottom: 0;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
               <label class="form-label" style="font-weight: 700; margin-bottom: 0; color: #1e293b; font-size: 0.84rem;">Pay to (Recipient / Payee Name) *</label>
-              <span style="font-size: 0.72rem; color: #64748b;">Search or quick-pick</span>
+              <div style="display: flex; align-items: center; gap: 0.35rem;">
+                <button type="button" class="btn btn-outline" style="padding: 0.12rem 0.45rem; font-size: 0.72rem; height: auto; border-color: #cbd5e1; color: #1d4ed8; font-weight: 600; cursor: pointer;" onclick="handlePvPayToMe()" title="Autofill my own name as payee for expense claim / reimbursement">
+                  👤 Pay to Me
+                </button>
+                <span style="font-size: 0.72rem; color: #64748b;">or pick</span>
+              </div>
             </div>
             <div style="display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 0.45rem;">
               <input type="text" id="pv-recipient-name" class="form-input" list="pv-payees-datalist" placeholder="e.g. Acme Materials or Sarah Connor" oninput="handlePvPayeeInput(this.value)" required style="font-weight: 600;" />
@@ -1307,6 +1405,24 @@ function openNewPaymentVoucherModal() {
   }, 50);
 }
 
+function handlePvPayToMe() {
+  const currentUserName = (typeof state !== 'undefined' && state.user && state.user.name) ? state.user.name : '';
+  if (!currentUserName) {
+    showToast('No user profile found', 'warning');
+    return;
+  }
+  const nameInput = document.getElementById('pv-recipient-name');
+  const typeSelect = document.getElementById('pv-recipient-type');
+  if (nameInput) {
+    nameInput.value = currentUserName;
+    nameInput.focus();
+  }
+  if (typeSelect) {
+    typeSelect.value = 'EMPLOYEE';
+  }
+  showToast('Set Payee to your name: ' + currentUserName, 'info');
+}
+
 function handlePvQuickPayeeSelect(val) {
   if (!val) return;
   const parts = val.split('|');
@@ -1406,6 +1522,8 @@ async function submitNewPaymentVoucher(e) {
   const currency = document.getElementById('pv-currency').value;
   const voucherDate = document.getElementById('pv-date').value;
   const voucherNumber = document.getElementById('pv-voucher-number').value.trim();
+  const tagEl = document.getElementById('pv-tag');
+  const tag = tagEl ? tagEl.value.trim() : '';
   const paymentMethod = document.getElementById('pv-payment-method').value;
   const expenseAccountCode = document.getElementById('pv-exp-acc').value;
   const paymentAccountCode = document.getElementById('pv-pay-acc').value;
@@ -1449,6 +1567,7 @@ async function submitNewPaymentVoucher(e) {
         recipientName,
         recipientType,
         currency,
+        tag: tag || undefined,
         amountCents: totalCents,
         items,
         signatories,
@@ -1463,7 +1582,8 @@ async function submitNewPaymentVoucher(e) {
 
     closeModal();
     showToast(\`Payment Voucher \${json.voucherNumber} posted successfully\`, 'success');
-    loadAccounting();
+    if (typeof loadAccounting === 'function') loadAccounting();
+    if (typeof loadVouchers === 'function') loadVouchers();
   } catch (err) {
     showToast(err.message, 'danger');
   }
@@ -1587,7 +1707,8 @@ async function submitNewReceiptVoucher(e) {
 
     closeModal();
     showToast(\`Receipt Voucher \${json.voucherNumber} posted successfully\`, 'success');
-    loadAccounting();
+    if (typeof loadAccounting === 'function') loadAccounting();
+    if (typeof loadVouchers === 'function') loadVouchers();
   } catch (err) {
     showToast(err.message, 'danger');
   }
@@ -1666,7 +1787,8 @@ async function submitNewContraVoucher(e) {
 
     closeModal();
     showToast(\`Contra Voucher \${json.voucherNumber} posted successfully\`, 'success');
-    loadAccounting();
+    if (typeof loadAccounting === 'function') loadAccounting();
+    if (typeof loadVouchers === 'function') loadVouchers();
   } catch (err) {
     showToast(err.message, 'danger');
   }
@@ -1773,7 +1895,8 @@ async function submitNewJV(e) {
 
     closeModal();
     showToast('Journal Voucher ' + json.jvNumber + ' posted successfully', 'success');
-    loadAccounting();
+    if (typeof loadAccounting === 'function') loadAccounting();
+    if (typeof loadVouchers === 'function') loadVouchers();
   } catch (err) {
     showToast(err.message, 'danger');
   }
@@ -1828,8 +1951,8 @@ function renderOfficialVoucherSlipMarkup(v) {
     const amtStr = (((it.amountCents || 0) / 100)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     itemRowsHtml +=
       '<tr style="height: 20px;">' +
-      '<td style="border: 1px solid #000000; padding: 2px 6px; font-size: 0.78rem; font-family: Inter, sans-serif;">' + escapeHtml(it.invoiceNo || '') + '</td>' +
-      '<td style="border: 1px solid #000000; padding: 2px 6px; font-size: 0.78rem; font-family: Inter, sans-serif;">' + escapeHtml(it.description || '') + '</td>' +
+      '<td style="border: 1px solid #000000; padding: 2px 6px; text-align: center; font-size: 0.78rem; font-family: Inter, sans-serif;">' + escapeHtml(it.invoiceNo || '') + '</td>' +
+      '<td style="border: 1px solid #000000; padding: 2px 6px; text-align: center; font-size: 0.78rem; font-family: Inter, sans-serif;">' + escapeHtml(it.description || '') + '</td>' +
       '<td style="border: 1px solid #000000; padding: 2px 6px; text-align: center; font-size: 0.78rem; font-weight: 600;">' + curSymbol + '</td>' +
       '<td style="border: 1px solid #000000; padding: 2px 6px; text-align: right; font-size: 0.78rem; font-family: JetBrains Mono, monospace;">' + amtStr + '</td>' +
       '</tr>';
@@ -1872,7 +1995,7 @@ function renderOfficialVoucherSlipMarkup(v) {
   });
 
   return (
-    '<div class="official-voucher-sheet" style="background: #ffffff; color: #000000; padding: 1rem 1.25rem; font-family: Inter, Arial, sans-serif; border: none; max-width: 760px; margin: 0 auto; box-shadow: none;">' +
+    '<div class="official-voucher-sheet" style="background: #ffffff; color: #000000; padding: 1.25rem 1.25rem 1rem 1.25rem; font-family: Inter, Arial, sans-serif; border: none; max-width: 760px; margin: 0 auto; box-shadow: none;">' +
     '<!-- APEXS Header with Official Brand Logo -->' +
     '<div style="display: flex; justify-content: center; align-items: center; gap: 1.15rem; margin-bottom: 0.35rem;">' +
     '<img src="/assets/logo.png" alt="APEXS, INC. Logo" style="height: 48px; width: auto; object-fit: contain; flex-shrink: 0;" />' +
@@ -1883,8 +2006,9 @@ function renderOfficialVoucherSlipMarkup(v) {
     '</div>' +
     '</div>' +
     '<!-- Address & Contact -->' +
-    '<div style="text-align: center; font-size: 0.68rem; font-weight: 600; color: #1e293b; margin-bottom: 0.45rem; line-height: 1.25;">' +
-    '<div>Suite 714 EGI City by the Sea, Maribago, Lapu-Lapu City 6015 | Telefax# 495-2106</div>' +
+    '<div style="text-align: center; font-size: 0.68rem; font-weight: 600; color: #1e293b; margin-bottom: 0.45rem; line-height: 1.35;">' +
+    '<div>Suite 714 EGI City by the Sea, Maribago, Lapu-Lapu City 6015</div>' +
+    '<div>Telefax# 495-2106</div>' +
     '</div>' +
     '<!-- Top Voucher Number, Date & Pay to Rows -->' +
     '<div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 0.45rem; font-size: 0.8rem;">' +
@@ -1979,7 +2103,7 @@ async function generateVoucherPdfBlob(v) {
   const filename = 'PV_' + cleanNum + (cleanRecipient ? '_' + cleanRecipient : '') + '.pdf';
 
   const opt = {
-    margin: [4, 18, 4, 18], // mm
+    margin: [18, 18, 12, 18], // mm
     filename: filename,
     image: { type: 'jpeg', quality: 0.98 },
     html2canvas: { scale: 2, useCORS: true, logging: false },
@@ -2043,17 +2167,41 @@ function openVoucherSlipModal(voucherId) {
 
   const body = renderOfficialVoucherSlipMarkup(v);
 
+  const histCount = v.historyCount || 0;
+  const countBadgeClass = histCount > 0 ? 'has-records' : 'zero-records';
   const footer =
-    '<button type="button" class="btn btn-secondary" onclick="window.print()">🖨️ Print Official Voucher</button>' +
-    '<button type="button" class="btn btn-primary" onclick="downloadSingleVoucherPdf(\\\'' + v.id + '\\\')">📥 Download PDF</button>' +
+    '<button type="button" class="btn btn-secondary btn-history-badge-container" onclick="openVoucherHistoryModal(\\\'' + v.id + '\\\')" style="margin-right: 0.35rem;">📜 History<span class="history-count-badge ' + countBadgeClass + '">' + histCount + '</span></button>' +
+    '<button type="button" id="btn-print-voucher" class="btn btn-primary" onclick="window.print()">🖨️ Print Official Voucher</button>' +
+    '<button type="button" class="btn btn-secondary" onclick="downloadSingleVoucherPdf(\\\'' + v.id + '\\\')">📥 Download PDF</button>' +
     '<button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>';
 
   openModal('Official Voucher Slip — ' + v.voucherNumber, body, footer, 'xl');
+
+  setTimeout(() => {
+    const printBtn = document.getElementById('btn-print-voucher');
+    if (printBtn) printBtn.focus();
+  }, 60);
 }
 
 /* ========================================================================== */
 /* VOUCHER CRUD & ADMIN APPROVAL / DECLINE / RESTORE CONTROLLERS              */
 /* ========================================================================== */
+
+let currentEditVoucherCurrency = 'PHP';
+
+function updateEditVoucherCurrency() {
+  const curSelect = document.getElementById('edit-v-currency');
+  if (curSelect) {
+    currentEditVoucherCurrency = curSelect.value;
+  }
+  const sym = currentEditVoucherCurrency === 'USD' ? '$' : '₱';
+  document.querySelectorAll('.edit-cur-symbol').forEach((el) => {
+    el.textContent = sym;
+  });
+  const thSym = document.getElementById('edit-voucher-th-symbol');
+  if (thSym) thSym.textContent = sym;
+  updateEditVoucherTotal();
+}
 
 function updateEditVoucherTotal() {
   const rows = document.querySelectorAll('#edit-voucher-items-tbody tr.edit-voucher-item-row');
@@ -2069,13 +2217,14 @@ function updateEditVoucherTotal() {
   });
   const totalDisplay = document.getElementById('edit-voucher-total-display');
   if (totalDisplay) {
-    totalDisplay.textContent = formatCurrency(totalCents);
+    totalDisplay.textContent = formatCurrency(totalCents, currentEditVoucherCurrency);
   }
 }
 
 function addEditVoucherRow(invoiceNo, description, amount) {
   const tbody = document.getElementById('edit-voucher-items-tbody');
   if (!tbody) return;
+  const sym = currentEditVoucherCurrency === 'USD' ? '$' : '₱';
   const tr = document.createElement('tr');
   tr.className = 'edit-voucher-item-row';
   tr.innerHTML =
@@ -2087,7 +2236,7 @@ function addEditVoucherRow(invoiceNo, description, amount) {
     '</td>' +
     '<td>' +
     '<div style="position: relative;">' +
-    '<span style="position: absolute; left: 0.65rem; top: 50%; transform: translateY(-50%); font-size: 0.82rem; color: #64748b; pointer-events: none;">₱</span>' +
+    '<span class="edit-cur-symbol" style="position: absolute; left: 0.65rem; top: 50%; transform: translateY(-50%); font-size: 0.82rem; color: #64748b; pointer-events: none;">' + sym + '</span>' +
     '<input type="number" step="0.01" min="0" class="form-input edit-item-amount" style="padding: 0.45rem 0.65rem 0.45rem 1.6rem; font-size: 0.85rem; text-align: right; font-family: monospace;" placeholder="0.00" value="' + (amount || '') + '" oninput="updateEditVoucherTotal()" required />' +
     '</div>' +
     '</td>' +
@@ -2114,15 +2263,19 @@ function removeEditVoucherRow(btn) {
 }
 
 function openEditVoucherModal(voucherId) {
-  const v = cachedVouchers.find((x) => x.id === voucherId);
+  const v = (typeof cachedVouchers !== 'undefined' ? cachedVouchers.find((x) => x.id === voucherId) : null) ||
+            (typeof cachedPVList !== 'undefined' ? cachedPVList.find((x) => x.id === voucherId) : null);
   if (!v) {
     showToast('Voucher not found', 'warning');
     return;
   }
 
+  currentEditVoucherCurrency = v.currency || 'PHP';
+  const sym = currentEditVoucherCurrency === 'USD' ? '$' : '₱';
+
   const rawDate = v.voucherDate || v.createdAt;
   const isoDate = new Date(rawDate).toISOString().split('T')[0];
-  
+
   let items = v.items || [];
   if (typeof items === 'string') {
     try { items = JSON.parse(items); } catch (_) { items = []; }
@@ -2147,9 +2300,9 @@ function openEditVoucherModal(voucherId) {
     const amt = ((it.amountCents || 0) / 100).toFixed(2);
     rowsHtml +=
       '<tr class="edit-voucher-item-row">' +
-      '<td><input type="text" class="form-input edit-item-invoice" style="padding: 0.45rem 0.65rem; font-size: 0.85rem;" placeholder="Inv # / Ref" value="' + inv + '" /></td>' +
-      '<td><input type="text" class="form-input edit-item-desc" style="padding: 0.45rem 0.65rem; font-size: 0.85rem;" placeholder="Account / Description" value="' + desc + '" required /></td>' +
-      '<td><div style="position: relative;"><span style="position: absolute; left: 0.65rem; top: 50%; transform: translateY(-50%); font-size: 0.82rem; color: #64748b; pointer-events: none;">₱</span>' +
+      '<td><input type="text" class="form-input edit-item-invoice" style="padding: 0.45rem 0.65rem; font-size: 0.85rem;" placeholder="Inv # / Ref" value="' + escapeHtml(inv) + '" /></td>' +
+      '<td><input type="text" class="form-input edit-item-desc" style="padding: 0.45rem 0.65rem; font-size: 0.85rem;" placeholder="Account / Description" value="' + escapeHtml(desc) + '" required /></td>' +
+      '<td><div style="position: relative;"><span class="edit-cur-symbol" style="position: absolute; left: 0.65rem; top: 50%; transform: translateY(-50%); font-size: 0.82rem; color: #64748b; pointer-events: none;">' + sym + '</span>' +
       '<input type="number" step="0.01" min="0" class="form-input edit-item-amount" style="padding: 0.45rem 0.65rem 0.45rem 1.6rem; font-size: 0.85rem; text-align: right; font-family: monospace;" placeholder="0.00" value="' + amt + '" oninput="updateEditVoucherTotal()" required /></div></td>' +
       '<td style="text-align: center;">' +
       '<button type="button" class="icon-btn icon-btn-delete has-tooltip" data-tooltip="Remove Row" onclick="removeEditVoucherRow(this)" aria-label="Remove Row">' +
@@ -2164,10 +2317,10 @@ function openEditVoucherModal(voucherId) {
       '<div style="border-top: 1px solid var(--border-color); padding-top: 0.85rem; margin-top: 0.85rem;">' +
       '<div style="font-size: 0.82rem; font-weight: 700; color: #475569; margin-bottom: 0.65rem; text-transform: uppercase; letter-spacing: 0.04em;">✍️ Official Slip Signatories</div>' +
       '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem;">' +
-      '<div><label class="form-label" style="font-size: 0.76rem;">Prepared by</label><input type="text" id="edit-sig-prep" class="form-input" style="padding: 0.4rem 0.65rem; font-size: 0.82rem;" value="' + (sig.preparedBy || '') + '" placeholder="Administrator / Bookkeeper" /></div>' +
-      '<div><label class="form-label" style="font-size: 0.76rem;">Certified Correct by</label><input type="text" id="edit-sig-cert" class="form-input" style="padding: 0.4rem 0.65rem; font-size: 0.82rem;" value="' + (sig.certifiedBy || '') + '" placeholder="Joy / Senior Admin" /></div>' +
-      '<div><label class="form-label" style="font-size: 0.76rem;">Approved by</label><input type="text" id="edit-sig-appr" class="form-input" style="padding: 0.4rem 0.65rem; font-size: 0.82rem;" value="' + (sig.approvedBy || '') + '" placeholder="Kenneth Brown / CEO" /></div>' +
-      '<div><label class="form-label" style="font-size: 0.76rem;">Received by</label><input type="text" id="edit-sig-recv" class="form-input" style="padding: 0.4rem 0.65rem; font-size: 0.82rem;" value="' + (sig.receivedBy || '') + '" placeholder="Signature over printed name / Date" /></div>' +
+      '<div><label class="form-label" style="font-size: 0.76rem;">Prepared by</label><input type="text" id="edit-sig-prep" class="form-input" style="padding: 0.4rem 0.65rem; font-size: 0.82rem;" value="' + escapeHtml(sig.preparedBy || '') + '" placeholder="Administrator / Bookkeeper" /></div>' +
+      '<div><label class="form-label" style="font-size: 0.76rem;">Certified Correct by</label><input type="text" id="edit-sig-cert" class="form-input" style="padding: 0.4rem 0.65rem; font-size: 0.82rem;" value="' + escapeHtml(sig.certifiedBy || '') + '" placeholder="Joy / Senior Admin" /></div>' +
+      '<div><label class="form-label" style="font-size: 0.76rem;">Approved by</label><input type="text" id="edit-sig-appr" class="form-input" style="padding: 0.4rem 0.65rem; font-size: 0.82rem;" value="' + escapeHtml(sig.approvedBy || '') + '" placeholder="Kenneth Brown / CEO" /></div>' +
+      '<div><label class="form-label" style="font-size: 0.76rem;">Received by</label><input type="text" id="edit-sig-recv" class="form-input" style="padding: 0.4rem 0.65rem; font-size: 0.82rem;" value="' + escapeHtml(sig.receivedBy || '') + '" placeholder="Signature over printed name / Date" /></div>' +
       '</div></div>';
   }
 
@@ -2189,36 +2342,112 @@ function openEditVoucherModal(voucherId) {
     editMethodOptions += '<option value="' + v.paymentMethod + '" selected>' + v.paymentMethod + '</option>';
   }
 
+  // Tag & Clean Notes resolution
+  let currentTag = v.tag || '';
+  let cleanNotes = v.notes || '';
+  if (cleanNotes.startsWith('[') && cleanNotes.includes(']')) {
+    if (!currentTag) {
+      currentTag = cleanNotes.slice(1, cleanNotes.indexOf(']'));
+    }
+    cleanNotes = cleanNotes.slice(cleanNotes.indexOf(']') + 1).trim();
+  }
+  if (currentTag === 'MANUAL' || currentTag === 'DIRECT_RECEIPT') currentTag = '';
+
+  const presetTags = [
+    'Utilities & Telecom',
+    'Logistics & Freight',
+    'Payroll & Wages',
+    'Medical / Health',
+    'Office Supplies & IT',
+    'Travel & Transport',
+    'General Expense',
+    'PO Procurement',
+    'Contra Transfer',
+    'Sales Invoice',
+  ];
+  const customTags = (vSettings['vouchers.tags'] && Array.isArray(vSettings['vouchers.tags'])) ? vSettings['vouchers.tags'] : [];
+  const allTagsList = Array.from(new Set(customTags.concat(presetTags)));
+  const tagDatalistOptions = allTagsList.map((t) => '<option value="' + escapeHtml(t) + '">' + escapeHtml(t) + '</option>').join('');
+
+  const currentStatus = v.status || 'POSTED';
+  const recipientTypeVal = v.recipientType || 'VENDOR';
+
+  const isDraft = currentStatus === 'DRAFT';
+  const voucherNumberFieldHtml = isDraft
+    ? '<div class="form-group" style="margin-bottom: 0;">' +
+      '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">' +
+      '<label class="form-label" style="font-size: 0.8rem; font-weight: 700; margin-bottom: 0;" for="edit-v-number">Voucher # *</label>' +
+      '<span class="badge badge-warning" style="font-size: 0.68rem; padding: 0.1rem 0.35rem; font-weight: 600;">Draft Editable</span>' +
+      '</div>' +
+      '<input type="text" id="edit-v-number" class="form-input" value="' + escapeHtml(v.voucherNumber) + '" required style="background: #ffffff; border: 1px solid #f59e0b; font-weight: 700; font-family: monospace; font-size: 0.88rem;" placeholder="e.g. 26-000440" /></div>'
+    : '<div class="form-group" style="margin-bottom: 0;">' +
+      '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">' +
+      '<label class="form-label" style="font-size: 0.8rem; font-weight: 700; margin-bottom: 0;">Voucher Number</label>' +
+      '<span style="font-size: 0.7rem; color: #64748b;">(Locked)</span>' +
+      '</div>' +
+      '<input type="text" id="edit-v-number" class="form-input" value="' + escapeHtml(v.voucherNumber) + '" disabled style="background: #f1f5f9; cursor: not-allowed; font-weight: 700; font-family: monospace; font-size: 0.88rem;" /></div>';
+
   const body =
     '<form id="edit-voucher-form" onsubmit="event.preventDefault(); handleSaveVoucherEdit(\\\'' + v.id + '\\\', \\\'' + v.voucherType + '\\\')">' +
-    '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">' +
-    '<div class="form-group" style="margin-bottom: 0;"><label class="form-label">Voucher Number</label>' +
-    '<input type="text" class="form-input" value="' + v.voucherNumber + '" disabled style="background: #f1f5f9; cursor: not-allowed; font-weight: 700; font-family: monospace;" /></div>' +
-    '<div class="form-group" style="margin-bottom: 0;"><label class="form-label" for="edit-v-date">Voucher Date</label>' +
-    '<input type="date" id="edit-v-date" class="form-input" value="' + isoDate + '" required /></div>' +
-    '</div>' +
-    '<div style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 1rem; margin-bottom: 1.25rem;">' +
-    '<div class="form-group" style="margin-bottom: 0;"><label class="form-label" for="edit-v-recipient">Payee / Recipient / Client</label>' +
-    '<input type="text" id="edit-v-recipient" class="form-input" value="' + (v.recipientName || v.recipient || '') + '" required /></div>' +
-    '<div class="form-group" style="margin-bottom: 0;"><label class="form-label" for="edit-v-method">Payment Method</label>' +
-    '<select id="edit-v-method" class="form-select">' +
-    editMethodOptions +
+    '<!-- SECTION 1: HEADER, DATE & STATUS -->' +
+    '<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.85rem; margin-bottom: 0.95rem;">' +
+    voucherNumberFieldHtml +
+    '<div class="form-group" style="margin-bottom: 0;"><label class="form-label" style="font-size: 0.8rem; font-weight: 700;" for="edit-v-date">Voucher Date *</label>' +
+    '<input type="date" id="edit-v-date" class="form-input" value="' + isoDate + '" required style="font-weight: 600; font-size: 0.85rem;" /></div>' +
+    '<div class="form-group" style="margin-bottom: 0;"><label class="form-label" style="font-size: 0.8rem; font-weight: 700;" for="edit-v-status">Status</label>' +
+    '<select id="edit-v-status" class="form-select" style="font-weight: 600; font-size: 0.85rem;">' +
+    '<option value="POSTED"' + (currentStatus === 'POSTED' ? ' selected' : '') + '>POSTED (Official)</option>' +
+    '<option value="DRAFT"' + (currentStatus === 'DRAFT' ? ' selected' : '') + '>DRAFT (Pending)</option>' +
+    '<option value="VOID"' + (currentStatus === 'VOID' || currentStatus === 'DECLINED' ? ' selected' : '') + '>VOID (Declined / Reversed)</option>' +
     '</select></div>' +
     '</div>' +
-    '<div class="form-group" style="margin-bottom: 1.25rem;">' +
+
+    '<!-- SECTION 2: PAYEE, RECIPIENT TYPE & CURRENCY -->' +
+    '<div style="display: grid; grid-template-columns: 1.5fr 1fr 0.85fr; gap: 0.85rem; margin-bottom: 0.95rem;">' +
+    '<div class="form-group" style="margin-bottom: 0;"><label class="form-label" style="font-size: 0.8rem; font-weight: 700;" for="edit-v-recipient">Pay to / Recipient / Client *</label>' +
+    '<input type="text" id="edit-v-recipient" class="form-input" value="' + escapeHtml(v.recipientName || v.recipient || '') + '" required style="font-weight: 600; font-size: 0.85rem;" /></div>' +
+    '<div class="form-group" style="margin-bottom: 0;"><label class="form-label" style="font-size: 0.8rem; font-weight: 700;" for="edit-v-recipient-type">Classification</label>' +
+    '<select id="edit-v-recipient-type" class="form-select" style="font-size: 0.84rem;">' +
+    '<option value="VENDOR"' + (recipientTypeVal === 'VENDOR' ? ' selected' : '') + '>Vendor / Supplier</option>' +
+    '<option value="EMPLOYEE"' + (recipientTypeVal === 'EMPLOYEE' ? ' selected' : '') + '>Employee / Staff</option>' +
+    '<option value="OTHER"' + (recipientTypeVal === 'OTHER' ? ' selected' : '') + '>Other / Contractor</option>' +
+    '</select></div>' +
+    '<div class="form-group" style="margin-bottom: 0;"><label class="form-label" style="font-size: 0.8rem; font-weight: 700;" for="edit-v-currency">Currency</label>' +
+    '<select id="edit-v-currency" class="form-select" onchange="updateEditVoucherCurrency()" style="font-weight: 700; font-size: 0.84rem;">' +
+    '<option value="PHP"' + (currentEditVoucherCurrency === 'PHP' ? ' selected' : '') + '>PHP (₱)</option>' +
+    '<option value="USD"' + (currentEditVoucherCurrency === 'USD' ? ' selected' : '') + '>USD ($)</option>' +
+    '</select></div>' +
+    '</div>' +
+
+    '<!-- SECTION 3: PAYMENT METHOD & EXPENSE TAG / CATEGORY -->' +
+    '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; margin-bottom: 1.15rem;">' +
+    '<div class="form-group" style="margin-bottom: 0;"><label class="form-label" style="font-size: 0.8rem; font-weight: 700;" for="edit-v-method">Payment Method</label>' +
+    '<select id="edit-v-method" class="form-select" style="font-size: 0.84rem;">' +
+    editMethodOptions +
+    '</select></div>' +
+    '<div class="form-group" style="margin-bottom: 0;"><label class="form-label" style="font-size: 0.8rem; font-weight: 700;" for="edit-v-tag">🏷️ Expense Tag / Category</label>' +
+    '<input type="text" id="edit-v-tag" class="form-input" list="edit-v-tags-datalist" value="' + escapeHtml(currentTag) + '" placeholder="e.g. Utilities, Logistics, Medical, Travel..." style="font-size: 0.84rem;" />' +
+    '<datalist id="edit-v-tags-datalist">' + tagDatalistOptions + '</datalist>' +
+    '</div>' +
+    '</div>' +
+
+    '<!-- SECTION 4: LINE ITEMS BREAKDOWN -->' +
+    '<div class="form-group" style="margin-bottom: 1.15rem;">' +
     '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">' +
-    '<label class="form-label" style="margin-bottom: 0; font-weight: 700; font-size: 0.88rem; color: #1e293b;">📋 Line Items Breakdown Table</label>' +
-    '<button type="button" class="btn btn-secondary btn-sm" onclick="addEditVoucherRow()" style="display: flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.75rem; font-size: 0.8rem;">' +
+    '<label class="form-label" style="margin-bottom: 0; font-weight: 700; font-size: 0.86rem; color: #1e293b;">📋 Line Items Breakdown Table</label>' +
+    '<button type="button" class="btn btn-secondary btn-sm" onclick="addEditVoucherRow()" style="display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.75rem; font-size: 0.8rem; font-weight: 600;">' +
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> + Add Line Item</button>' +
     '</div>' +
     '<div class="table-container" style="border: 1px solid var(--border-color); border-radius: var(--radius-sm); overflow: hidden; background: #ffffff;">' +
     '<table class="table" style="margin-bottom: 0;">' +
-    '<thead><tr style="background: #f8fafc;"><th style="width: 26%; font-size: 0.8rem;">Invoice No / Ref</th><th style="width: 46%; font-size: 0.8rem;">Account / Description</th><th style="width: 20%; text-align: right; font-size: 0.8rem;">Amount (₱)</th><th style="width: 8%; text-align: center; font-size: 0.8rem;">Action</th></tr></thead>' +
+    '<thead><tr style="background: #f8fafc;"><th style="width: 25%; font-size: 0.8rem;">Invoice No / Ref</th><th style="width: 45%; font-size: 0.8rem;">Account / Description</th><th style="width: 22%; text-align: right; font-size: 0.8rem;">Amount (<span id="edit-voucher-th-symbol">' + sym + '</span>)</th><th style="width: 8%; text-align: center; font-size: 0.8rem;"></th></tr></thead>' +
     '<tbody id="edit-voucher-items-tbody">' + rowsHtml + '</tbody>' +
-    '<tfoot><tr style="background: #f8fafc; font-weight: 700; border-top: 1.5px solid var(--border-color);"><td colspan="2" style="text-align: right; font-size: 0.85rem; color: #334155;">Total Summary:</td><td style="text-align: right; font-size: 0.92rem; color: var(--primary); font-family: monospace;" id="edit-voucher-total-display">' + formatCurrency(v.amountCents, v.currency || 'PHP') + '</td><td></td></tr></tfoot>' +
+    '<tfoot><tr style="background: #f8fafc; font-weight: 700; border-top: 1.5px solid var(--border-color);"><td colspan="2" style="text-align: right; font-size: 0.85rem; color: #334155;">Total Summary:</td><td style="text-align: right; font-size: 0.92rem; color: var(--primary); font-family: monospace;" id="edit-voucher-total-display">' + formatCurrency(v.amountCents, currentEditVoucherCurrency) + '</td><td></td></tr></tfoot>' +
     '</table></div></div>' +
-    '<div class="form-group" style="margin-bottom: 1.25rem;"><label class="form-label" for="edit-v-notes">Memo / Remarks</label>' +
-    '<textarea id="edit-v-notes" class="form-input" rows="2" placeholder="e.g. Corporate Expense breakdown">' + (v.notes || '') + '</textarea></div>' +
+
+    '<!-- SECTION 5: MEMO & REMARKS -->' +
+    '<div class="form-group" style="margin-bottom: 1.15rem;"><label class="form-label" style="font-size: 0.8rem; font-weight: 700;" for="edit-v-notes">Memo / Remarks</label>' +
+    '<textarea id="edit-v-notes" class="form-input" rows="2" placeholder="e.g. Corporate expense remarks..." style="font-size: 0.84rem;">' + escapeHtml(cleanNotes) + '</textarea></div>' +
     signatoriesHtml +
     '</form>';
 
@@ -2230,15 +2459,25 @@ function openEditVoucherModal(voucherId) {
 }
 
 async function handleSaveVoucherEdit(voucherId, voucherType) {
+  const numberInput = document.getElementById('edit-v-number');
   const dateInput = document.getElementById('edit-v-date');
   const recipientInput = document.getElementById('edit-v-recipient');
+  const recipientTypeInput = document.getElementById('edit-v-recipient-type');
+  const currencyInput = document.getElementById('edit-v-currency');
   const methodInput = document.getElementById('edit-v-method');
+  const statusInput = document.getElementById('edit-v-status');
+  const tagInput = document.getElementById('edit-v-tag');
   const notesInput = document.getElementById('edit-v-notes');
 
   const payload = {
+    voucherNumber: (numberInput && !numberInput.disabled && numberInput.value.trim()) ? numberInput.value.trim() : undefined,
     voucherDate: dateInput ? new Date(dateInput.value).toISOString() : undefined,
     recipientName: recipientInput ? recipientInput.value.trim() : undefined,
+    recipientType: recipientTypeInput ? recipientTypeInput.value : undefined,
+    currency: currencyInput ? currencyInput.value : undefined,
     paymentMethod: methodInput ? methodInput.value : undefined,
+    status: statusInput ? statusInput.value : undefined,
+    tag: tagInput ? tagInput.value.trim() : undefined,
     notes: notesInput ? notesInput.value.trim() : undefined,
   };
 
@@ -2382,14 +2621,189 @@ function handleDeleteVoucher(voucherId, voucherNumber) {
   });
 }
 
+// Voucher History & Audit Trail Modal
+async function openVoucherHistoryModal(voucherId) {
+  const v = (typeof cachedVouchers !== 'undefined' ? cachedVouchers.find((x) => x.id === voucherId) : null) ||
+            (typeof cachedPVList !== 'undefined' ? cachedPVList.find((x) => x.id === voucherId) : null);
+  const voucherNumber = v ? (v.voucherNumber || v.jvNumber || 'Voucher') : 'Voucher';
+
+  const loadingHtml =
+    '<div style="text-align: center; padding: 2.5rem 1rem;">' +
+    '<div class="spinner" style="margin: 0 auto 1rem auto; width: 36px; height: 36px; border: 3px solid #e2e8f0; border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite;"></div>' +
+    '<div style="font-weight: 600; color: #475569;">Loading revision history & audit trail...</div>' +
+    '</div>';
+  openModal('📜 Revision History — ' + voucherNumber, loadingHtml, '<button class="btn btn-secondary" onclick="closeModal()">Close</button>', 'lg');
+
+  try {
+    const res = await apiFetch('/api/accounting/vouchers/' + voucherId + '/history');
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      document.getElementById('modal-body').innerHTML = '<div class="alert alert-danger">Failed to load history: ' + escapeHtml(json.error || 'Unknown error') + '</div>';
+      return;
+    }
+
+    const historyItems = json.data || [];
+    if (v) v.historyCount = historyItems.length;
+    if (historyItems.length === 0) {
+      document.getElementById('modal-body').innerHTML =
+        '<div style="text-align: center; padding: 3rem 1.5rem; background: #f8fafc; border-radius: 8px; border: 1px dashed #cbd5e1;">' +
+        '<div style="font-size: 2.2rem; margin-bottom: 0.65rem;">📜</div>' +
+        '<div style="font-weight: 700; font-size: 1.05rem; color: #1e293b; margin-bottom: 0.35rem;">No History Records Found</div>' +
+        '<div style="color: #64748b; font-size: 0.88rem; max-width: 440px; margin: 0 auto;">' +
+        'Audit trail tracking is active. Any edits, approvals, status reversals, or updates made to <strong>' + escapeHtml(voucherNumber) + '</strong> will be tracked here with author and field-by-field diff details.' +
+        '</div></div>';
+      return;
+    }
+
+    let timelineHtml = '<div class="voucher-history-timeline" style="display: flex; flex-direction: column; gap: 1rem; position: relative; padding-left: 1.5rem; margin-left: 0.5rem; border-left: 2px solid #e2e8f0;">';
+
+    historyItems.forEach((item) => {
+      let badgeBg = '#0284c7';
+      let badgeLabel = 'UPDATED';
+      let badgeIcon = '✏️';
+
+      if (item.action === 'CREATED') {
+        badgeBg = '#16a34a';
+        badgeLabel = 'CREATED';
+        badgeIcon = '✨';
+      } else if (item.action === 'APPROVED') {
+        badgeBg = '#059669';
+        badgeLabel = 'APPROVED';
+        badgeIcon = '✅';
+      } else if (item.action === 'VOIDED') {
+        badgeBg = '#dc2626';
+        badgeLabel = 'VOIDED';
+        badgeIcon = '🚫';
+      } else if (item.action === 'RESTORED') {
+        badgeBg = '#d97706';
+        badgeLabel = 'RESTORED';
+        badgeIcon = '♻️';
+      }
+
+      const rawDate = item.createdAt;
+      let dateDisplay = '—';
+      if (rawDate) {
+        const d = new Date(rawDate);
+        if (!isNaN(d.getTime())) {
+          dateDisplay = d.toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+          });
+        }
+      }
+
+      let changesHtml = '';
+      if (item.changes && typeof item.changes === 'object' && Object.keys(item.changes).length > 0) {
+        const keys = Object.keys(item.changes);
+        let rows = '';
+        keys.forEach((k) => {
+          const change = item.changes[k];
+          let fieldTitle = k;
+          if (k === 'amountCents') fieldTitle = 'Total Amount';
+          else if (k === 'recipientName') fieldTitle = 'Recipient / Payee';
+          else if (k === 'recipientType') fieldTitle = 'Classification';
+          else if (k === 'voucherDate') fieldTitle = 'Voucher Date';
+          else if (k === 'paymentMethod') fieldTitle = 'Payment Method';
+          else if (k === 'status') fieldTitle = 'Status';
+          else if (k === 'notes') fieldTitle = 'Memo / Notes';
+          else if (k === 'items') fieldTitle = 'Line Items';
+          else if (k === 'signatories') fieldTitle = 'Signatories';
+
+          let oldVal = change.old;
+          let newVal = change.new;
+
+          if (k === 'amountCents') {
+            oldVal = formatCurrency(oldVal, v ? v.currency : 'PHP');
+            newVal = formatCurrency(newVal, v ? v.currency : 'PHP');
+          } else if (k === 'items' && Array.isArray(newVal)) {
+            oldVal = (Array.isArray(oldVal) ? oldVal.length : 0) + ' item(s)';
+            newVal = newVal.length + ' item(s)';
+          } else if (typeof oldVal === 'object' && oldVal !== null) {
+            oldVal = JSON.stringify(oldVal);
+            newVal = JSON.stringify(newVal);
+          }
+
+          rows +=
+            '<tr style="border-bottom: 1px solid #f1f5f9; font-size: 0.8rem;">' +
+            '<td style="padding: 0.35rem 0.5rem; font-weight: 600; color: #475569; width: 30%;">' + escapeHtml(fieldTitle) + '</td>' +
+            '<td style="padding: 0.35rem 0.5rem; color: #dc2626; width: 35%; text-decoration: line-through; word-break: break-word;">' + escapeHtml(String(oldVal != null ? oldVal : '—')) + '</td>' +
+            '<td style="padding: 0.35rem 0.5rem; color: #16a34a; font-weight: 600; width: 35%; word-break: break-word;">' + escapeHtml(String(newVal != null ? newVal : '—')) + '</td>' +
+            '</tr>';
+        });
+
+        changesHtml =
+          '<div style="margin-top: 0.6rem; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden;">' +
+          '<div style="background: #f8fafc; padding: 0.3rem 0.6rem; font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em;">Specific Field Changes</div>' +
+          '<table style="width: 100%; border-collapse: collapse;">' +
+          '<thead><tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 0.72rem; color: #64748b;">' +
+          '<th style="padding: 0.25rem 0.5rem; text-align: left;">Field</th>' +
+          '<th style="padding: 0.25rem 0.5rem; text-align: left;">Previous</th>' +
+          '<th style="padding: 0.25rem 0.5rem; text-align: left;">New</th>' +
+          '</tr></thead>' +
+          '<tbody>' + rows + '</tbody>' +
+          '</table></div>';
+      }
+
+      const emailPart = item.changedByUserEmail ? ' <span style="font-size: 0.76rem; color: #64748b;">&lt;' + escapeHtml(item.changedByUserEmail) + '&gt;</span>' : '';
+
+      timelineHtml +=
+        '<div class="history-item" style="position: relative; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.85rem 1rem;">' +
+        '<div style="position: absolute; left: -1.95rem; top: 1rem; width: 14px; height: 14px; border-radius: 50%; background: ' + badgeBg + '; border: 3px solid #ffffff; box-shadow: 0 0 0 1px #cbd5e1;"></div>' +
+        '<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.4rem;">' +
+        '<div style="display: flex; align-items: center; gap: 0.5rem;">' +
+        '<span class="badge" style="background: ' + badgeBg + '; color: #ffffff; font-size: 0.74rem; font-weight: 700; padding: 0.2rem 0.55rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.3rem;">' +
+        badgeIcon + ' ' + badgeLabel + '</span>' +
+        '<span style="font-weight: 700; font-size: 0.88rem; color: #1e293b;">' + escapeHtml(item.changedByUserName || 'Staff') + '</span>' +
+        emailPart +
+        '</div>' +
+        '<div style="font-size: 0.78rem; font-family: monospace; color: #64748b;">⏱️ ' + dateDisplay + '</div>' +
+        '</div>' +
+        '<div style="font-size: 0.85rem; color: #334155; font-weight: 500;">' + escapeHtml(item.summary) + '</div>' +
+        changesHtml +
+        '</div>';
+    });
+
+    timelineHtml += '</div>';
+
+    const headerHtml =
+      '<div style="display: flex; justify-content: space-between; align-items: center; background: #f1f5f9; padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1.25rem; border: 1px solid #e2e8f0;">' +
+      '<div>' +
+      '<div style="font-size: 0.76rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Voucher Reference</div>' +
+      '<div style="font-weight: 700; font-family: monospace; font-size: 1.05rem; color: var(--primary);">' + escapeHtml(voucherNumber) + '</div>' +
+      '</div>' +
+      '<div style="text-align: right;">' +
+      '<div style="font-size: 0.76rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Total Revisions</div>' +
+      '<div style="font-weight: 700; font-size: 1.05rem; color: #0f172a;">' + historyItems.length + ' record' + (historyItems.length === 1 ? '' : 's') + '</div>' +
+      '</div>' +
+      '</div>';
+
+    document.getElementById('modal-body').innerHTML = headerHtml + timelineHtml;
+  } catch (err) {
+    document.getElementById('modal-body').innerHTML = '<div class="alert alert-danger">Network error: ' + escapeHtml(err.message) + '</div>';
+  }
+}
+
 // Global aliases for interoperability across vouchers and accounting views
 window.renderOfficialVoucherSlipMarkup = renderOfficialVoucherSlipMarkup;
 window.generateVoucherPdfBlob = generateVoucherPdfBlob;
 window.downloadSingleVoucherPdf = downloadSingleVoucherPdf;
 window.openOfficialVoucherSlipModal = openVoucherSlipModal;
+window.openVoucherHistoryModal = openVoucherHistoryModal;
 window.openNewJournalVoucherModal = openNewJVModal;
 window.openNewContraVoucherModal = openNewContraModal;
 window.declineVoucher = handleDeclineVoucher;
 window.restoreVoucher = handleRestoreVoucher;
 window.deleteVoucherPermanent = handleDeleteVoucher;
+window.openEditVoucherModal = openEditVoucherModal;
+window.handleSaveVoucherEdit = handleSaveVoucherEdit;
+window.handlePvPayToMe = handlePvPayToMe;
+window.handlePvQuickPayeeSelect = handlePvQuickPayeeSelect;
+window.handlePvPayeeInput = handlePvPayeeInput;
+window.handleVoucherActiveViewMode = handleVoucherActiveViewMode;
+window.handleVoucherSearch = handleVoucherSearch;
+window.handleVoucherYearFilter = handleVoucherYearFilter;
 `;

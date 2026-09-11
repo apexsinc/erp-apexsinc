@@ -380,8 +380,24 @@ function can(moduleName, action = 'read') {
   return Boolean(modPerms[action]);
 }
 
+// Mobile Sidebar Navigation Handlers
+function toggleMobileSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  if (sidebar) sidebar.classList.toggle('mobile-open');
+  if (backdrop) backdrop.classList.toggle('active');
+}
+
+function closeMobileSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  if (sidebar) sidebar.classList.remove('mobile-open');
+  if (backdrop) backdrop.classList.remove('active');
+}
+
 // Global Tab Router
 function switchTab(tabName, updateHistory = true, keepQueryParams = true) {
+  closeMobileSidebar();
   const allowedTabs = typeof applyRolePermissions === 'function' ? applyRolePermissions() : ['dashboard'];
   if (!allowedTabs.includes(tabName)) {
     showToast('You do not have access to that module', 'danger');

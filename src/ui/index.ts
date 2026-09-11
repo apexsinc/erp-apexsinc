@@ -68,6 +68,7 @@ export function renderAppHtml(
   <div id="app-view" class="app-wrapper" style="display: none;">
     <!-- SIDEBAR NAVIGATION -->
     ${renderSidebar()}
+    <div id="sidebar-backdrop" class="sidebar-backdrop" onclick="closeMobileSidebar()"></div>
 
     <!-- MAIN CONTENT VIEWPORT -->
     <main class="main-content">

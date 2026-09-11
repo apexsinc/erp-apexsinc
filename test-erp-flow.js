@@ -276,6 +276,59 @@ async function runTests() {
     console.log('Customer Receipt Recorded:', receiptData.receiptVoucherNumber, 'Status:', receiptData.invoiceStatus);
   }
 
+  console.log('\n=== 6B. O2C INVOICE-FIRST FLOW: INVOICE FIRST -> STOCK INTACT -> DR DEDUCTS STOCK ===');
+  // Step 1: Create a second Sales Order for 10 units
+  const so2Res = await fetch(`${baseUrl}/api/sales/orders`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      customerId,
+      currency: 'PHP',
+      notes: 'Pre-billed order (Invoice first, deliver later)',
+      items: [{ productId, quantity: 10, unitPriceCents: 9000 }],
+    }),
+  });
+  const so2Data = await so2Res.json();
+  const so2Id = so2Data.data.id;
+  const so2ItemId = so2Data.data.items[0].id;
+  console.log('Created SO (Pre-billed):', so2Data.data.soNumber);
+
+  // Step 2: Issue Sales Invoice FIRST before any DR exists
+  const inv2Res = await fetch(`${baseUrl}/api/sales/invoices`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      salesOrderId: so2Id,
+      notes: 'Upfront tax invoice issued prior to dispatch',
+    }),
+  });
+  const inv2Data = await inv2Res.json();
+  console.log('Issued Invoice Upfront (No DR yet):', inv2Data.invoiceNumber);
+
+  // Step 3: Verify stock has NOT been deducted (should still be 80)
+  const stockBeforeDrRes = await fetch(`${baseUrl}/api/inventory/products/${productId}`, { headers: authHeaders });
+  const stockBeforeDr = await stockBeforeDrRes.json();
+  console.log('Stock After Upfront Invoicing:', stockBeforeDr.data.onHandStock, '(Expected 80 — NO stock deducted yet)');
+
+  // Step 4: Issue Delivery Receipt in Outbound for this invoiced order
+  const dr2Res = await fetch(`${baseUrl}/api/outbound/receipts`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      salesOrderId: so2Id,
+      notes: 'Dispatched after invoice settlement',
+      receivedBy: 'Jane Consignee',
+      items: [{ soItemId: so2ItemId, quantityShipped: 10 }],
+    }),
+  });
+  const dr2Data = await dr2Res.json();
+  console.log('Issued Delivery Receipt (DR):', dr2Data.drNumber, 'Auto-linked Invoice ID:', dr2Data.invoiceId);
+
+  // Step 5: Verify stock is NOW deducted (80 - 10 = 70)
+  const stockAfterDrRes = await fetch(`${baseUrl}/api/inventory/products/${productId}`, { headers: authHeaders });
+  const stockAfterDr = await stockAfterDrRes.json();
+  console.log('Stock After DR Issuance:', stockAfterDr.data.onHandStock, '(Expected 70 — stock deducted upon DR creation)');
+
   console.log('\n=== 7. PAYROLL: CREATE EMPLOYEE, RUN PAYROLL & FINALIZE ===');
   const employeeRes = await fetch(`${baseUrl}/api/payroll/employees`, {
     method: 'POST',
@@ -729,4 +782,9 @@ async function runTests() {
   console.log('\n🎉 ALL URL ROUTE CHECKS, SYSTEM SETTINGS, FINANCIAL REPORTS & ERP END-TO-END TESTS PASSED SUCCESSFULLY!');
 }
 
-runTests().catch(console.error);
+runTests()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

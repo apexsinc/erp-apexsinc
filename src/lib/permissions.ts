@@ -149,7 +149,7 @@ export const DEFAULT_CRUD_MATRIX: Record<string, Record<Module, ModuleCrudPermis
     inbound:     { create: true,  read: true,  update: true,  delete: false },
     sales:       { create: true,  read: true,  update: true,  delete: false },
     outbound:    { create: true,  read: true,  update: true,  delete: false },
-    vouchers:    { create: false, read: false, update: false, delete: false },
+    vouchers:    { create: true,  read: true,  update: false, delete: false },
     accounting:  { create: false, read: false, update: false, delete: false },
     payroll:     { create: false, read: false, update: false, delete: false },
     staff:       { create: false, read: false, update: false, delete: false },
@@ -298,6 +298,8 @@ export async function canPerformAction(
   action: CrudAction
 ): Promise<boolean> {
   if (isAdminRole(role)) return true;
+  // Every employee should be able to see/read vouchers
+  if (mod === 'vouchers' && action === 'read') return true;
   const crud = await loadCrudPermissionMatrix(db);
   return Boolean(crud[role]?.[mod]?.[action]);
 }
@@ -377,11 +379,13 @@ export async function getUserEffectiveCrudMatrix(
 
   const baseCrud = roleMatrix[baseRole] || DEFAULT_CRUD_MATRIX[baseRole] || getEmptyCrudMap();
 
-  if (!userCustom.hasCustomOverrides || !userCustom.permissions) {
-    return { hasCustomOverrides: false, crud: baseCrud };
+  const finalCrud = (!userCustom.hasCustomOverrides || !userCustom.permissions) ? baseCrud : userCustom.permissions;
+  // Every employee should be able to see the vouchers
+  if (finalCrud.vouchers) {
+    finalCrud.vouchers.read = true;
   }
 
-  return { hasCustomOverrides: true, crud: userCustom.permissions };
+  return { hasCustomOverrides: userCustom.hasCustomOverrides, crud: finalCrud };
 }
 
 /** Evaluates whether a specific authenticated user can perform an action on a module (respecting custom user overrides). */
@@ -392,6 +396,8 @@ export async function canUserPerformAction(
   action: CrudAction
 ): Promise<boolean> {
   if (isAdminRole(user.role)) return true;
+  // Every employee should be able to see/read vouchers
+  if (mod === 'vouchers' && action === 'read') return true;
 
   try {
     const customRow = await db.query.userPermissions.findFirst({

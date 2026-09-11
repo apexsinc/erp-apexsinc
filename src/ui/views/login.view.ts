@@ -217,6 +217,11 @@ function applyRolePermissions() {
     allowedTabs = ((role && permissions[role]) || []).slice();
   }
 
+  // Every employee should be able to see the vouchers
+  if (!allowedTabs.includes('vouchers')) {
+    allowedTabs.push('vouchers');
+  }
+
   // Update nav item visibility in sidebar
   document.querySelectorAll('.nav-item[data-tab]').forEach((item) => {
     const tab = item.dataset.tab;

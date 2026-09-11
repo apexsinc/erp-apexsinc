@@ -8,41 +8,57 @@
 export function renderSettingsView(): string {
   return `
     <div id="view-settings" class="tab-view" style="display: none;">
-      <div class="view-header">
-        <div>
-          <h2>⚙️ System Settings & Configuration</h2>
-          <p class="subtitle">Configure enterprise defaults, official voucher signatories, expense categories, and system policies.</p>
+      <!-- Settings Header & Actions Panel -->
+      <div class="panel-card settings-header-card" style="margin-bottom: 1.5rem; border-radius: 12px; box-shadow: var(--shadow-xs); overflow: hidden; background: #ffffff; border: 1px solid var(--border-color);">
+        <div class="settings-header-top" style="display: flex; justify-content: space-between; align-items: center; gap: 1.25rem; flex-wrap: wrap; padding: 1.25rem 1.5rem; border-bottom: 1px solid #f1f5f9;">
+          <div style="display: flex; align-items: center; gap: 0.85rem;">
+            <div style="width: 44px; height: 44px; border-radius: 10px; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); display: flex; align-items: center; justify-content: center; font-size: 1.4rem; flex-shrink: 0; border: 1px solid #bfdbfe;">
+              ⚙️
+            </div>
+            <div>
+              <h2 style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 0; letter-spacing: -0.01em;">System Settings & Configuration</h2>
+              <p style="font-size: 0.82rem; color: #64748b; margin: 3px 0 0 0;">Configure enterprise defaults, official voucher signatories, expense categories, and system policies.</p>
+            </div>
+          </div>
+          <div class="settings-header-actions" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="loadSettings()" style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.48rem 0.95rem; font-weight: 600; font-size: 0.82rem; border-radius: 6px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+              Reload
+            </button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="saveAllCurrentSettings()" style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.48rem 1.15rem; font-weight: 700; font-size: 0.82rem; border-radius: 6px; box-shadow: 0 2px 4px rgba(37,99,235,0.25);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+              Save Changes
+            </button>
+          </div>
         </div>
-        <div class="header-actions">
-          <button type="button" class="btn btn-secondary" onclick="loadSettings()" style="display: flex; align-items: center; gap: 0.4rem;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
-            Reload
-          </button>
-          <button type="button" class="btn btn-primary" onclick="saveAllCurrentSettings()" style="display: flex; align-items: center; gap: 0.4rem;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-            Save Changes
-          </button>
-        </div>
-      </div>
 
-      <!-- Settings Navigation Sub-Tabs -->
-      <div class="sub-nav">
-        <button type="button" class="sub-nav-item active" data-subtab="settings-vouchers" onclick="switchSettingsSubTab('settings-vouchers')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-          Vouchers & Accounting
-        </button>
-        <button type="button" class="sub-nav-item" data-subtab="settings-org" onclick="switchSettingsSubTab('settings-org')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><path d="M3 21h18"></path><path d="M5 21V7l8-4v18"></path><path d="M19 21V11l-6-4"></path><path d="M9 9v1"></path><path d="M9 13v1"></path><path d="M9 17v1"></path></svg>
-          Organization Profile
-        </button>
-        <button type="button" class="sub-nav-item" data-subtab="settings-ops" onclick="switchSettingsSubTab('settings-ops')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
-          Operations & Logistics
-        </button>
-        <button type="button" class="sub-nav-item" data-subtab="settings-payroll" onclick="switchSettingsSubTab('settings-payroll')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-          Payroll Standards
-        </button>
+        <!-- 4 TABS NAVIGATION STRIP -->
+        <div class="settings-tabs-strip" style="padding: 0.75rem 1.5rem; background: #f8fafc; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+          <div class="settings-tab-bar">
+            <button type="button" class="settings-tab-btn sub-nav-item active" data-subtab="settings-vouchers" onclick="switchSettingsSubTab('settings-vouchers')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+              <span>Vouchers & Accounting</span>
+            </button>
+            <button type="button" class="settings-tab-btn sub-nav-item" data-subtab="settings-org" onclick="switchSettingsSubTab('settings-org')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><path d="M3 21h18"></path><path d="M5 21V7l8-4v18"></path><path d="M19 21V11l-6-4"></path><path d="M9 9v1"></path><path d="M9 13v1"></path><path d="M9 17v1"></path></svg>
+              <span>Organization Profile</span>
+            </button>
+            <button type="button" class="settings-tab-btn sub-nav-item" data-subtab="settings-ops" onclick="switchSettingsSubTab('settings-ops')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+              <span>Operations & Logistics</span>
+            </button>
+            <button type="button" class="settings-tab-btn sub-nav-item" data-subtab="settings-payroll" onclick="switchSettingsSubTab('settings-payroll')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+              <span>Payroll Standards</span>
+            </button>
+          </div>
+          <div class="settings-tab-status" style="font-size: 0.78rem; color: #64748b; font-weight: 500;">
+            <span style="display: inline-flex; align-items: center; gap: 0.35rem;">
+              <span style="width: 7px; height: 7px; border-radius: 50%; background: #10b981;"></span>
+              <span>4 Configuration Modules</span>
+            </span>
+          </div>
+        </div>
       </div>
 
       <!-- TAB 1: VOUCHERS & ACCOUNTING -->
@@ -267,6 +283,17 @@ export function renderSettingsView(): string {
             <!-- Dynamically populated table -->
           </div>
         </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 0.65rem; margin-top: 1.5rem; padding-top: 1.15rem; border-top: 1px solid var(--border-color);">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="loadSettings()" style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.95rem; font-weight: 600; font-size: 0.82rem;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+            Reload
+          </button>
+          <button type="button" class="btn btn-primary btn-sm" onclick="saveAllCurrentSettings()" style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.45rem 1.15rem; font-weight: 700; font-size: 0.82rem;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            Save Changes
+          </button>
+        </div>
       </div>
 
       <!-- TAB 2: ORGANIZATION PROFILE -->
@@ -315,6 +342,17 @@ export function renderSettingsView(): string {
               </select>
             </div>
           </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 0.65rem; margin-top: 1.5rem; padding-top: 1.15rem; border-top: 1px solid var(--border-color);">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="loadSettings()" style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.95rem; font-weight: 600; font-size: 0.82rem;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+              Reload
+            </button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="saveAllCurrentSettings()" style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.45rem 1.15rem; font-weight: 700; font-size: 0.82rem;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+              Save Changes
+            </button>
+          </div>
         </div>
       </div>
 
@@ -361,6 +399,17 @@ export function renderSettingsView(): string {
               <input type="text" id="set-ops-pfx-grn" class="form-input" placeholder="GRN-" />
             </div>
           </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 0.65rem; margin-top: 1.5rem; padding-top: 1.15rem; border-top: 1px solid var(--border-color);">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="loadSettings()" style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.95rem; font-weight: 600; font-size: 0.82rem;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+              Reload
+            </button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="saveAllCurrentSettings()" style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.45rem 1.15rem; font-weight: 700; font-size: 0.82rem;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+              Save Changes
+            </button>
+          </div>
         </div>
       </div>
 
@@ -395,6 +444,17 @@ export function renderSettingsView(): string {
               </select>
             </div>
           </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 0.65rem; margin-top: 1.5rem; padding-top: 1.15rem; border-top: 1px solid var(--border-color);">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="loadSettings()" style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.95rem; font-weight: 600; font-size: 0.82rem;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+              Reload
+            </button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="saveAllCurrentSettings()" style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.45rem 1.15rem; font-weight: 700; font-size: 0.82rem;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+              Save Changes
+            </button>
+          </div>
         </div>
       </div>
 
@@ -409,7 +469,7 @@ let currentSettingsTags = [];
 let currentPaymentMethods = [];
 
 function switchSettingsSubTab(subTabName) {
-  document.querySelectorAll('#view-settings .sub-nav-item').forEach((item) => {
+  document.querySelectorAll('#view-settings .sub-nav-item, #view-settings .settings-tab-btn').forEach((item) => {
     item.classList.toggle('active', item.dataset.subtab === subTabName);
   });
   document.querySelectorAll('.settings-subview').forEach((el) => {

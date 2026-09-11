@@ -13,6 +13,51 @@ let cachedPVVendors = [];
 let cachedPVEmployees = [];
 let pvSearchQuery = '';
 let pvYearFilter = '2026';
+let pvActiveViewMode = 'table';
+let pvShowSummaryCards = true;
+
+function getPvUserStorageKey(prefix) {
+  const userId = (typeof state !== 'undefined' && state.user && (state.user.id || state.user.email))
+    ? (state.user.id || state.user.email)
+    : 'global';
+  return prefix + '_' + userId;
+}
+
+function loadPvViewModePreference() {
+  try {
+    const userKey = getPvUserStorageKey('apexs_pv_view_mode');
+    const userSaved = localStorage.getItem(userKey);
+    if (userSaved === 'cards' || userSaved === 'table') {
+      pvActiveViewMode = userSaved;
+      return;
+    }
+    const globalSaved = localStorage.getItem('apexs_pv_view_mode');
+    if (globalSaved === 'cards' || globalSaved === 'table') {
+      pvActiveViewMode = globalSaved;
+      return;
+    }
+  } catch (e) {}
+  pvActiveViewMode = 'table';
+}
+loadPvViewModePreference();
+
+function loadPvShowCardsPreference() {
+  try {
+    const userKey = getPvUserStorageKey('apexs_pv_show_summary_cards');
+    const userSaved = localStorage.getItem(userKey);
+    if (userSaved !== null) {
+      pvShowSummaryCards = userSaved === 'true';
+      return;
+    }
+    const globalSaved = localStorage.getItem('apexs_pv_show_summary_cards');
+    if (globalSaved !== null) {
+      pvShowSummaryCards = globalSaved === 'true';
+      return;
+    }
+  } catch (e) {}
+  pvShowSummaryCards = true;
+}
+loadPvShowCardsPreference();
 
 function getPvYear(v) {
   if (!v) return '2026';
@@ -60,6 +105,8 @@ async function loadVouchers() {
   beginViewLoad(container, '<div style="padding: 2rem; text-align: center; color: #64748b;">Loading payment vouchers...</div>');
 
   try {
+    loadPvShowCardsPreference();
+    loadPvViewModePreference();
     pvSearchQuery = (typeof getUrlParam === 'function' ? getUrlParam('search') : '') || '';
     pvYearFilter = (typeof getUrlParam === 'function' ? getUrlParam('year') : null) || '2026';
 
@@ -110,14 +157,155 @@ async function loadVouchers() {
   }
 }
 
+function renderSingleVoucherRow(v, isAdmin) {
+  const rawDate = v.voucherDate || v.createdAt;
+  let formattedDate = '—';
+  if (rawDate) {
+    const d = new Date(rawDate);
+    if (!isNaN(d.getTime())) {
+      formattedDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+  }
+
+  let tag = v.tag || v.referenceType || '';
+  if (tag === 'MANUAL') tag = '';
+  else if (tag === 'PURCHASE_ORDER') tag = 'PO Procurement';
+  else if (tag === 'PAYROLL_RUN') tag = 'Payroll';
+
+  let tagBadgeHtml = '<span style="color: #cbd5e1; font-size: 0.8rem;">—</span>';
+  if (tag) {
+    const escapedTag = escapeHtml(tag);
+    tagBadgeHtml = '<span class="badge badge-neutral" style="font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.4rem; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 4px; max-width: 95px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: middle;" title="#' + escapedTag + '">#' + escapedTag + '</span>';
+  }
+
+  let remarksHtml = '<span style="color: #cbd5e1; font-size: 0.8rem;">—</span>';
+  if (v.notes && v.notes.trim()) {
+    const escapedNotes = escapeHtml(v.notes.trim());
+    remarksHtml = '<div style="max-width: 105px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.78rem; color: #475569;" title="' + escapedNotes + '">' + escapedNotes + '</div>';
+  }
+
+  let statusBadge = '<span class="badge badge-success" style="font-size: 0.7rem; padding: 0.15rem 0.45rem;"><span class="badge-dot"></span>POSTED</span>';
+  if (v.status === 'VOID' || v.status === 'DECLINED') {
+    statusBadge = '<span class="badge badge-danger" style="font-size: 0.7rem; padding: 0.15rem 0.45rem;"><span class="badge-dot"></span>VOID</span>';
+  } else if (v.status === 'DRAFT') {
+    statusBadge = '<span class="badge badge-neutral" style="font-size: 0.7rem; padding: 0.15rem 0.45rem;"><span class="badge-dot"></span>DRAFT</span>';
+  }
+
+  const methodMap = {
+    'BANK_TRANSFER': 'Bank',
+    'CHECK': 'Check',
+    'CASH': 'Cash',
+    'CREDIT_CARD': 'Card',
+    'DEBIT_CARD': 'Card',
+    'ONLINE': 'Online',
+    'MANUAL': 'Manual',
+    'JOURNAL': 'Journal'
+  };
+  const rawMethod = v.paymentMethod || 'BANK_TRANSFER';
+  const shortMethod = methodMap[rawMethod] || rawMethod.replace('_', ' ');
+
+  let actionButtons = '';
+  actionButtons += '<button class="btn btn-secondary btn-sm pv-btn-compact" onclick="openOfficialVoucherSlipModal(&quot;' + v.id + '&quot;)" title="View Official Slip">📄 Slip</button>';
+  actionButtons += '<button class="btn btn-secondary btn-sm pv-btn-compact" onclick="downloadSingleVoucherPdf(&quot;' + v.id + '&quot;)" title="Download PDF Slip">📥 PDF</button>';
+  actionButtons += '<button class="btn btn-secondary btn-sm pv-btn-compact" onclick="openEditVoucherModal(&quot;' + v.id + '&quot;)" title="Edit Details">✏️ Edit</button>';
+  const histCount = v.historyCount || 0;
+  const countBadgeClass = histCount > 0 ? 'has-records' : 'zero-records';
+  actionButtons += '<button class="btn btn-secondary btn-sm pv-btn-compact btn-history-badge-container" onclick="openVoucherHistoryModal(&quot;' + v.id + '&quot;)" title="View Revision History & Audit Trail (' + histCount + ' record' + (histCount === 1 ? '' : 's') + ')">📜 Hist<span class="history-count-badge ' + countBadgeClass + '">' + histCount + '</span></button>';
+
+  if (v.status === 'VOID' || v.status === 'DECLINED') {
+    actionButtons += '<button class="btn btn-success btn-sm pv-btn-compact" onclick="restoreVoucher(&quot;' + v.id + '&quot;)" title="Restore Voucher">♻️</button>';
+  } else {
+    actionButtons += '<button class="btn btn-warning btn-sm pv-btn-compact" onclick="declineVoucher(&quot;' + v.id + '&quot;)" title="Void / Decline">🚫</button>';
+  }
+
+  if (isAdmin) {
+    actionButtons += '<button class="btn btn-danger btn-sm pv-btn-compact" onclick="deleteVoucherPermanent(&quot;' + v.id + '&quot;)" title="Delete Permanently">🗑️</button>';
+  }
+
+  const recipientName = escapeHtml(v.recipient || v.recipientName || '—');
+
+  return (
+    '<tr>' +
+    '<td class="td-voucher-num" data-label="Voucher #">' +
+    '<div style="display: flex; align-items: center; gap: 0.35rem;">' +
+    '<span style="font-size: 0.95rem; line-height: 1;">🧾</span>' +
+    '<strong style="font-family: monospace; color: var(--primary); font-size: 0.88rem;">' + v.voucherNumber + '</strong>' +
+    '</div>' +
+    '<div class="pv-card-amount" style="font-weight: 800; color: #dc2626; font-family: monospace; font-size: 0.95rem; white-space: nowrap;">- ' + formatCurrency(v.amountCents || 0, v.currency || 'PHP') + '</div>' +
+    '</td>' +
+    '<td class="td-date" data-label="Date" style="white-space: nowrap; font-size: 0.8rem; color: #334155; font-weight: 500;">' + formattedDate + '</td>' +
+    '<td class="td-recipient" data-label="Payee / Recipient">' +
+    '<div style="max-width: 135px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 0.3rem;" title="' + recipientName + '">' +
+    '<span style="color: #64748b; font-size: 0.8rem; flex-shrink: 0;">🏢</span>' +
+    '<strong style="color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem;">' + recipientName + '</strong>' +
+    '</div>' +
+    '</td>' +
+    '<td class="td-tag" data-label="Tag / Category">' + tagBadgeHtml + '</td>' +
+    '<td class="td-remarks" data-label="Remarks">' + remarksHtml + '</td>' +
+    '<td class="td-method" data-label="Payment Method"><span class="badge badge-neutral" style="font-size: 0.72rem; padding: 0.15rem 0.4rem; white-space: nowrap;" title="' + escapeHtml(rawMethod) + '">' + escapeHtml(shortMethod) + '</span></td>' +
+    '<td class="td-amount" data-label="Total Amount" style="text-align: right; font-weight: 700; color: #dc2626; font-family: monospace; font-size: 0.84rem; white-space: nowrap;">- ' + formatCurrency(v.amountCents || 0, v.currency || 'PHP') + '</td>' +
+    '<td class="td-status" data-label="Status">' + statusBadge + '</td>' +
+    '<td class="td-actions" data-label="Actions"><div class="pv-actions-group">' + actionButtons + '</div></td>' +
+    '</tr>'
+  );
+}
+
 function handlePvSearch(query) {
-  pvSearchQuery = query.toLowerCase();
+  pvSearchQuery = (query || '').toLowerCase();
   if (typeof setUrlParam === 'function') {
     setUrlParam('search', pvSearchQuery || null);
   }
+
+  const tableBody = document.getElementById('pv-table-body');
+  const countEl = document.getElementById('pv-header-count');
+  if (tableBody && countEl) {
+    const filtered = getFilteredVouchersList();
+    filtered.sort((a, b) => {
+      const timeB = new Date(b.updatedAt || b.createdAt || b.voucherDate || 0).getTime();
+      const timeA = new Date(a.updatedAt || a.createdAt || a.voucherDate || 0).getTime();
+      return timeB - timeA;
+    });
+
+    countEl.innerHTML = 'Showing <strong>' + filtered.length + '</strong> voucher(s)';
+
+    const totalDisbursedCents = filtered.filter((v) => v.status === 'POSTED').reduce((sum, v) => sum + (v.amountCents || 0), 0);
+    const postedCount = filtered.filter((v) => v.status === 'POSTED').length;
+    const voidedCount = filtered.filter((v) => v.status === 'VOID' || v.status === 'DECLINED').length;
+    const draftCount = filtered.filter((v) => v.status === 'DRAFT').length;
+
+    const kpiDisbursed = document.getElementById('pv-kpi-total-disbursed');
+    if (kpiDisbursed) kpiDisbursed.textContent = formatCurrency(totalDisbursedCents, 'PHP');
+    const kpiPosted = document.getElementById('pv-kpi-posted-count');
+    if (kpiPosted) kpiPosted.textContent = String(postedCount);
+    const kpiDraft = document.getElementById('pv-kpi-draft-count');
+    if (kpiDraft) kpiDraft.textContent = String(draftCount);
+    const kpiVoid = document.getElementById('pv-kpi-voided-count');
+    if (kpiVoid) kpiVoid.textContent = String(voidedCount);
+
+    const isAdmin = state.user && state.user.role === 'ADMIN';
+    if (filtered.length === 0) {
+      tableBody.innerHTML = '<tr class="empty-row"><td colspan="9" style="text-align: center; color: #64748b; padding: 2.5rem;">No payment vouchers found' + (pvYearFilter !== 'ALL' ? ' for year ' + pvYearFilter : '') + '.</td></tr>';
+    } else {
+      tableBody.innerHTML = filtered.map((v) => renderSingleVoucherRow(v, isAdmin)).join('');
+    }
+    return;
+  }
+
+  const searchInput = document.getElementById('pv-search-input');
+  const selStart = searchInput ? searchInput.selectionStart : null;
+  const selEnd = searchInput ? searchInput.selectionEnd : null;
+
   const container = document.getElementById('view-vouchers');
   if (container) {
     renderVouchersContent(container, cachedPVList);
+  }
+
+  const newSearchInput = document.getElementById('pv-search-input');
+  if (newSearchInput && selStart !== null) {
+    newSearchInput.focus();
+    try {
+      newSearchInput.setSelectionRange(selStart, selEnd);
+    } catch (e) {}
   }
 }
 
@@ -129,6 +317,53 @@ function handlePvYearFilter(year) {
   const container = document.getElementById('view-vouchers');
   if (container) {
     renderVouchersContent(container, cachedPVList);
+  }
+}
+
+function handlePvActiveViewMode(mode) {
+  pvActiveViewMode = mode;
+  try {
+    localStorage.setItem(getPvUserStorageKey('apexs_pv_view_mode'), mode);
+    localStorage.setItem('apexs_pv_view_mode', mode);
+  } catch (e) {}
+  const table = document.getElementById('pv-data-table');
+  if (table) {
+    table.classList.remove('view-mode-cards', 'view-mode-table');
+    if (mode === 'cards') table.classList.add('view-mode-cards');
+    else if (mode === 'table') table.classList.add('view-mode-table');
+  }
+  document.querySelectorAll('#view-vouchers .btn-view-mode').forEach((btn) => {
+    btn.classList.remove('active');
+  });
+  const activeBtn = document.querySelector('#view-vouchers .btn-view-mode[data-mode="' + mode + '"]');
+  if (activeBtn) activeBtn.classList.add('active');
+}
+
+function handlePvToggleSummaryCards(forceVal) {
+  if (typeof forceVal === 'boolean') {
+    pvShowSummaryCards = forceVal;
+  } else {
+    pvShowSummaryCards = !pvShowSummaryCards;
+  }
+  try {
+    localStorage.setItem(getPvUserStorageKey('apexs_pv_show_summary_cards'), String(pvShowSummaryCards));
+    localStorage.setItem('apexs_pv_show_summary_cards', String(pvShowSummaryCards));
+  } catch (e) {}
+
+  const kpiContainer = document.getElementById('pv-kpi-container');
+  if (kpiContainer) {
+    kpiContainer.style.display = pvShowSummaryCards ? 'grid' : 'none';
+  }
+
+  const toggleBtn = document.getElementById('pv-toggle-summary-btn');
+  if (toggleBtn) {
+    toggleBtn.innerHTML = pvShowSummaryCards ? '👁️ Hide Cards' : '📊 Show Cards';
+    toggleBtn.title = pvShowSummaryCards ? 'Hide summary metric cards' : 'Show summary metric cards';
+  }
+
+  const checkbox = document.getElementById('pv-show-cards-checkbox');
+  if (checkbox && checkbox.checked !== pvShowSummaryCards) {
+    checkbox.checked = pvShowSummaryCards;
   }
 }
 
@@ -693,69 +928,9 @@ function renderVouchersContent(container, vouchers) {
 
   const isAdmin = state.user && state.user.role === 'ADMIN';
 
-  const rowsHtml = filtered.map((v) => {
-    const rawDate = v.voucherDate || v.createdAt;
-    let formattedDate = '—';
-    if (rawDate) {
-      const d = new Date(rawDate);
-      if (!isNaN(d.getTime())) {
-        formattedDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      }
-    }
+  const rowsHtml = filtered.map((v) => renderSingleVoucherRow(v, isAdmin)).join('');
 
-    let tag = v.tag || v.referenceType || '';
-    if (tag === 'MANUAL') tag = '';
-    else if (tag === 'PURCHASE_ORDER') tag = 'PO Procurement';
-    else if (tag === 'PAYROLL_RUN') tag = 'Payroll';
-
-    let tagBadgeHtml = '<span style="color: #cbd5e1; font-size: 0.82rem;">—</span>';
-    if (tag) {
-      tagBadgeHtml = '<span class="badge badge-neutral" style="font-size: 0.72rem; font-weight: 600; padding: 0.2rem 0.5rem; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 4px;">#' + escapeHtml(tag) + '</span>';
-    }
-
-    let remarksHtml = '<span style="color: #cbd5e1; font-size: 0.82rem;">—</span>';
-    if (v.notes && v.notes.trim()) {
-      const escapedNotes = escapeHtml(v.notes.trim());
-      remarksHtml = '<div style="max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.82rem; color: #475569;" title="' + escapedNotes + '">' + escapedNotes + '</div>';
-    }
-
-    let statusBadge = '<span class="badge badge-success"><span class="badge-dot"></span>POSTED</span>';
-    if (v.status === 'VOID' || v.status === 'DECLINED') {
-      statusBadge = '<span class="badge badge-danger"><span class="badge-dot"></span>VOID</span>';
-    } else if (v.status === 'DRAFT') {
-      statusBadge = '<span class="badge badge-neutral"><span class="badge-dot"></span>DRAFT</span>';
-    }
-
-    let actionButtons = '';
-    actionButtons += '<button class="btn btn-secondary btn-sm" onclick="openOfficialVoucherSlipModal(\\'' + v.id + '\\')" title="View Official Slip" style="padding: 0.25rem 0.55rem; font-size: 0.76rem;">📄 Slip</button> ';
-    actionButtons += '<button class="btn btn-secondary btn-sm" onclick="downloadSingleVoucherPdf(\\'' + v.id + '\\')" title="Download PDF Slip" style="padding: 0.25rem 0.55rem; font-size: 0.76rem;">📥 PDF</button> ';
-    actionButtons += '<button class="btn btn-secondary btn-sm" onclick="openEditVoucherModal(\\'' + v.id + '\\')" title="Edit Details" style="padding: 0.25rem 0.55rem; font-size: 0.76rem;">✏️ Edit</button> ';
-
-    if (v.status === 'VOID' || v.status === 'DECLINED') {
-      actionButtons += '<button class="btn btn-success btn-sm" onclick="restoreVoucher(\\'' + v.id + '\\')" title="Restore Voucher" style="padding: 0.25rem 0.55rem; font-size: 0.76rem;">♻️ Restore</button> ';
-    } else {
-      actionButtons += '<button class="btn btn-warning btn-sm" onclick="declineVoucher(\\'' + v.id + '\\')" title="Void / Decline" style="padding: 0.25rem 0.55rem; font-size: 0.76rem;">🚫 Void</button> ';
-    }
-
-    if (isAdmin) {
-      actionButtons += '<button class="btn btn-danger btn-sm" onclick="deleteVoucherPermanent(\\'' + v.id + '\\')" title="Delete Permanently" style="padding: 0.25rem 0.45rem; font-size: 0.76rem;">🗑️</button>';
-    }
-
-    return (
-      '<tr>' +
-      '<td><strong style="font-family: monospace; color: var(--primary);">' + v.voucherNumber + '</strong></td>' +
-      '<td style="white-space: nowrap; font-size: 0.82rem; color: #334155;">' + formattedDate + '</td>' +
-      '<td><span class="badge badge-danger" style="font-size: 0.72rem;">PV</span></td>' +
-      '<td><strong>' + escapeHtml(v.recipient || v.recipientName || '—') + '</strong></td>' +
-      '<td>' + tagBadgeHtml + '</td>' +
-      '<td>' + remarksHtml + '</td>' +
-      '<td><span class="badge badge-neutral" style="font-size: 0.74rem;">' + (v.paymentMethod || 'BANK_TRANSFER') + '</span></td>' +
-      '<td style="text-align: right; font-weight: 700; color: #dc2626; font-family: monospace;">- ' + formatCurrency(v.amountCents || 0, v.currency || 'PHP') + '</td>' +
-      '<td>' + statusBadge + '</td>' +
-      '<td style="text-align: right; white-space: nowrap;">' + actionButtons + '</td>' +
-      '</tr>'
-    );
-  }).join('');
+  const pvViewClass = pvActiveViewMode === 'cards' ? ' view-mode-cards' : (pvActiveViewMode === 'table' ? ' view-mode-table' : '');
 
   container.innerHTML =
     '<div class="card" style="margin-bottom: 1.25rem; border: none; box-shadow: var(--shadow-sm);">' +
@@ -769,6 +944,9 @@ function renderVouchersContent(container, vouchers) {
     '</p>' +
     '</div>' +
     '<div style="display: flex; gap: 0.65rem; align-items: center; flex-wrap: wrap;">' +
+    '<button type="button" id="pv-toggle-summary-btn" class="btn btn-secondary btn-sm" onclick="handlePvToggleSummaryCards()" style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; padding: 0.45rem 0.85rem;" title="' + (pvShowSummaryCards ? 'Hide summary metric cards' : 'Show summary metric cards') + '">' +
+    (pvShowSummaryCards ? '👁️ Hide Cards' : '📊 Show Cards') +
+    '</button>' +
     '<button type="button" class="btn btn-secondary btn-sm" onclick="openVoucherExportModal()" style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; padding: 0.45rem 0.85rem;">' +
     '📥 Export Options' +
     '</button>' +
@@ -786,25 +964,25 @@ function renderVouchersContent(container, vouchers) {
     '</div>' +
 
     '<!-- KPI METRIC CARDS -->' +
-    '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; padding: 1.25rem 1.5rem; background: #f8fafc; border-bottom: 1px solid var(--border-color);">' +
-    '<div style="background: #ffffff; padding: 1rem 1.15rem; border-radius: 8px; border: 1px solid #e2e8f0;">' +
+    '<div id="pv-kpi-container" class="pv-kpi-grid" style="display: ' + (pvShowSummaryCards ? 'grid' : 'none') + '; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; padding: 1.25rem 1.5rem; background: #f8fafc; border-bottom: 1px solid var(--border-color);">' +
+    '<div class="pv-kpi-item" style="background: #ffffff; padding: 1rem 1.15rem; border-radius: 8px; border: 1px solid #e2e8f0;">' +
     '<div style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em;">Total Disbursed (YTD)</div>' +
-    '<div style="font-size: 1.35rem; font-weight: 800; color: #dc2626; margin-top: 0.25rem; font-family: monospace;">' + formatCurrency(totalDisbursedCents, 'PHP') + '</div>' +
+    '<div id="pv-kpi-total-disbursed" style="font-size: 1.35rem; font-weight: 800; color: #dc2626; margin-top: 0.25rem; font-family: monospace;">' + formatCurrency(totalDisbursedCents, 'PHP') + '</div>' +
     '<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Active posted disbursements</div>' +
     '</div>' +
-    '<div style="background: #ffffff; padding: 1rem 1.15rem; border-radius: 8px; border: 1px solid #e2e8f0;">' +
+    '<div class="pv-kpi-item" style="background: #ffffff; padding: 1rem 1.15rem; border-radius: 8px; border: 1px solid #e2e8f0;">' +
     '<div style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em;">Posted Vouchers</div>' +
-    '<div style="font-size: 1.35rem; font-weight: 800; color: #059669; margin-top: 0.25rem; font-family: monospace;">' + postedCount + '</div>' +
+    '<div id="pv-kpi-posted-count" style="font-size: 1.35rem; font-weight: 800; color: #059669; margin-top: 0.25rem; font-family: monospace;">' + postedCount + '</div>' +
     '<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Official recorded vouchers</div>' +
     '</div>' +
-    '<div style="background: #ffffff; padding: 1rem 1.15rem; border-radius: 8px; border: 1px solid #e2e8f0;">' +
+    '<div class="pv-kpi-item" style="background: #ffffff; padding: 1rem 1.15rem; border-radius: 8px; border: 1px solid #e2e8f0;">' +
     '<div style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em;">Draft / Pending</div>' +
-    '<div style="font-size: 1.35rem; font-weight: 800; color: #d97706; margin-top: 0.25rem; font-family: monospace;">' + draftCount + '</div>' +
+    '<div id="pv-kpi-draft-count" style="font-size: 1.35rem; font-weight: 800; color: #d97706; margin-top: 0.25rem; font-family: monospace;">' + draftCount + '</div>' +
     '<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Awaiting certification</div>' +
     '</div>' +
-    '<div style="background: #ffffff; padding: 1rem 1.15rem; border-radius: 8px; border: 1px solid #e2e8f0;">' +
+    '<div class="pv-kpi-item" style="background: #ffffff; padding: 1rem 1.15rem; border-radius: 8px; border: 1px solid #e2e8f0;">' +
     '<div style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em;">Voided / Cancelled</div>' +
-    '<div style="font-size: 1.35rem; font-weight: 800; color: #64748b; margin-top: 0.25rem; font-family: monospace;">' + voidedCount + '</div>' +
+    '<div id="pv-kpi-voided-count" style="font-size: 1.35rem; font-weight: 800; color: #64748b; margin-top: 0.25rem; font-family: monospace;">' + voidedCount + '</div>' +
     '<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Reversed from ledger</div>' +
     '</div>' +
     '</div>' +
@@ -813,7 +991,7 @@ function renderVouchersContent(container, vouchers) {
     '<div style="padding: 0.85rem 1.5rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">' +
     '<div style="display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap; flex: 1;">' +
     '<div style="flex: 1; max-width: 340px; min-width: 200px;">' +
-    '<input type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search voucher #, payee, remarks..." value="' + escapeHtml(pvSearchQuery) + '" oninput="handlePvSearch(this.value)" />' +
+    '<input id="pv-search-input" type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search voucher #, payee, remarks..." value="' + escapeHtml(pvSearchQuery) + '" oninput="handlePvSearch(this.value)" />' +
     '</div>' +
     '<div style="display: flex; align-items: center; gap: 0.45rem;">' +
     '<label style="font-size: 0.8rem; font-weight: 700; color: #475569; white-space: nowrap;">📅 Year:</label>' +
@@ -821,34 +999,54 @@ function renderVouchersContent(container, vouchers) {
     yearFilterOptions +
     '</select>' +
     '</div>' +
+    '<div class="btn-view-mode-group" title="Switch table display layout">' +
+    '<button type="button" class="btn-view-mode' + (pvActiveViewMode === 'table' ? ' active' : '') + '" data-mode="table" onclick="handlePvActiveViewMode(&quot;table&quot;)" title="Compact Table View">' +
+    '☰ Table' +
+    '</button>' +
+    '<button type="button" class="btn-view-mode' + (pvActiveViewMode === 'cards' ? ' active' : '') + '" data-mode="cards" onclick="handlePvActiveViewMode(&quot;cards&quot;)" title="Cascade Wrap Cards View">' +
+    '⊞ Wrap Cards' +
+    '</button>' +
+    '<button type="button" class="btn-view-mode" onclick="loadVouchers()" title="Reload Vouchers" aria-label="Reload Vouchers" style="display: inline-flex; align-items: center; justify-content: center; padding: 0.35rem 0.6rem; font-size: 0.85rem;">' +
+    '🔄' +
+    '</button>' +
     '</div>' +
-    '<div style="font-size: 0.8rem; color: #64748b;">' +
+    '<label style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; font-weight: 600; color: #475569; cursor: pointer; user-select: none; padding: 0.35rem 0.65rem; border-radius: 6px; background: #f1f5f9; border: 1px solid #e2e8f0;" title="Show or hide summary metric cards">' +
+    '<input type="checkbox" id="pv-show-cards-checkbox" style="cursor: pointer; width: 15px; height: 15px; accent-color: var(--primary); margin: 0;" onchange="handlePvToggleSummaryCards(this.checked)"' + (pvShowSummaryCards ? ' checked' : '') + ' />' +
+    '<span>Summary Cards</span>' +
+    '</label>' +
+    '</div>' +
+    '<div id="pv-header-count" style="font-size: 0.8rem; color: #64748b;">' +
     'Showing <strong>' + filtered.length + '</strong> voucher(s)' +
     '</div>' +
     '</div>' +
 
     '<!-- DATA TABLE -->' +
-    '<div class="table-responsive" style="border-top: 1px solid var(--border-color);">' +
-    '<table class="data-table">' +
+    '<div class="table-responsive table-responsive-cascade" style="border-top: 1px solid var(--border-color);">' +
+    '<table id="pv-data-table" class="data-table responsive-cascade-table pv-compact-table' + pvViewClass + '">' +
     '<thead>' +
     '<tr>' +
     '<th>Voucher #</th>' +
     '<th>Date</th>' +
-    '<th>Type</th>' +
     '<th>Payee / Recipient</th>' +
     '<th>Tag / Category</th>' +
     '<th>Remarks</th>' +
-    '<th>Payment Method</th>' +
+    '<th>Method</th>' +
     '<th style="text-align: right;">Total Amount</th>' +
     '<th>Status</th>' +
-    '<th style="text-align: right;">Actions</th>' +
+    '<th style="text-align: right;" class="th-actions">Actions</th>' +
     '</tr>' +
     '</thead>' +
-    '<tbody>' +
-    ((rowsHtml && rowsHtml.length > 0) ? rowsHtml : '<tr><td colspan="10" style="text-align: center; color: #64748b; padding: 2.5rem;">No payment vouchers found' + (pvYearFilter !== 'ALL' ? ' for year ' + pvYearFilter : '') + '.</td></tr>') +
+    '<tbody id="pv-table-body">' +
+    ((rowsHtml && rowsHtml.length > 0) ? rowsHtml : '<tr class="empty-row"><td colspan="9" style="text-align: center; color: #64748b; padding: 2.5rem;">No payment vouchers found' + (pvYearFilter !== 'ALL' ? ' for year ' + pvYearFilter : '') + '.</td></tr>') +
     '</tbody>' +
     '</table>' +
     '</div>' +
     '</div>';
 }
+
+window.loadVouchers = loadVouchers;
+window.handlePvActiveViewMode = handlePvActiveViewMode;
+window.handlePvSearch = handlePvSearch;
+window.handlePvYearFilter = handlePvYearFilter;
+window.handlePvToggleSummaryCards = handlePvToggleSummaryCards;
 `;

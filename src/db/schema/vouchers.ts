@@ -168,6 +168,37 @@ export const journalEntriesRelations = relations(journalEntries, ({ one }) => ({
   }),
 }));
 
+/**
+ * Voucher Revision History / Audit Trail
+ * Tracks every edit, status change, and approval for vouchers
+ */
+export const voucherHistory = sqliteTable('voucher_history', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  voucherId: text('voucher_id').notNull(),
+  voucherType: text('voucher_type', {
+    enum: ['PAYMENT', 'RECEIPT', 'JOURNAL'],
+  }).notNull(),
+  voucherNumber: text('voucher_number'),
+  action: text('action').notNull(), // 'CREATED' | 'UPDATED' | 'APPROVED' | 'VOIDED' | 'RESTORED'
+  changedByUserId: text('changed_by_user_id'),
+  changedByUserName: text('changed_by_user_name').notNull(),
+  changedByUserEmail: text('changed_by_user_email'),
+  summary: text('summary').notNull(),
+  changes: text('changes'), // JSON string: { [fieldName]: { old: any, new: any } }
+  createdAt: text('created_at')
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
+export const voucherHistoryRelations = relations(voucherHistory, ({ one }) => ({
+  paymentVoucher: one(paymentVouchers, {
+    fields: [voucherHistory.voucherId],
+    references: [paymentVouchers.id],
+  }),
+}));
+
 export type Account = typeof accounts.$inferSelect;
 export type NewAccount = typeof accounts.$inferInsert;
 export type PaymentVoucher = typeof paymentVouchers.$inferSelect;
@@ -178,3 +209,6 @@ export type JournalVoucher = typeof journalVouchers.$inferSelect;
 export type NewJournalVoucher = typeof journalVouchers.$inferInsert;
 export type JournalEntry = typeof journalEntries.$inferSelect;
 export type NewJournalEntry = typeof journalEntries.$inferInsert;
+export type VoucherHistory = typeof voucherHistory.$inferSelect;
+export type NewVoucherHistory = typeof voucherHistory.$inferInsert;
+

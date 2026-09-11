@@ -55,6 +55,15 @@ function exportSalesCsv() {
   exportToCsv('sales_orders_' + new Date().toISOString().slice(0, 10), headers, rows);
 }
 
+function goToOutboundForSO(soId) {
+  switchTab('outbound');
+  setTimeout(() => {
+    if (typeof openCreateDeliveryReceiptModal === 'function') {
+      openCreateDeliveryReceiptModal(soId);
+    }
+  }, 100);
+}
+
 function renderSalesContent(container) {
   const soStatusBadgeClass = {
     DRAFT: 'badge-neutral',
@@ -77,40 +86,38 @@ function renderSalesContent(container) {
 
   let rowsHtml = '';
   filteredOrders.forEach((so) => {
+    // 1. Invoices
     const invoices = so.invoices || [];
-    const invoicesHtml = invoices.length
-      ? invoices
-          .map(
-            (inv) =>
-              '<div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem;">' +
-              '<span class="badge ' +
-              (inv.status === 'PAID' ? 'badge-success' : inv.status === 'PARTIALLY_PAID' ? 'badge-warning' : 'badge-primary') +
-              '" style="font-size: 0.68rem;">' +
+    const invoicesHtml = invoices
+      .map(
+        (inv) =>
+          '<div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem;">' +
+          '<span class="badge ' +
+          (inv.status === 'PAID' ? 'badge-success' : inv.status === 'PARTIALLY_PAID' ? 'badge-warning' : 'badge-primary') +
+          '" style="font-size: 0.68rem;">' +
+          inv.invoiceNumber +
+          '</span>' +
+          (inv.status !== 'PAID' && (can('sales', 'update') || can('accounting', 'create'))
+            ? '<button type="button" class="btn btn-success btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.72rem;" onclick="openRecordReceiptModal(\\\'' +
+              inv.id +
+              '\\\', \\\'' +
               inv.invoiceNumber +
-              '</span>' +
-              (inv.status !== 'PAID' && (can('sales', 'update') || can('accounting', 'create'))
-                ? '<button type="button" class="btn btn-success btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.72rem;" onclick="openRecordReceiptModal(\\\'' +
-                  inv.id +
-                  '\\\', \\\'' +
-                  inv.invoiceNumber +
-                  '\\\', ' +
-                  (inv.totalAmountCents - inv.paidAmountCents) +
-                  ')">Pay</button>'
-                : '') +
-              '</div>'
-          )
-          .join('')
-      : '';
+              '\\\', ' +
+              (inv.totalAmountCents - inv.paidAmountCents) +
+              ')">Pay</button>'
+            : '') +
+          '</div>'
+      )
+      .join('');
 
-    // Every Delivery Receipt without an invoiceId yet is goods already shipped
-    // (stock is already decremented) that nobody has billed for — surface it
-    // here as the one place invoicing actually happens.
+    // 2. Uninvoiced DRs (goods already shipped before invoice was issued)
     const uninvoicedDRs = (so.deliveryReceipts || []).filter((dr) => !dr.invoiceId);
     const uninvoicedHtml = uninvoicedDRs
       .map(
         (dr) =>
           '<div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem;">' +
           '<span class="badge badge-neutral" style="font-size: 0.68rem;">' + dr.drNumber + ' delivered</span>' +
+          '<button type="button" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.45rem; font-size: 0.68rem;" onclick="openDeliveryReceiptSlipModal(\\\'' + dr.id + '\\\')">📄 Slip</button>' +
           (can('sales', 'create')
             ? '<button type="button" class="btn btn-primary btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.72rem;" onclick="issueInvoiceForDelivery(\\\'' + dr.id + '\\\')">Issue Invoice</button>'
             : '') +
@@ -118,7 +125,39 @@ function renderSalesContent(container) {
       )
       .join('');
 
-    const deliveriesInvoicesHtml = invoicesHtml + uninvoicedHtml || '<span style="color: #94a3b8; font-size: 0.78rem;">Not yet delivered</span>';
+    // 3. Delivered DRs that already have invoices linked
+    const invoicedDRs = (so.deliveryReceipts || []).filter((dr) => Boolean(dr.invoiceId));
+    const invoicedDrHtml = invoicedDRs
+      .map(
+        (dr) =>
+          '<div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem;">' +
+          '<span class="badge badge-success" style="font-size: 0.68rem;"><span class="badge-dot"></span>' + dr.drNumber + ' delivered</span>' +
+          '<button type="button" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.45rem; font-size: 0.68rem;" onclick="openDeliveryReceiptSlipModal(\\\'' + dr.id + '\\\')">📄 Slip</button>' +
+          '</div>'
+      )
+      .join('');
+
+    // 4. Issue Invoice Upfront Button (if order has no invoice yet)
+    const canInvoiceOrder = !invoices.length && !uninvoicedDRs.length && can('sales', 'create') &&
+      (so.status === 'CONFIRMED' || so.status === 'PACKED' || so.status === 'PARTIALLY_FULFILLED');
+    const orderInvoiceBtn = canInvoiceOrder
+      ? '<div style="margin-bottom: 0.25rem;">' +
+        '<button type="button" class="btn btn-primary btn-sm" style="padding: 0.2rem 0.55rem; font-size: 0.72rem;" onclick="issueInvoiceForOrder(\\\'' + so.id + '\\\')">📄 Issue Invoice</button>' +
+        '</div>'
+      : '';
+
+    // 5. Check if order has remaining undelivered goods to provide direct Create DR action
+    const hasRemainingToDeliver = (so.items || []).some((i) => (i.quantity - i.quantityShipped) > 0) &&
+      (so.status === 'CONFIRMED' || so.status === 'PACKED' || so.status === 'PARTIALLY_FULFILLED');
+
+    const deliverActionHtml = hasRemainingToDeliver && can('outbound', 'create')
+      ? '<div style="margin-top: 0.35rem;">' +
+        '<button type="button" class="btn btn-success btn-sm" style="padding: 0.2rem 0.55rem; font-size: 0.72rem; font-weight: 600;" onclick="goToOutboundForSO(\\\'' + so.id + '\\\')">📦 + Create DR</button>' +
+        '</div>'
+      : '';
+
+    const contentList = [invoicesHtml, uninvoicedHtml, invoicedDrHtml, orderInvoiceBtn, deliverActionHtml].filter(Boolean).join('');
+    const deliveriesInvoicesHtml = contentList || '<span style="color: #94a3b8; font-size: 0.78rem;">Not yet delivered</span>';
 
     rowsHtml += \`
       <tr>
@@ -147,7 +186,7 @@ function renderSalesContent(container) {
       </div>
       <div style="padding: 0 1.35rem 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
         <p style="font-size: 0.85rem; color: #64748b; margin: 0;">
-          Manage customers in the Business Directory. Confirm deliveries from Delivery Receipts, then issue invoices here once goods are delivered.
+          Manage customers in the Business Directory. Create delivery receipts directly or from Delivery Receipts, then issue invoices once goods are delivered.
         </p>
         <div style="min-width: 260px;">
           <input type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search SO #, customer, status..." value="\${salesSearchQuery}" oninput="handleSalesSearch(this.value)" />
@@ -358,8 +397,7 @@ async function submitReceipt(e, invoiceId) {
 }
 
 // Bills a customer for goods already delivered (stock already decremented
-// when the Delivery Receipt was issued from Delivery Receipts) — this is the
-// only place an Invoice gets created.
+// when the Delivery Receipt was issued from Delivery Receipts).
 async function issueInvoiceForDelivery(deliveryReceiptId) {
   try {
     const res = await apiFetch('/api/sales/invoices', {
@@ -371,6 +409,26 @@ async function issueInvoiceForDelivery(deliveryReceiptId) {
     if (!res.ok || !json.success) throw new Error(json.error || 'Failed to issue invoice');
 
     showToast('Invoice ' + json.invoiceNumber + ' issued', 'success');
+    loadSales();
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
+}
+
+// Issues an invoice upfront directly for a Sales Order before goods are delivered.
+// Inventory stock is NOT decremented here; physical stock deduction happens
+// when the Delivery Receipt (DR) is issued in Delivery Receipts (Outbound).
+async function issueInvoiceForOrder(salesOrderId) {
+  try {
+    const res = await apiFetch('/api/sales/invoices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ salesOrderId }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to issue invoice');
+
+    showToast('Invoice ' + json.invoiceNumber + ' issued — stock remains intact until DR is created', 'success');
     loadSales();
   } catch (err) {
     showToast(err.message, 'danger');
