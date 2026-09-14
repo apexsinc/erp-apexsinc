@@ -695,7 +695,9 @@ app.get('/api/inventory/products', async (c) => {
       return {
         ...prod,
         onHandStock: stock,
+        damagedStock: prod.damagedStock || 0,
         inventoryValuationCents: stock * prod.costPriceCents,
+        damagedValuationCents: (prod.damagedStock || 0) * prod.costPriceCents,
       };
     })
   );
@@ -728,7 +730,9 @@ app.get('/api/inventory/products/:id', async (c) => {
     data: {
       ...product,
       onHandStock: stock,
+      damagedStock: product.damagedStock || 0,
       inventoryValuationCents: stock * product.costPriceCents,
+      damagedValuationCents: (product.damagedStock || 0) * product.costPriceCents,
     },
   });
 });
@@ -884,6 +888,134 @@ app.get('/api/inventory/movements', async (c) => {
   });
   return c.json({ success: true, count: movements.length, data: movements });
 });
+
+// POST /api/inventory/damaged - Manage Damaged / Quarantined Stock (Option 2)
+app.post(
+  '/api/inventory/damaged',
+  zValidator(
+    'json',
+    z.object({
+      productId: z.string().uuid(),
+      action: z.enum(['MOVE_TO_DAMAGED', 'DISPOSE_SCRAP', 'RESTORE_TO_AVAILABLE', 'RETURN_TO_SUPPLIER']),
+      quantity: z.number().int().positive(),
+      reason: z.string().optional(),
+      notes: z.string().optional(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const body = c.req.valid('json');
+
+    const product = await db.query.products.findFirst({
+      where: eq(schema.products.id, body.productId),
+    });
+    if (!product) return c.json({ success: false, error: 'Product not found' }, 404);
+
+    const availableStock = await getProductStockBalance(db, body.productId);
+    const currentDamaged = product.damagedStock || 0;
+
+    let movementPayload: {
+      productId: string;
+      type: 'IN' | 'OUT' | 'ADJUST';
+      quantity: number;
+      unitCostCents: number;
+      referenceType: 'INITIAL' | 'PO_RECEIPT' | 'SO_DELIVERY' | 'ADJUSTMENT' | 'RETURN' | 'SCRAP';
+      notes?: string;
+    };
+    let newDamaged = currentDamaged;
+
+    if (body.action === 'MOVE_TO_DAMAGED') {
+      if (body.quantity > availableStock) {
+        return c.json({
+          success: false,
+          error: `Cannot move ${body.quantity} to damaged. Available on-hand stock is only ${availableStock}.`,
+        }, 400);
+      }
+      newDamaged = currentDamaged + body.quantity;
+      movementPayload = {
+        productId: body.productId,
+        type: 'OUT',
+        quantity: body.quantity,
+        unitCostCents: product.costPriceCents,
+        referenceType: 'ADJUSTMENT',
+        notes: `Moved to Damaged/Quarantine (${body.reason || 'Defective/Damaged'}). ${body.notes || ''}`.trim(),
+      };
+    } else if (body.action === 'DISPOSE_SCRAP') {
+      if (body.quantity > currentDamaged) {
+        return c.json({
+          success: false,
+          error: `Cannot dispose ${body.quantity} units. Current damaged stock is only ${currentDamaged}.`,
+        }, 400);
+      }
+      newDamaged = currentDamaged - body.quantity;
+      movementPayload = {
+        productId: body.productId,
+        type: 'ADJUST',
+        quantity: 0,
+        unitCostCents: product.costPriceCents,
+        referenceType: 'SCRAP',
+        notes: `Disposed/Scrapped ${body.quantity} damaged units. ${body.notes || ''}`.trim(),
+      };
+    } else if (body.action === 'RESTORE_TO_AVAILABLE') {
+      if (body.quantity > currentDamaged) {
+        return c.json({
+          success: false,
+          error: `Cannot restore ${body.quantity} units. Current damaged stock is only ${currentDamaged}.`,
+        }, 400);
+      }
+      newDamaged = currentDamaged - body.quantity;
+      movementPayload = {
+        productId: body.productId,
+        type: 'IN',
+        quantity: body.quantity,
+        unitCostCents: product.costPriceCents,
+        referenceType: 'ADJUSTMENT',
+        notes: `Restored ${body.quantity} units from Damaged/Quarantine to Available stock. ${body.notes || ''}`.trim(),
+      };
+    } else if (body.action === 'RETURN_TO_SUPPLIER') {
+      if (body.quantity > currentDamaged) {
+        return c.json({
+          success: false,
+          error: `Cannot return ${body.quantity} units. Current damaged stock is only ${currentDamaged}.`,
+        }, 400);
+      }
+      newDamaged = currentDamaged - body.quantity;
+      movementPayload = {
+        productId: body.productId,
+        type: 'ADJUST',
+        quantity: 0,
+        unitCostCents: product.costPriceCents,
+        referenceType: 'RETURN',
+        notes: `Returned to Supplier (RMA) ${body.quantity} damaged units. ${body.notes || ''}`.trim(),
+      };
+    } else {
+      return c.json({ success: false, error: 'Invalid action' }, 400);
+    }
+
+    await db.insert(schema.stockMovements).values({
+      id: crypto.randomUUID(),
+      ...movementPayload,
+    });
+
+    await db
+      .update(schema.products)
+      .set({
+        damagedStock: newDamaged,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(schema.products.id, body.productId));
+
+    const updatedAvailable = await getProductStockBalance(db, body.productId);
+
+    return c.json({
+      success: true,
+      message: 'Damaged stock updated successfully',
+      productId: body.productId,
+      availableStock: updatedAvailable,
+      damagedStock: newDamaged,
+    });
+  }
+);
 
 /* ========================================================================== */
 /* 2. PURCHASING (P2P) MODULE                                                 */

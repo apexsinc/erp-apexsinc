@@ -34,6 +34,7 @@ export const products = sqliteTable('products', {
   // Set separately from the Business Directory's Price List — not collected at product creation.
   sellingPriceCents: integer('selling_price_cents').notNull().default(0),
   sellingPriceCurrency: text('selling_price_currency', { enum: ['USD', 'PHP'] }).notNull().default('USD'),
+  damagedStock: integer('damaged_stock').notNull().default(0),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at')
     .notNull()

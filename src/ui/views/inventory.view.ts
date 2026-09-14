@@ -219,7 +219,7 @@ function setInventorySort(field) {
     inventorySortOrder = inventorySortOrder === 'asc' ? 'desc' : 'asc';
   } else {
     inventorySortField = field;
-    inventorySortOrder = field === 'onHandStock' ? 'desc' : 'asc';
+    inventorySortOrder = (field === 'onHandStock' || field === 'damagedStock') ? 'desc' : 'asc';
   }
   inventoryVisibleCount = 50;
   renderInventoryTable();
@@ -236,11 +236,16 @@ function inventorySortIndicator(field) {
 
 function sortInventoryRows(rows) {
   return rows.slice().sort((a, b) => {
-    // 1. Products that have stock display first
-    const hasStockA = (a.onHandStock || 0) > 0 ? 1 : 0;
-    const hasStockB = (b.onHandStock || 0) > 0 ? 1 : 0;
-    if (hasStockA !== hasStockB) {
-      return hasStockB - hasStockA;
+    if (inventoryCategoryTab === 'damaged') {
+      const hasDmgA = (a.damagedStock || 0) > 0 ? 1 : 0;
+      const hasDmgB = (b.damagedStock || 0) > 0 ? 1 : 0;
+      if (hasDmgA !== hasDmgB) return hasDmgB - hasDmgA;
+    } else {
+      const hasStockA = (a.onHandStock || 0) > 0 ? 1 : 0;
+      const hasStockB = (b.onHandStock || 0) > 0 ? 1 : 0;
+      if (hasStockA !== hasStockB) {
+        return hasStockB - hasStockA;
+      }
     }
 
     // 2. Both have stock, or both have 0 stock: apply selected column sort
@@ -277,6 +282,8 @@ function getInventoryFilteredTotal() {
   let list = state.products || [];
   if (inventoryCategoryTab === 'in_stock') {
     list = list.filter((p) => (p.onHandStock || 0) > 0);
+  } else if (inventoryCategoryTab === 'damaged') {
+    list = list.filter((p) => (p.damagedStock || 0) > 0);
   } else if (inventoryCategoryTab !== 'all') {
     list = list.filter((p) => p.category === inventoryCategoryTab);
   }
@@ -335,7 +342,7 @@ function scrollInventoryToTop() {
 }
 
 function exportInventoryCsv() {
-  const headers = ['SKU', 'Product Name', 'Category', 'UOM', 'Cost Price', 'Selling Price', 'On-Hand Stock', 'Valuation (PHP)'];
+  const headers = ['SKU', 'Product Name', 'Category', 'UOM', 'Cost Price', 'Selling Price', 'Available Stock', 'Damaged Stock', 'Valuation (PHP)'];
   const rows = (state.products || []).map((p) => [
     p.sku,
     p.name,
@@ -344,6 +351,7 @@ function exportInventoryCsv() {
     p.costPriceCents ? (p.costPriceCents / 100).toFixed(2) + ' ' + (p.costPriceCurrency || 'PHP') : '0.00',
     p.sellingPriceCents ? (p.sellingPriceCents / 100).toFixed(2) + ' ' + (p.sellingPriceCurrency || 'PHP') : '0.00',
     p.onHandStock,
+    p.damagedStock || 0,
     (p.inventoryValuationCents / 100).toFixed(2),
   ]);
   exportToCsv('inventory_catalog_' + new Date().toISOString().slice(0, 10), headers, rows);
@@ -365,6 +373,7 @@ function renderInventoryContent(container) {
           <button class="btn btn-secondary btn-sm" onclick="exportInventoryCsv()">Export CSV</button>
           \${can('inventory', 'create') ? '<button class="btn btn-primary btn-sm" onclick="openAddStockModal()">Add Stock</button>' : ''}
           \${can('inventory', 'update') ? '<button class="btn btn-secondary btn-sm" onclick="openStockAdjustmentModal()">Stock Adjustment</button>' : ''}
+          \${can('inventory', 'update') ? '<button class="btn btn-secondary btn-sm" onclick="openDamagedStockModal()">Damaged Stock</button>' : ''}
         </div>
       </div>
       <div class="inventory-panel-inner" style="padding: 0 1.35rem 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
@@ -404,10 +413,12 @@ function renderInventoryCategoryTabs() {
 
   const countFor = (catName) => (state.products || []).filter((p) => p.category === catName).length;
   const inStockCount = (state.products || []).filter((p) => (p.onHandStock || 0) > 0).length;
+  const damagedCount = (state.products || []).filter((p) => (p.damagedStock || 0) > 0).length;
 
   const pills = [
     { key: 'all', label: 'All Products', count: (state.products || []).length },
-    { key: 'in_stock', label: '🟢 In Stock', count: inStockCount },
+    { key: 'in_stock', label: 'In Stock', count: inStockCount },
+    { key: 'damaged', label: 'Damaged / Quarantine', count: damagedCount },
     ...(state.productCategories || []).map((c) => ({ key: c.name, label: c.name, count: countFor(c.name) })),
   ];
 
@@ -437,13 +448,15 @@ function renderInventoryTable(keepScroll = false) {
     if (el) prevScroll = el.scrollTop;
   }
 
-  if (inventoryCategoryTab !== 'all' && inventoryCategoryTab !== 'in_stock' && !(state.productCategories || []).some((c) => c.name === inventoryCategoryTab)) {
+  if (inventoryCategoryTab !== 'all' && inventoryCategoryTab !== 'in_stock' && inventoryCategoryTab !== 'damaged' && !(state.productCategories || []).some((c) => c.name === inventoryCategoryTab)) {
     inventoryCategoryTab = 'all';
   }
 
   let filteredProducts = state.products || [];
   if (inventoryCategoryTab === 'in_stock') {
     filteredProducts = filteredProducts.filter((p) => (p.onHandStock || 0) > 0);
+  } else if (inventoryCategoryTab === 'damaged') {
+    filteredProducts = filteredProducts.filter((p) => (p.damagedStock || 0) > 0);
   } else if (inventoryCategoryTab !== 'all') {
     filteredProducts = filteredProducts.filter((p) => p.category === inventoryCategoryTab);
   }
@@ -495,6 +508,12 @@ function renderInventoryTable(keepScroll = false) {
             \${p.onHandStock} \${p.unitOfMeasure}
           </span>
         </td>
+        <td style="text-align: center; white-space: nowrap;">
+          \${(p.damagedStock || 0) > 0
+            ? \`<span class="badge badge-warning" style="font-weight: 600; cursor: pointer;" onclick="openDamagedStockModal('\${p.id}')" title="Click to manage damaged stock">\${p.damagedStock} \${p.unitOfMeasure}</span>\`
+            : \`<span style="color: #cbd5e1; font-size: 0.8rem;">—</span>\`
+          }
+        </td>
         <td style="text-align: right; white-space: nowrap;"><strong style="font-family: monospace; color: #0f172a;">\${formatCurrency(p.inventoryValuationCents)}</strong></td>
         <td style="text-align: center; white-space: nowrap;">
           <button class="btn btn-secondary btn-sm" onclick="openProductHistoryModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}')">History</button>
@@ -510,7 +529,8 @@ function renderInventoryTable(keepScroll = false) {
     <th class="sortable-th" style="width: 75px; min-width: 65px; text-align: center; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('unitOfMeasure')" title="Sort by UOM">UOM \${inventorySortIndicator('unitOfMeasure')}</th>
     <th class="sortable-th" style="width: 140px; min-width: 130px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('costPriceCents')" title="Sort by Cost Price">Cost Price \${inventorySortIndicator('costPriceCents')}</th>
     <th class="sortable-th" style="width: 140px; min-width: 130px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('sellingPriceCents')" title="Sort by Selling Price">Selling Price \${inventorySortIndicator('sellingPriceCents')}</th>
-    <th class="sortable-th" style="width: 140px; min-width: 130px; text-align: center; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('onHandStock')" title="Sort by On-Hand Stock">On-Hand Stock \${inventorySortIndicator('onHandStock')}</th>
+    <th class="sortable-th" style="width: 135px; min-width: 125px; text-align: center; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('onHandStock')" title="Sort by Available Stock">Available \${inventorySortIndicator('onHandStock')}</th>
+    <th class="sortable-th" style="width: 120px; min-width: 110px; text-align: center; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('damagedStock')" title="Sort by Damaged Stock">Damaged \${inventorySortIndicator('damagedStock')}</th>
     <th class="sortable-th" style="width: 130px; min-width: 120px; text-align: right; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('inventoryValuationCents')" title="Sort by Valuation">Valuation \${inventorySortIndicator('inventoryValuationCents')}</th>
     <th style="width: 80px; min-width: 80px; text-align: center; white-space: nowrap;">Audit</th>
   </tr></thead>\`;
@@ -874,6 +894,170 @@ async function submitStockAdjustment(e) {
   }
 }
 
+function openDamagedStockModal(defaultProductId) {
+  if (!state.products || !state.products.length) {
+    showToast('Please add products first', 'warning');
+    return;
+  }
+  const body = \`
+    <form id="form-damaged-stock" onsubmit="submitDamagedStock(event)">
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label class="form-label">Select Product *</label>
+        <div id="dmg-combobox-container" class="product-combobox-container">
+          <input type="hidden" id="dmg-product" value="" required />
+          <div style="position: relative; display: flex; align-items: center;">
+            <span style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; display: flex; align-items: center;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 15px; height: 15px;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </span>
+            <input
+              type="text"
+              id="dmg-search-input"
+              class="form-input"
+              placeholder="Search by SKU or product name..."
+              autocomplete="off"
+              style="padding-left: 2.35rem; padding-right: 2.25rem; font-size: 0.88rem;"
+              oninput="handleProductSearchInput('dmg', this.value)"
+              onfocus="handleProductSearchFocus('dmg')"
+              onkeydown="handleProductSearchKeydown('dmg', event)"
+            />
+            <button
+              type="button"
+              id="dmg-clear-btn"
+              onclick="clearProductSelection('dmg')"
+              style="display: none; position: absolute; right: 0.65rem; top: 50%; transform: translateY(-50%); background: #f1f5f9; border: none; color: #64748b; cursor: pointer; padding: 0; border-radius: 50%; width: 20px; height: 20px; align-items: center; justify-content: center; transition: all 0.15s ease;"
+              title="Clear selection"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 11px; height: 11px; display: block;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+          <div id="dmg-dropdown" class="product-combobox-dropdown" style="display: none;"></div>
+          <div id="dmg-selected-card"></div>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label class="form-label">Action *</label>
+        <select id="dmg-action" class="form-select" onchange="handleDamagedActionChange()">
+          <option value="MOVE_TO_DAMAGED">Move to Damaged / Quarantine (from Available)</option>
+          <option value="RESTORE_TO_AVAILABLE">Restore to Available (Repaired / Inspected)</option>
+          <option value="DISPOSE_SCRAP">Dispose / Write-Off (Scrap)</option>
+          <option value="RETURN_TO_SUPPLIER">Return to Supplier (Vendor RMA)</option>
+        </select>
+      </div>
+      <div id="dmg-reason-group" class="form-group" style="margin-bottom: 1rem;">
+        <label class="form-label">Damage Reason *</label>
+        <select id="dmg-reason" class="form-select">
+          <option value="Defective / QC Failed">Defective / QC Failed</option>
+          <option value="Damaged in Transit">Damaged in Transit</option>
+          <option value="Warehouse Handling Damage">Warehouse Handling Damage</option>
+          <option value="Customer Return (Damaged)">Customer Return (Damaged)</option>
+          <option value="Expired / Obsolete">Expired / Obsolete</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label class="form-label">Quantity * <span id="dmg-qty-hint" style="color: #94a3b8; font-weight: normal; font-size: 0.8rem;"></span></label>
+        <input type="number" id="dmg-qty" class="form-input" placeholder="e.g. 1" min="1" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <input type="text" id="dmg-notes" class="form-input" placeholder="Serial numbers, inspection details, or RMA number..." />
+      </div>
+    </form>
+  \`;
+  const footer = \`
+    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="document.getElementById('form-damaged-stock').requestSubmit()">Save</button>
+  \`;
+  openModal('Damaged & Quarantine Stock', body, footer);
+
+  setTimeout(() => {
+    if (defaultProductId) {
+      selectProductFromSearch('dmg', defaultProductId);
+    } else {
+      const input = document.getElementById('dmg-search-input');
+      if (input) {
+        input.focus();
+        renderProductComboboxDropdown('dmg', '');
+      }
+    }
+  }, 100);
+}
+
+function handleDamagedActionChange() {
+  const hidden = document.getElementById('dmg-product');
+  const action = document.getElementById('dmg-action')?.value;
+  const reasonGroup = document.getElementById('dmg-reason-group');
+  const hintEl = document.getElementById('dmg-qty-hint');
+  const qtyInput = document.getElementById('dmg-qty');
+
+  const product = (state.products || []).find((p) => p.id === hidden?.value);
+
+  if (action === 'MOVE_TO_DAMAGED') {
+    if (reasonGroup) reasonGroup.style.display = 'block';
+    if (hintEl && product) {
+      hintEl.textContent = \`(Max available: \${product.onHandStock} \${product.unitOfMeasure})\`;
+    }
+    if (qtyInput && product) {
+      qtyInput.max = product.onHandStock;
+    }
+  } else {
+    if (reasonGroup) reasonGroup.style.display = 'none';
+    if (hintEl && product) {
+      hintEl.textContent = \`(Current damaged: \${product.damagedStock || 0} \${product.unitOfMeasure})\`;
+    }
+    if (qtyInput && product) {
+      qtyInput.max = product.damagedStock || 0;
+    }
+  }
+}
+
+async function submitDamagedStock(e) {
+  e.preventDefault();
+  const productId = document.getElementById('dmg-product').value;
+  if (!productId) {
+    showToast('Please search and select a product', 'warning');
+    document.getElementById('dmg-search-input')?.focus();
+    return;
+  }
+  const action = document.getElementById('dmg-action').value;
+  const quantity = parseInt(document.getElementById('dmg-qty').value, 10);
+  const reason = document.getElementById('dmg-reason')?.value || '';
+  const notes = document.getElementById('dmg-notes')?.value || '';
+
+  if (!quantity || quantity <= 0) {
+    showToast('Quantity must be a positive number', 'warning');
+    return;
+  }
+
+  const product = (state.products || []).find((p) => p.id === productId);
+  if (!product) return;
+
+  if (action === 'MOVE_TO_DAMAGED' && quantity > (product.onHandStock || 0)) {
+    showToast(\`Quantity cannot exceed available stock (\${product.onHandStock})\`, 'warning');
+    return;
+  }
+  if (action !== 'MOVE_TO_DAMAGED' && quantity > (product.damagedStock || 0)) {
+    showToast(\`Quantity cannot exceed current damaged stock (\${product.damagedStock || 0})\`, 'warning');
+    return;
+  }
+
+  try {
+    const res = await apiFetch('/api/inventory/damaged', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId, action, quantity, reason, notes }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to update damaged stock');
+
+    closeModal();
+    showToast(json.message || 'Damaged stock updated successfully', 'success');
+    loadInventory();
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Product Search Combobox Helpers (Real-Time Autocomplete)
 // ---------------------------------------------------------------------------
@@ -1040,9 +1224,10 @@ function selectProductFromSearch(prefix, productId) {
   const card = document.getElementById(prefix + '-selected-card');
   if (card) {
     const isStockPositive = (product.onHandStock || 0) > 0;
+    const isDamagedPositive = (product.damagedStock || 0) > 0;
     card.innerHTML = \`
       <div style="margin-top: 0.35rem; font-size: 0.78rem; color: #64748b; display: flex; align-items: center; justify-content: space-between;">
-        <span>On-Hand: <strong style="color: \${isStockPositive ? '#16a34a' : '#64748b'};">\${product.onHandStock} \${escapeHtml(product.unitOfMeasure || 'units')}</strong></span>
+        <span>Available: <strong style="color: \${isStockPositive ? '#16a34a' : '#64748b'};">\${product.onHandStock} \${escapeHtml(product.unitOfMeasure || 'units')}</strong> | Damaged: <strong style="color: \${isDamagedPositive ? '#d97706' : '#64748b'};">\${product.damagedStock || 0}</strong></span>
         \${product.category ? \`<span style="color: #94a3b8;">\${escapeHtml(product.category)}</span>\` : ''}
       </div>
     \`;
@@ -1054,6 +1239,10 @@ function selectProductFromSearch(prefix, productId) {
     if (qtyInput) qtyInput.focus();
   } else if (prefix === 'adj') {
     const qtyInput = document.getElementById('adj-qty');
+    if (qtyInput) qtyInput.focus();
+  } else if (prefix === 'dmg') {
+    handleDamagedActionChange();
+    const qtyInput = document.getElementById('dmg-qty');
     if (qtyInput) qtyInput.focus();
   }
 }
@@ -1081,6 +1270,9 @@ function clearProductSelection(prefix) {
     if (hint) hint.textContent = '';
     const costInput = document.getElementById('add-stock-cost');
     if (costInput) costInput.value = '';
+  } else if (prefix === 'dmg') {
+    const hintEl = document.getElementById('dmg-qty-hint');
+    if (hintEl) hintEl.textContent = '';
   }
 
   renderProductComboboxDropdown(prefix, '');
@@ -1135,7 +1327,7 @@ function updateComboboxActiveItem(items) {
 if (typeof window !== 'undefined' && !window._inventoryComboboxListenerAdded) {
   window._inventoryComboboxListenerAdded = true;
   document.addEventListener('click', function(e) {
-    ['add-stock', 'adj'].forEach((prefix) => {
+    ['add-stock', 'adj', 'dmg'].forEach((prefix) => {
       const container = document.getElementById(prefix + '-combobox-container');
       const dropdown = document.getElementById(prefix + '-dropdown');
       if (dropdown && container && !container.contains(e.target)) {
