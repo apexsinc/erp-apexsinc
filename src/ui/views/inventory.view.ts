@@ -361,7 +361,7 @@ function renderInventoryContent(container) {
   if (!container) container = document.getElementById('view-inventory');
   if (!container) return;
 
-  if (inventoryCategoryTab !== 'all' && inventoryCategoryTab !== 'in_stock' && !(state.productCategories || []).some((c) => c.name === inventoryCategoryTab)) {
+  if (inventoryCategoryTab !== 'all' && inventoryCategoryTab !== 'in_stock' && inventoryCategoryTab !== 'damaged' && !(state.productCategories || []).some((c) => c.name === inventoryCategoryTab)) {
     inventoryCategoryTab = 'all';
   }
 
@@ -551,7 +551,7 @@ function renderInventoryTable(keepScroll = false) {
         <table class="data-table">
           \${tableHeaderHtml}
           <tbody>
-            \${rowsHtml || '<tr><td colspan="9" style="text-align: center; color: #64748b; padding: 2rem;">No products matching search criteria.</td></tr>'}
+            \${rowsHtml || '<tr><td colspan="10" style="text-align: center; color: #64748b; padding: 2rem;">No products matching search criteria.</td></tr>'}
             \${bottomLoader}
           </tbody>
         </table>
@@ -578,21 +578,33 @@ async function openProductHistoryModal(productId, productName) {
 
     let rowsHtml = '';
     movements.forEach((m) => {
+      let refDisplay = escapeHtml(m.referenceType || 'N/A') + (m.referenceId ? ' (' + escapeHtml(m.referenceId) + ')' : '');
+      if (m.referenceType === 'SCRAP') {
+        refDisplay = '<span class="badge badge-danger" style="font-size: 0.72rem;">Scrap / Disposal</span>';
+      } else if (m.referenceType === 'RETURN') {
+        refDisplay = '<span class="badge badge-warning" style="font-size: 0.72rem;">Vendor RMA</span>';
+      }
       rowsHtml += \`
         <tr>
           <td>\${new Date(m.createdAt).toLocaleDateString()} \${new Date(m.createdAt).toLocaleTimeString()}</td>
           <td><span class="badge \${m.type === 'IN' ? 'badge-success' : m.type === 'OUT' ? 'badge-danger' : 'badge-warning'}">\${m.type}</span></td>
           <td><strong>\${m.quantity}</strong></td>
-          <td>\${m.referenceType} (\${m.referenceId || 'N/A'})</td>
-          <td>\${m.notes || '-'}</td>
+          <td>\${refDisplay}</td>
+          <td>\${escapeHtml(m.notes || '-')}</td>
         </tr>
       \`;
     });
 
+    const damagedCount = json.data?.damagedStock || 0;
     const body = \`
-      <p style="margin-bottom: 1rem; font-size: 0.85rem; color: #64748b;">
-        Audit movements for <strong>\${productName}</strong>. Current On-Hand: <strong>\${json.data.onHandStock}</strong>
-      </p>
+      <div style="margin-bottom: 1rem; font-size: 0.85rem; color: #64748b; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; background: #f8fafc; padding: 0.65rem 0.85rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+        <span>Audit movements for <strong>\${escapeHtml(productName)}</strong></span>
+        <span>
+          Available: <strong style="color: #16a34a;">\${json.data.onHandStock}</strong>
+          <span style="color: #cbd5e1; margin: 0 0.4rem;">|</span>
+          Damaged: <strong style="color: \${damagedCount > 0 ? '#d97706' : '#64748b'};">\${damagedCount}</strong>
+        </span>
+      </div>
       <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
         <table class="data-table">
           <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 5;">
