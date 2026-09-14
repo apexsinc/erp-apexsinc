@@ -55,6 +55,28 @@ function formatCurrency(cents, currency) {
   return symbol + (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function formatSiNumber(num) {
+  if (!num) return '—';
+  return (num + '').replace(/^SO-/i, 'SI-');
+}
+
+function generateNextSequence(lastNumber, defaultPrefix = 'SI-') {
+  if (lastNumber) {
+    let normalized = (lastNumber + '').trim();
+    if (defaultPrefix === 'SI-') {
+      normalized = normalized.replace(/^SO-/i, 'SI-');
+    }
+    const match = normalized.match(/^(.*?)(\d+)$/);
+    if (match) {
+      const [, prefix, digits] = match;
+      const nextNum = parseInt(digits, 10) + 1;
+      const next = nextNum.toString().padStart(digits.length, '0');
+      return prefix + next;
+    }
+  }
+  return defaultPrefix + '1001';
+}
+
 // Renders a { USD: cents, PHP: cents } total as "$X + ₱Y" - used for figures
 // aggregated across many orders/products that may not share one currency,
 // where a single summed number would silently mix units.

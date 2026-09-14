@@ -53,14 +53,14 @@ function switchOutboundSubTab(tab) {
 }
 
 function exportOutboundCsv() {
-  const headers = ['DR Number', 'Delivered Date', 'SO Number', 'Customer', 'Received By', 'Status', 'Delivered Items'];
+  const headers = ['DR Number', 'Delivered Date', 'SI Number', 'Customer', 'Received By', 'Status', 'Delivered Items'];
   const rows = (state.deliveryReceipts || []).map((dr) => [
     dr.drNumber,
-    new Date(dr.deliveredAt || dr.createdAt).toLocaleString(),
-    dr.salesOrder?.soNumber || 'SO',
+    new Date(dr.arrivedAt || dr.deliveredAt || dr.createdAt).toLocaleString(),
+    formatSiNumber(dr.salesOrder?.siNumber || dr.salesOrder?.soNumber || 'SI'),
     dr.salesOrder?.customer?.name || 'Customer',
     dr.receivedBy || 'N/A',
-    dr.invoiceId ? 'Invoiced' : 'Pending Invoicing',
+    (dr.status === 'COMPLETED' || dr.receivedBy) ? 'Completed' : 'In Transit',
     (dr.items || []).map((i) => (i.product?.name || 'Product') + ' (' + i.quantity + ')').join('; '),
   ]);
   exportToCsv('delivery_receipts_' + new Date().toISOString().slice(0, 10), headers, rows);
@@ -91,7 +91,7 @@ function renderOutboundContent(container) {
   if (outboundSearchQuery) {
     filteredReceipts = filteredReceipts.filter((dr) => {
       const drNum = (dr.drNumber || '').toLowerCase();
-      const soNum = (dr.salesOrder?.soNumber || '').toLowerCase();
+      const soNum = (dr.salesOrder?.siNumber || dr.salesOrder?.soNumber || '').toLowerCase();
       const cust = (dr.salesOrder?.customer?.name || '').toLowerCase();
       const rec = (dr.receivedBy || '').toLowerCase();
       const notes = (dr.notes || '').toLowerCase();
@@ -104,7 +104,7 @@ function renderOutboundContent(container) {
   let filteredPending = pendingOrders;
   if (outboundSearchQuery) {
     filteredPending = filteredPending.filter((so) => {
-      const soNum = (so.soNumber || '').toLowerCase();
+      const soNum = (so.siNumber || so.soNumber || '').toLowerCase();
       const cust = (so.customer?.name || '').toLowerCase();
       const status = (so.status || '').toLowerCase();
       return soNum.includes(outboundSearchQuery) || cust.includes(outboundSearchQuery) || status.includes(outboundSearchQuery);
@@ -117,38 +117,48 @@ function renderOutboundContent(container) {
     receiptsTableHtml = '<tr><td colspan="8" style="text-align: center; padding: 2rem; color: #64748b;">No delivery receipts found.</td></tr>';
   } else {
     receiptsTableHtml = filteredReceipts.map((dr) => {
-      const dateStr = new Date(dr.deliveredAt || dr.createdAt).toLocaleDateString('en-US', {
+      const isCompleted = dr.status === 'COMPLETED' || (!dr.status && dr.receivedBy);
+      const rawDate = dr.arrivedAt || dr.deliveredAt || dr.createdAt;
+      const dateStr = new Date(rawDate).toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
       });
-      const itemsList = (dr.items || []).map((i) => \`<strong>\${i.quantity}x</strong> \${escapeHtml(i.product?.name || 'Product')}\`).join(', ');
-      const invoiced = Boolean(dr.invoiceId);
-      const invoiceNumberStr = dr.invoice && dr.invoice.invoiceNumber ? (' (' + dr.invoice.invoiceNumber + ')') : '';
-      const invoiceBadge = invoiced
-        ? ('<span class="badge badge-success" style="font-size: 0.72rem;"><span class="badge-dot"></span>Invoiced' + invoiceNumberStr + '</span>')
-        : '<span class="badge badge-neutral" style="font-size: 0.72rem;"><span class="badge-dot"></span>Uninvoiced</span>';
+      const dateSubtext = isCompleted
+        ? '<span style="font-size: 0.71rem; color: #16a34a; display: block; font-weight: 600;">✅ Arrived</span>'
+        : '<span style="font-size: 0.71rem; color: #d97706; display: block; font-weight: 600;">🚚 In Transit</span>';
 
-      const invoiceAction = !invoiced && can('sales', 'create')
-        ? \`<button type="button" class="btn btn-primary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.72rem;" onclick="issueInvoiceForDelivery('\${dr.id}')">Issue Invoice</button>\`
+      const itemsList = (dr.items || []).map((i) => \`<strong>\${i.quantity}x</strong> \${escapeHtml(i.product?.name || 'Product')}\`).join(', ');
+      const statusBadge = isCompleted
+        ? '<span class="badge badge-success" style="font-size: 0.72rem;"><span class="badge-dot"></span>Completed</span>'
+        : '<span class="badge badge-warning" style="font-size: 0.72rem;"><span class="badge-dot"></span>In Transit</span>';
+
+      const receiverDisplay = dr.receivedBy
+        ? escapeHtml(dr.receivedBy)
+        : '<span style="color: #94a3b8; font-style: italic; font-size: 0.8rem;">Awaiting arrival</span>';
+
+      const markArrivedBtn = (!isCompleted && can('outbound', 'create'))
+        ? '<button type="button" class="btn btn-success btn-sm" style="padding: 0.2rem 0.55rem; font-size: 0.72rem; font-weight: 600;" onclick="openMarkDeliveryArrivedModal(&quot;' + dr.id + '&quot;)">✅ Mark Arrived</button>'
         : '';
 
       return \`
         <tr>
           <td><strong>\${dr.drNumber}</strong></td>
-          <td>\${dateStr}</td>
-          <td><span style="font-weight: 600; color: var(--primary);">\${dr.salesOrder?.soNumber || 'SO'}</span></td>
+          <td>\${dateStr}\${dateSubtext}</td>
+          <td><span style="font-weight: 600; color: var(--primary);">\${formatSiNumber(dr.salesOrder?.siNumber || dr.salesOrder?.soNumber || 'SI')}</span></td>
           <td>\${escapeHtml(dr.salesOrder?.customer?.name || 'Customer')}</td>
           <td style="font-size: 0.8rem; max-width: 260px;">\${itemsList}</td>
-          <td>\${escapeHtml(dr.receivedBy || '—')}</td>
+          <td>\${receiverDisplay}</td>
           <td>
             <div style="display: flex; align-items: center; gap: 0.4rem;">
-              \${invoiceBadge}
-              \${invoiceAction}
+              \${statusBadge}
             </div>
           </td>
           <td style="text-align: right;">
-            <button type="button" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.72rem;" onclick="openDeliveryReceiptSlipModal('\${dr.id}')">📄 View Slip</button>
+            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.35rem;">
+              \${markArrivedBtn}
+              <button type="button" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.72rem;" onclick="openDeliveryReceiptSlipModal(&quot;\${dr.id}&quot;)">📄 View Slip</button>
+            </div>
           </td>
         </tr>
       \`;
@@ -180,16 +190,13 @@ function renderOutboundContent(container) {
         \`;
       }).join('');
 
-      const inv = (so.invoices || []).find((i) => i.status !== 'CANCELLED');
-      const invBadge = inv
-        ? ('<span class="badge badge-primary" style="font-size: 0.7rem;"><span class="badge-dot"></span>Invoiced: ' + escapeHtml(inv.invoiceNumber) + '</span>')
-        : '<span class="badge badge-neutral" style="font-size: 0.7rem;">Not Invoiced</span>';
+      const invBadge = '<span class="badge badge-primary" style="font-size: 0.7rem;"><span class="badge-dot"></span>Invoiced (' + formatSiNumber(so.siNumber || so.soNumber) + ')</span>';
 
       return \`
         <div class="panel-card" style="margin-bottom: 1rem; border: 1px solid var(--border-color); background: #ffffff;">
           <div class="panel-header" style="border-bottom: 1px solid var(--border-color); padding: 0.85rem 1.25rem;">
             <div class="panel-title" style="font-size: 0.95rem;">
-              <strong>\${so.soNumber}</strong> — \${escapeHtml(so.customer?.name || 'Unknown Customer')}
+              <strong>\${formatSiNumber(so.siNumber || so.soNumber)}</strong> — \${escapeHtml(so.customer?.name || 'Unknown Customer')}
               <div style="font-size: 0.75rem; font-weight: 400; color: #64748b; margin-top: 0.25rem; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
                 <span>Total: \${formatCurrency(so.totalAmountCents, so.currency)}</span>
                 \${outboundStatusBadge(so.status)}
@@ -245,7 +252,7 @@ function renderOutboundContent(container) {
           </button>
         </div>
         <div style="min-width: 260px;">
-          <input type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search DR #, SO #, customer..." value="\${escapeHtml(outboundSearchQuery)}" oninput="handleOutboundSearch(this.value)" />
+          <input type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search DR #, SI #, customer..." value="\${escapeHtml(outboundSearchQuery)}" oninput="handleOutboundSearch(this.value)" />
         </div>
       </div>
 
@@ -257,11 +264,11 @@ function renderOutboundContent(container) {
               <tr>
                 <th>DR Number</th>
                 <th>Delivered Date</th>
-                <th>SO Number</th>
+                <th>SI Number</th>
                 <th>Customer</th>
                 <th>Delivered Items</th>
                 <th>Received By</th>
-                <th>Invoicing</th>
+                <th>Delivery Status</th>
                 <th style="text-align: right;">Action</th>
               </tr>
             </thead>
@@ -286,23 +293,31 @@ function openCreateDeliveryReceiptModal(preselectedSoId) {
   });
 
   if (!eligibleOrders.length) {
-    showToast('No sales orders awaiting delivery. Please create and confirm a sales order first.', 'warning');
+    showToast('No sales invoices awaiting delivery. Please create and confirm a sales invoice first.', 'warning');
     return;
   }
 
-  const selectedSoId = preselectedSoId || eligibleOrders[0].id;
+  const sessionLatestDr = (typeof sessionStorage !== 'undefined') ? sessionStorage.getItem('last_dr_number') : null;
+  const latestDr = sessionLatestDr || ((state.deliveryReceipts && state.deliveryReceipts.length)
+    ? state.deliveryReceipts[0].drNumber
+    : null);
+  const nextDrNumber = generateNextSequence(latestDr, 'DR-');
+
   let soOptions = eligibleOrders.map((so) => {
     const isSel = so.id === selectedSoId ? 'selected' : '';
     const cust = so.customer?.name || 'Customer';
-    const inv = (so.invoices || []).find((i) => i.status !== 'CANCELLED');
-    const invText = inv ? \` [\${inv.invoiceNumber}]\` : '';
-    return \`<option value="\${so.id}" \${isSel}>\${so.soNumber}\${invText} — \${escapeHtml(cust)} (\${so.status})</option>\`;
+    return \`<option value="\${so.id}" \${isSel}>\${formatSiNumber(so.siNumber || so.soNumber)} — \${escapeHtml(cust)} (\${so.status})</option>\`;
   }).join('');
 
   const body = \`
     <form id="form-create-dr" onsubmit="submitCreateDeliveryReceipt(event)">
       <div class="form-group">
-        <label class="form-label">Select Sales Order to Deliver *</label>
+        <label class="form-label">DR Number *</label>
+        <input type="text" id="cdr-drnumber" class="form-input" value="\${nextDrNumber}" placeholder="e.g. DR-1001" required />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Select Sales Invoice to Deliver *</label>
         <select id="cdr-so-select" class="form-select" onchange="handleDeliveryReceiptSoChange()">
           \${soOptions}
         </select>
@@ -334,8 +349,8 @@ function openCreateDeliveryReceiptModal(preselectedSoId) {
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
         <div class="form-group">
-          <label class="form-label">Received By (Customer Rep / Consignee)</label>
-          <input type="text" id="cdr-received-by" class="form-input" placeholder="e.g. John Doe / Receiving Officer" />
+          <label class="form-label">Received By (Leave blank if In Transit)</label>
+          <input type="text" id="cdr-received-by" class="form-input" placeholder="Leave blank if dispatching, or enter receiver name upon handover" />
         </div>
         <div class="form-group">
           <label class="form-label">Delivery Notes / Courier / Tracking #</label>
@@ -363,10 +378,7 @@ function handleDeliveryReceiptSoChange() {
 
   const detailsEl = document.getElementById('cdr-order-details');
   if (detailsEl) {
-    const activeInvoice = (so.invoices || []).find((inv) => inv.status !== 'CANCELLED');
-    const invoiceInfoHtml = activeInvoice
-      ? ('<span class="badge badge-primary" style="font-size: 0.72rem;"><span class="badge-dot"></span>Linked Invoice: ' + escapeHtml(activeInvoice.invoiceNumber) + ' (' + activeInvoice.status + ')</span>')
-      : '<span class="badge badge-neutral" style="font-size: 0.72rem;">No invoice yet (goods delivered prior to invoicing)</span>';
+    const invoiceInfoHtml = '<span class="badge badge-primary" style="font-size: 0.72rem;"><span class="badge-dot"></span>Sales Invoice: ' + formatSiNumber(so.siNumber || so.soNumber) + '</span>';
 
     detailsEl.innerHTML = \`
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
@@ -453,8 +465,11 @@ async function submitCreateDeliveryReceipt(e) {
 
   const so = (state.outboundOrders || []).find((o) => o.id === soId);
   const activeInvoice = (so?.invoices || []).find((i) => i.status !== 'CANCELLED');
+  const drNumberInput = document.getElementById('cdr-drnumber');
+  const drNumber = drNumberInput ? drNumberInput.value.trim() : '';
 
   const payload = {
+    drNumber: drNumber || undefined,
     salesOrderId: soId,
     invoiceId: activeInvoice ? activeInvoice.id : undefined,
     receivedBy: document.getElementById('cdr-received-by').value || undefined,
@@ -472,6 +487,22 @@ async function submitCreateDeliveryReceipt(e) {
     if (!res.ok || !json.success) throw new Error(json.error || 'Failed to create delivery receipt');
 
     closeModal();
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('last_dr_number', json.drNumber);
+    }
+    if (json) {
+      if (!state.deliveryReceipts) state.deliveryReceipts = [];
+      state.deliveryReceipts.unshift({
+        id: json.deliveryReceiptId,
+        drNumber: json.drNumber,
+        salesOrderId: soId,
+        invoiceId: json.invoiceId,
+        receivedBy: document.getElementById('cdr-received-by') ? document.getElementById('cdr-received-by').value : '',
+        status: json.deliveryStatus || (document.getElementById('cdr-received-by')?.value ? 'COMPLETED' : 'IN_TRANSIT'),
+        arrivedAt: (document.getElementById('cdr-received-by')?.value) ? new Date().toISOString() : null,
+        createdAt: new Date().toISOString(),
+      });
+    }
     showToast('Delivery Receipt ' + json.drNumber + ' issued — stock deducted', 'success');
     loadOutbound();
     if (typeof loadSales === 'function' && state.activeTab === 'sales') {
@@ -497,21 +528,8 @@ function renderOfficialDeliveryReceiptMarkup(dr) {
     year: 'numeric',
   });
 
-  // Extract Customer PO number
-  var poNumber = '—';
-  if (so.notes) {
-    var m = so.notes.match(/PO[#:\s]*([A-Z0-9_-]+)/i);
-    if (m) poNumber = m[1].toUpperCase();
-    else if (/^PO[0-9]+/i.test(so.notes.trim())) poNumber = so.notes.trim().toUpperCase();
-  }
-  if (poNumber === '—' && dr.notes) {
-    var m2 = dr.notes.match(/PO[#:\s]*([A-Z0-9_-]+)/i);
-    if (m2) poNumber = m2[1].toUpperCase();
-    else if (/^PO[0-9]+/i.test(dr.notes.trim())) poNumber = dr.notes.trim().toUpperCase();
-  }
-  if (poNumber === '—') {
-    poNumber = so.soNumber || '—';
-  }
+  // Sales Invoice (SI) Number (PO is for Purchasing only)
+  var siNumber = formatSiNumber(so.siNumber || so.soNumber || '—');
 
   var customerName = (cust.name || 'Customer').toUpperCase();
   var customerAddress = (cust.shippingAddress || cust.billingAddress || 'No address specified').toUpperCase();
@@ -624,8 +642,8 @@ function renderOfficialDeliveryReceiptMarkup(dr) {
     '<span style="font-weight: 700; text-transform: uppercase; border-bottom: 1.5px solid #000000; flex: 1; padding-bottom: 1px;">' + escapeHtml(customerAddress) + '</span>' +
     '</div>' +
     '<div style="display: flex; align-items: baseline; justify-content: flex-end;">' +
-    '<span style="font-weight: 700; min-width: 60px;">PO#</span>' +
-    '<span style="font-weight: 700; min-width: 140px; border-bottom: 2px solid #000000; padding-bottom: 1px;">' + escapeHtml(poNumber) + '</span>' +
+    '<span style="font-weight: 700; min-width: 60px;">SI#</span>' +
+    '<span style="font-weight: 700; min-width: 140px; border-bottom: 2px solid #000000; padding-bottom: 1px;">' + escapeHtml(siNumber) + '</span>' +
     '</div>' +
     '</div>' +
     '<!-- 5. Horizontal Accent Bar Above Table Left Columns -->' +
@@ -775,8 +793,118 @@ function openDeliveryReceiptSlipModal(drId) {
   openModal('Delivery Receipt — ' + dr.drNumber, body, footer, 'xl');
 }
 
+// Modal to mark a Delivery Receipt as Arrived and Completed
+function openMarkDeliveryArrivedModal(drId) {
+  var dr = (state.deliveryReceipts || []).find(function(r) { return r.id === drId; });
+  if (!dr && state.salesOrders) {
+    for (var s = 0; s < state.salesOrders.length; s++) {
+      var found = (state.salesOrders[s].deliveryReceipts || []).find(function(r) { return r.id === drId; });
+      if (found) {
+        dr = Object.assign({}, found, { salesOrder: state.salesOrders[s] });
+        break;
+      }
+    }
+  }
+  if (!dr) {
+    showToast('Delivery Receipt not found', 'warning');
+    return;
+  }
+
+  var custName = (dr.salesOrder && dr.salesOrder.customer && dr.salesOrder.customer.name) ? dr.salesOrder.customer.name : 'Customer';
+  var siNum = formatSiNumber(dr.salesOrder ? (dr.salesOrder.siNumber || dr.salesOrder.soNumber || 'SI') : 'SI');
+  var d = new Date();
+  var pad = function(n) { return (n < 10 ? '0' : '') + n; };
+  var localIso = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+
+  var itemsListHtml = (dr.items || []).map(function(i) {
+    var pName = (i.product && i.product.name) ? i.product.name : 'Product';
+    return '<li style="margin-bottom: 0.25rem;"><strong>' + i.quantity + 'x</strong> ' + escapeHtml(pName) + '</li>';
+  }).join('');
+
+  var body =
+    '<form id="form-mark-arrived" data-drid="' + dr.id + '" onsubmit="submitMarkDeliveryArrived(event)">' +
+      '<div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--radius-sm); padding: 0.85rem 1rem; margin-bottom: 1.15rem; font-size: 0.84rem; color: #1e40af;">' +
+        '<div style="font-weight: 700; font-size: 0.95rem; margin-bottom: 0.35rem;">Confirming Delivery Arrival for ' + escapeHtml(dr.drNumber) + '</div>' +
+        '<div><strong>Customer:</strong> ' + escapeHtml(custName) + '</div>' +
+        '<div><strong>Sales Invoice:</strong> ' + escapeHtml(siNum) + '</div>' +
+        '<div style="margin-top: 0.5rem; font-weight: 600;">Delivered Goods:</div>' +
+        '<ul style="margin: 0.25rem 0 0 1.25rem; padding: 0;">' + itemsListHtml + '</ul>' +
+      '</div>' +
+
+      '<div class="form-group">' +
+        '<label class="form-label">Received By (Customer / Consignee Personnel) *</label>' +
+        '<input type="text" id="mda-received-by" class="form-input" placeholder="e.g. John Doe / Receiving Officer" required autofocus />' +
+        '<div style="font-size: 0.75rem; color: #64748b; margin-top: 0.25rem;">Name of the customer personnel who signed and accepted the goods.</div>' +
+      '</div>' +
+
+      '<div class="form-group">' +
+        '<label class="form-label">Arrival / Handover Date & Time</label>' +
+        '<input type="datetime-local" id="mda-arrived-at" class="form-input" value="' + localIso + '" />' +
+      '</div>' +
+
+      '<div class="form-group">' +
+        '<label class="form-label">Arrival Notes / Remarks (Optional)</label>' +
+        '<textarea id="mda-notes" class="form-input" rows="2" placeholder="e.g. Received in good order and condition, signed delivery receipt returned"></textarea>' +
+      '</div>' +
+    '</form>';
+
+  var footer =
+    '<button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>' +
+    '<button type="submit" form="form-mark-arrived" class="btn btn-success">✅ Confirm Arrival & Complete</button>';
+
+  openModal('Mark Delivery as Arrived — ' + dr.drNumber, body, footer, 'md');
+}
+
+async function submitMarkDeliveryArrived(e) {
+  if (e && e.preventDefault) e.preventDefault();
+
+  var form = document.getElementById('form-mark-arrived');
+  var drId = form ? form.dataset.drid : '';
+  if (!drId) {
+    showToast('Delivery receipt identifier missing', 'warning');
+    return;
+  }
+  var arrivedAtInput = document.getElementById('mda-arrived-at');
+  var notesInput = document.getElementById('mda-notes');
+
+  var receivedBy = receivedByInput ? receivedByInput.value.trim() : '';
+  if (!receivedBy) {
+    showToast('Please enter the name of the person who received the goods.', 'warning');
+    return;
+  }
+
+  var arrivedAt = (arrivedAtInput && arrivedAtInput.value) ? new Date(arrivedAtInput.value).toISOString() : new Date().toISOString();
+  var notes = notesInput ? notesInput.value.trim() : '';
+
+  try {
+    var res = await apiFetch('/api/outbound/receipts/' + encodeURIComponent(drId) + '/mark-arrived', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        receivedBy: receivedBy,
+        arrivedAt: arrivedAt,
+        notes: notes || undefined,
+      }),
+    });
+    var json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to update delivery status');
+
+    closeModal();
+    showToast('Delivery Receipt marked as Arrived and Completed!', 'success');
+    loadOutbound();
+    if (typeof loadSales === 'function' && state.activeTab === 'sales') {
+      loadSales();
+    }
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
+}
+
 window.renderOfficialDeliveryReceiptMarkup = renderOfficialDeliveryReceiptMarkup;
 window.openDeliveryReceiptSlipModal = openDeliveryReceiptSlipModal;
 window.downloadSingleDeliveryReceiptPdf = downloadSingleDeliveryReceiptPdf;
+window.openMarkDeliveryArrivedModal = openMarkDeliveryArrivedModal;
+window.submitMarkDeliveryArrived = submitMarkDeliveryArrived;
 `;
+
 

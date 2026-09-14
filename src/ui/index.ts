@@ -52,6 +52,7 @@ export function renderAppHtml(
     ${APP_CSS}
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script>
     window.__ROLE_PERMISSIONS__ = ${JSON.stringify(rolePermissions)};

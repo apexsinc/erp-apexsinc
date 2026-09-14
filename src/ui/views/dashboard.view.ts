@@ -72,7 +72,7 @@ async function loadDashboard() {
         <div style="padding: 1.15rem 1.35rem; display: flex; gap: 0.65rem; flex-wrap: wrap;">
           <button class="btn btn-primary btn-sm" onclick="openNewProductModal()">Add Product</button>
           <button class="btn btn-primary btn-sm" onclick="openNewPOModal()">Create Purchase Order</button>
-          <button class="btn btn-primary btn-sm" onclick="openNewSalesOrderModal()">Create Sales Order</button>
+          <button class="btn btn-primary btn-sm" onclick="openNewSalesOrderModal()">Create Sales Invoice</button>
           <button class="btn btn-primary btn-sm" onclick="openNewPayrollRunModal()">Calculate Payroll</button>
           <button class="btn btn-secondary btn-sm" onclick="openNewPaymentVoucherModal()">New Payment Voucher</button>
         </div>

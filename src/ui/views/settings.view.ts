@@ -387,12 +387,8 @@ export function renderSettingsView(): string {
               <input type="text" id="set-ops-pfx-po" class="form-input" placeholder="PO-" />
             </div>
             <div class="form-group">
-              <label class="form-label" for="set-ops-pfx-so">Sales Order (SO) Prefix</label>
-              <input type="text" id="set-ops-pfx-so" class="form-input" placeholder="SO-" />
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="set-ops-pfx-inv">Sales Invoice (INV) Prefix</label>
-              <input type="text" id="set-ops-pfx-inv" class="form-input" placeholder="INV-" />
+              <label class="form-label" for="set-ops-pfx-so">Sales Invoice (SI) Prefix</label>
+              <input type="text" id="set-ops-pfx-so" class="form-input" placeholder="SI-" />
             </div>
             <div class="form-group">
               <label class="form-label" for="set-ops-pfx-grn">Goods Received Note (GRN) Prefix</label>
@@ -577,7 +573,7 @@ function populateSettingsForm(settings) {
   if (document.getElementById('set-ops-default-uom')) document.getElementById('set-ops-default-uom').value = opsConf.defaultUom || 'pcs';
   if (document.getElementById('set-ops-payment-terms')) document.getElementById('set-ops-payment-terms').value = opsConf.defaultPaymentTermsDays || 30;
   if (document.getElementById('set-ops-pfx-po')) document.getElementById('set-ops-pfx-po').value = opsConf.poPrefix || 'PO-';
-  if (document.getElementById('set-ops-pfx-so')) document.getElementById('set-ops-pfx-so').value = opsConf.soPrefix || 'SO-';
+  if (document.getElementById('set-ops-pfx-so')) document.getElementById('set-ops-pfx-so').value = opsConf.siPrefix || opsConf.soPrefix || 'SI-';
   if (document.getElementById('set-ops-pfx-inv')) document.getElementById('set-ops-pfx-inv').value = opsConf.invPrefix || 'INV-';
   if (document.getElementById('set-ops-pfx-grn')) document.getElementById('set-ops-pfx-grn').value = opsConf.grnPrefix || 'GRN-';
 
@@ -992,8 +988,9 @@ async function saveAllCurrentSettings() {
       defaultUom: (document.getElementById('set-ops-default-uom') ? document.getElementById('set-ops-default-uom').value.trim() : '') || 'pcs',
       defaultPaymentTermsDays: parseInt(document.getElementById('set-ops-payment-terms') ? document.getElementById('set-ops-payment-terms').value : '30', 10) || 30,
       poPrefix: (document.getElementById('set-ops-pfx-po') ? document.getElementById('set-ops-pfx-po').value.trim() : '') || 'PO-',
-      soPrefix: (document.getElementById('set-ops-pfx-so') ? document.getElementById('set-ops-pfx-so').value.trim() : '') || 'SO-',
-      invPrefix: (document.getElementById('set-ops-pfx-inv') ? document.getElementById('set-ops-pfx-inv').value.trim() : '') || 'INV-',
+      siPrefix: (document.getElementById('set-ops-pfx-so') ? document.getElementById('set-ops-pfx-so').value.trim() : '') || 'SI-',
+      soPrefix: (document.getElementById('set-ops-pfx-so') ? document.getElementById('set-ops-pfx-so').value.trim() : '') || 'SI-',
+      invPrefix: (document.getElementById('set-ops-pfx-so') ? document.getElementById('set-ops-pfx-so').value.trim() : '') || 'SI-',
       grnPrefix: (document.getElementById('set-ops-pfx-grn') ? document.getElementById('set-ops-pfx-grn').value.trim() : '') || 'GRN-',
     };
 

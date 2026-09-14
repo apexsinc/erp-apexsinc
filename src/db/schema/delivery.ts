@@ -21,6 +21,8 @@ export const deliveryReceipts = sqliteTable('delivery_receipts', {
   invoiceId: text('invoice_id').references(() => invoices.id),
   receivedBy: text('received_by'),
   notes: text('notes'),
+  status: text('status', { enum: ['IN_TRANSIT', 'COMPLETED'] }).notNull().default('IN_TRANSIT'),
+  arrivedAt: text('arrived_at'),
   deliveredAt: text('delivered_at')
     .notNull()
     .$defaultFn(() => new Date().toISOString()),

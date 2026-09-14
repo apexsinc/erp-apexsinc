@@ -417,7 +417,7 @@ async function getProductStockBalance(db: ReturnType<typeof createDbClient>, pro
 // groups them by salesOrderId — used by both the Sales and Outbound list
 // endpoints so each SO card/row can show what's been delivered vs. invoiced
 // without a separate round trip per order.
-async function attachDeliveryReceipts<T extends { id: string }>(db: ReturnType<typeof createDbClient>, orders: T[]) {
+async function attachDeliveryReceipts<T extends { id: string; soNumber?: string }>(db: ReturnType<typeof createDbClient>, orders: T[]) {
   const soIds = orders.map((o) => o.id);
   const receipts = soIds.length
     ? await db.query.deliveryReceipts.findMany({
@@ -434,7 +434,16 @@ async function attachDeliveryReceipts<T extends { id: string }>(db: ReturnType<t
     bySoId.set(r.salesOrderId, list);
   }
 
-  return orders.map((o) => ({ ...o, deliveryReceipts: bySoId.get(o.id) || [] }));
+  return orders.map((o) => {
+    const raw = o.soNumber || (o as any).siNumber || '';
+    const num = raw ? raw.replace(/^SO-/i, 'SI-') : raw;
+    return {
+      ...o,
+      soNumber: num,
+      siNumber: num,
+      deliveryReceipts: bySoId.get(o.id) || [],
+    };
+  });
 }
 
 // GET /api/inventory/categories - List product categories
@@ -508,6 +517,168 @@ app.post(
     });
 
     return c.json({ success: true, data: { ...created, onHandStock: 0 } }, 201);
+  }
+);
+
+// POST /api/inventory/products/batch-import - Batch import products and price list entries
+app.post(
+  '/api/inventory/products/batch-import',
+  zValidator(
+    'json',
+    z.object({
+      products: z
+        .array(
+          z.object({
+            sku: z.string().min(1),
+            name: z
+              .string()
+              .optional()
+              .nullable()
+              .transform((v) => (v && v.trim() ? v.trim() : 'Unnamed Item')),
+            category: z.string().min(1),
+            sellingPriceCents: z.number().int().nonnegative().optional().nullable().default(0),
+            sellingPriceCurrency: z.enum(['USD', 'PHP']).optional().nullable().default('PHP'),
+            costPriceCents: z.number().int().nonnegative().optional().nullable().default(0),
+            costPriceCurrency: z.enum(['USD', 'PHP']).optional().nullable().default('USD'),
+            unitOfMeasure: z.string().optional().nullable().default('unit'),
+            description: z.string().optional().nullable(),
+          })
+        )
+        .min(1),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const validBody = c.req.valid('json');
+    const items = validBody.products.map((item) => ({
+      sku: item.sku,
+      name: item.name,
+      category: item.category,
+      sellingPriceCents: item.sellingPriceCents ?? 0,
+      sellingPriceCurrency: (item.sellingPriceCurrency || 'PHP') as 'USD' | 'PHP',
+      costPriceCents: item.costPriceCents ?? 0,
+      costPriceCurrency: (item.costPriceCurrency || 'USD') as 'USD' | 'PHP',
+      unitOfMeasure: item.unitOfMeasure || 'unit',
+      description: item.description || undefined,
+    }));
+
+    // 1. Ensure all categories exist; auto-create missing categories
+    const neededCategories = [...new Set(items.map((i) => i.category.trim()).filter(Boolean))];
+    const existingCategories = await db.query.productCategories.findMany();
+    const existingCatNames = new Set(existingCategories.map((cat) => cat.name.toLowerCase()));
+
+    const newCategoriesToInsert = neededCategories.filter((cat) => !existingCatNames.has(cat.toLowerCase()));
+    if (newCategoriesToInsert.length > 0) {
+      const catStatements = newCategoriesToInsert.map((catName) =>
+        db.insert(schema.productCategories).values({
+          id: crypto.randomUUID(),
+          name: catName,
+          createdAt: new Date().toISOString(),
+        })
+      );
+      // Execute in chunks of 50 to respect D1 limits
+      for (let i = 0; i < catStatements.length; i += 50) {
+        await db.batch(catStatements.slice(i, i + 50) as any);
+      }
+    }
+
+    // 2. Fetch all existing products for quick SKU lookup
+    const allExisting = await db.query.products.findMany({
+      columns: {
+        id: true,
+        sku: true,
+        name: true,
+        category: true,
+        sellingPriceCents: true,
+        costPriceCents: true,
+      },
+    });
+    const existingBySku = new Map<string, typeof allExisting[0]>(
+      allExisting.map((p) => [p.sku.toUpperCase(), p])
+    );
+
+    let createdCount = 0;
+    let updatedCount = 0;
+    const batchStatements: any[] = [];
+    const now = new Date().toISOString();
+
+    for (const item of items) {
+      const normalizedSku = item.sku.trim().toUpperCase();
+      const existing = existingBySku.get(normalizedSku);
+
+      if (existing) {
+        // Update existing product
+        const updateData: Record<string, any> = {
+          name: item.name.trim(),
+          category: item.category.trim(),
+          updatedAt: now,
+        };
+        if (item.sellingPriceCents !== undefined && item.sellingPriceCents > 0) {
+          updateData.sellingPriceCents = item.sellingPriceCents;
+          updateData.sellingPriceCurrency = item.sellingPriceCurrency || 'PHP';
+        }
+        if (item.costPriceCents !== undefined && item.costPriceCents > 0) {
+          updateData.costPriceCents = item.costPriceCents;
+          updateData.costPriceCurrency = item.costPriceCurrency || 'USD';
+        }
+        if (item.description) {
+          updateData.description = item.description;
+        }
+
+        batchStatements.push(
+          db.update(schema.products).set(updateData).where(eq(schema.products.id, existing.id))
+        );
+        updatedCount++;
+      } else {
+        // Insert new product
+        const newId = crypto.randomUUID();
+        batchStatements.push(
+          db.insert(schema.products).values({
+            id: newId,
+            sku: normalizedSku,
+            name: item.name.trim(),
+            category: item.category.trim(),
+            unitOfMeasure: item.unitOfMeasure || 'unit',
+            sellingPriceCents: item.sellingPriceCents || 0,
+            sellingPriceCurrency: item.sellingPriceCurrency || 'PHP',
+            costPriceCents: item.costPriceCents || 0,
+            costPriceCurrency: item.costPriceCurrency || 'USD',
+            description: item.description || null,
+            isActive: true,
+            createdAt: now,
+            updatedAt: now,
+          })
+        );
+        // Track inserted SKU so duplicate rows in the same spreadsheet don't conflict
+        existingBySku.set(normalizedSku, {
+          id: newId,
+          sku: normalizedSku,
+          name: item.name.trim(),
+          category: item.category.trim(),
+          sellingPriceCents: item.sellingPriceCents || 0,
+          costPriceCents: item.costPriceCents || 0,
+        });
+        createdCount++;
+      }
+    }
+
+    // 3. Execute batch statements in chunks of 50
+    for (let i = 0; i < batchStatements.length; i += 50) {
+      const chunk = batchStatements.slice(i, i + 50);
+      if (chunk.length > 0) {
+        await db.batch(chunk as any);
+      }
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        total: items.length,
+        createdCount,
+        updatedCount,
+        categoriesCreated: newCategoriesToInsert,
+      },
+    });
   }
 );
 
@@ -775,6 +946,22 @@ function generateNextPoNumber(lastNumber?: string | null): string {
     }
   }
   return 'PO-' + Date.now().toString().slice(-6);
+}
+
+function generateNextSequence(lastNumber?: string | null, defaultPrefix = 'SI-'): string {
+  if (lastNumber) {
+    let normalized = lastNumber.trim();
+    if (defaultPrefix === 'SI-') {
+      normalized = normalized.replace(/^SO-/i, 'SI-');
+    }
+    const match = normalized.match(/^(.*?)(\d+)$/);
+    if (match) {
+      const [, prefix, digits] = match;
+      const next = (parseInt(digits, 10) + 1).toString().padStart(digits.length, '0');
+      return prefix + next;
+    }
+  }
+  return defaultPrefix + '1001';
 }
 
 // POST /api/purchasing/orders - Create Purchase Order
@@ -1072,6 +1259,8 @@ app.post(
     'json',
     z.object({
       customerId: z.string().uuid(),
+      siNumber: z.string().trim().min(1).max(64).optional(),
+      soNumber: z.string().trim().min(1).max(64).optional(),
       currency: z.enum(['USD', 'PHP']),
       notes: z.string().optional(),
       items: z.array(
@@ -1087,8 +1276,40 @@ app.post(
     const db = createDbClient(c.env.DB);
     const body = c.req.valid('json');
 
+    const opsSetting = await db.query.systemSettings.findFirst({
+      where: eq(schema.systemSettings.key, 'operations.config'),
+    });
+    let prefix = 'SI-';
+    if (opsSetting?.value) {
+      try {
+        const conf = JSON.parse(opsSetting.value);
+        prefix = conf.siPrefix || conf.soPrefix || 'SI-';
+      } catch {}
+    }
+
+    const requestedNumber = (body.siNumber || body.soNumber)?.trim();
+    let soNumber: string;
+    if (requestedNumber) {
+      const existing = await db.query.salesOrders.findFirst({
+        where: eq(schema.salesOrders.soNumber, requestedNumber),
+      });
+      if (existing) {
+        return c.json({ success: false, error: 'SI number "' + requestedNumber + '" is already in use' }, 409);
+      }
+      soNumber = requestedNumber;
+    } else {
+      const lastSO = await db.query.salesOrders.findFirst({
+        orderBy: [desc(schema.salesOrders.createdAt)],
+      });
+      soNumber = generateNextSequence(lastSO?.soNumber, prefix);
+      let attempts = 0;
+      while (attempts < 50 && (await db.query.salesOrders.findFirst({ where: eq(schema.salesOrders.soNumber, soNumber) }))) {
+        soNumber = generateNextSequence(soNumber, prefix);
+        attempts++;
+      }
+    }
+
     const soId = crypto.randomUUID();
-    const soNumber = 'SO-' + Date.now().toString().slice(-6);
     const totalAmountCents = body.items.reduce((acc, it) => acc + it.quantity * it.unitPriceCents, 0);
 
     const soInsert = db.insert(schema.salesOrders).values({
@@ -1112,14 +1333,75 @@ app.post(
       })
     );
 
-    await db.batch([soInsert, ...itemInserts]);
+    // Sales Invoice IS the Invoice: Create the unified invoice record with the exact same SI number
+    const invoiceId = crypto.randomUUID();
+    const invoiceInsert = db.insert(schema.invoices).values({
+      id: invoiceId,
+      invoiceNumber: soNumber,
+      salesOrderId: soId,
+      customerId: body.customerId,
+      status: 'ISSUED',
+      currency: body.currency,
+      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      totalAmountCents,
+      paidAmountCents: 0,
+      notes: body.notes,
+    });
+
+    const invItemInserts = body.items.map((item) =>
+      db.insert(schema.invoiceItems).values({
+        id: crypto.randomUUID(),
+        invoiceId,
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPriceCents: item.unitPriceCents,
+        subtotalCents: item.quantity * item.unitPriceCents,
+      })
+    );
+
+    // Double-entry accounting: Debit Accounts Receivable (1300), Credit Sales Revenue (4010)
+    const arAccount = await db.query.accounts.findFirst({ where: eq(schema.accounts.code, '1300') });
+    const revAccount = await db.query.accounts.findFirst({ where: eq(schema.accounts.code, '4010') });
+    const jvEntries: any[] = [];
+    if (arAccount && revAccount && totalAmountCents > 0) {
+      const jvId = crypto.randomUUID();
+      jvEntries.push(
+        db.insert(schema.journalEntries).values({
+          id: crypto.randomUUID(),
+          voucherType: 'JOURNAL',
+          voucherId: jvId,
+          accountId: arAccount.id,
+          debitCents: totalAmountCents,
+          creditCents: 0,
+          description: 'Accounts Receivable for Sales Invoice ' + soNumber,
+        }),
+        db.insert(schema.journalEntries).values({
+          id: crypto.randomUUID(),
+          voucherType: 'JOURNAL',
+          voucherId: jvId,
+          accountId: revAccount.id,
+          debitCents: 0,
+          creditCents: totalAmountCents,
+          description: 'Sales Revenue for Sales Invoice ' + soNumber,
+        })
+      );
+    }
+
+    await db.batch([soInsert, ...itemInserts, invoiceInsert, ...invItemInserts, ...jvEntries]);
 
     const createdSO = await db.query.salesOrders.findFirst({
       where: eq(schema.salesOrders.id, soId),
-      with: { customer: true, items: { with: { product: true } } },
+      with: { customer: true, items: { with: { product: true } }, invoices: true },
     });
 
-    return c.json({ success: true, data: createdSO }, 201);
+    const responseData = createdSO
+      ? {
+          ...createdSO,
+          soNumber: createdSO.soNumber ? createdSO.soNumber.replace(/^SO-/i, 'SI-') : createdSO.soNumber,
+          siNumber: createdSO.soNumber ? createdSO.soNumber.replace(/^SO-/i, 'SI-') : createdSO.soNumber,
+        }
+      : createdSO;
+    return c.json({ success: true, data: responseData }, 201);
   }
 );
 
@@ -1241,7 +1523,7 @@ app.post(
     const body = c.req.valid('json');
 
     const invoiceId = crypto.randomUUID();
-    const invoiceNumber = 'INV-' + Date.now().toString().slice(-6);
+    let invoiceNumber: string;
     let salesOrderId: string;
     let customerId: string;
     let currency: 'USD' | 'PHP';
@@ -1263,6 +1545,7 @@ app.post(
       currency = dr.salesOrder.currency;
       totalAmountCents = dr.items.reduce((acc, item) => acc + item.quantity * item.unitPriceCents, 0);
       revenueDescription = 'Revenue from delivery ' + dr.drNumber;
+      invoiceNumber = (dr.salesOrder.soNumber || '').replace(/^SO-/i, 'SI-');
 
       const invoiceInsert = db.insert(schema.invoices).values({
         id: invoiceId,
@@ -1310,7 +1593,7 @@ app.post(
       if (activeInvoice) {
         return c.json({
           success: false,
-          error: `Sales Order ${so.soNumber} already has an active invoice (${activeInvoice.invoiceNumber}).`,
+          error: `Sales Invoice ${so.soNumber} already has an active invoice (${activeInvoice.invoiceNumber}).`,
           invoiceId: activeInvoice.id,
           invoiceNumber: activeInvoice.invoiceNumber,
         }, 400);
@@ -1320,7 +1603,8 @@ app.post(
       customerId = so.customerId;
       currency = so.currency;
       totalAmountCents = so.totalAmountCents;
-      revenueDescription = 'Revenue for sales order ' + so.soNumber;
+      revenueDescription = 'Revenue for sales invoice ' + so.soNumber;
+      invoiceNumber = (so.soNumber || '').replace(/^SO-/i, 'SI-');
 
       const invoiceInsert = db.insert(schema.invoices).values({
         id: invoiceId,
@@ -1443,7 +1727,24 @@ app.get('/api/outbound/receipts', async (c) => {
       },
     },
   });
-  return c.json({ success: true, data: receipts });
+  const mappedReceipts = receipts.map((dr) => {
+    const so = dr.salesOrder;
+    const raw = so?.soNumber || (so as any)?.siNumber || '';
+    const num = raw ? raw.replace(/^SO-/i, 'SI-') : raw;
+    const inv = dr.invoice;
+    const mappedInv = inv
+      ? {
+          ...inv,
+          invoiceNumber: num || (inv.invoiceNumber ? inv.invoiceNumber.replace(/^SO-/i, 'SI-').replace(/^INV-/i, 'SI-') : num),
+        }
+      : (num ? { id: dr.invoiceId || dr.id, invoiceNumber: num, status: 'ISSUED' } : null);
+    return {
+      ...dr,
+      invoice: mappedInv,
+      salesOrder: so ? { ...so, soNumber: num, siNumber: num } : so,
+    };
+  });
+  return c.json({ success: true, data: mappedReceipts });
 });
 
 // POST /api/outbound/orders/:id/mark-packed - Step 1: order picked and ready to ship
@@ -1474,6 +1775,7 @@ async function executeDeliveryReceipt(
   db: ReturnType<typeof createDbClient>,
   soId: string,
   body: {
+    drNumber?: string;
     notes?: string;
     receivedBy?: string;
     invoiceId?: string;
@@ -1522,15 +1824,50 @@ async function executeDeliveryReceipt(
     }
   }
 
+  let drNumber: string;
+  const requestedDr = body.drNumber?.trim();
+  if (requestedDr) {
+    const existing = await db.query.deliveryReceipts.findFirst({
+      where: eq(schema.deliveryReceipts.drNumber, requestedDr),
+    });
+    if (existing) {
+      return { error: 'DR number "' + requestedDr + '" is already in use', status: 409 as const };
+    }
+    drNumber = requestedDr;
+  } else {
+    const opsSetting = await db.query.systemSettings.findFirst({
+      where: eq(schema.systemSettings.key, 'operations.config'),
+    });
+    let prefix = 'DR-';
+    if (opsSetting?.value) {
+      try {
+        const conf = JSON.parse(opsSetting.value);
+        if (conf.drPrefix) prefix = conf.drPrefix;
+      } catch {}
+    }
+    const lastDR = await db.query.deliveryReceipts.findFirst({
+      orderBy: [desc(schema.deliveryReceipts.createdAt)],
+    });
+    drNumber = generateNextSequence(lastDR?.drNumber, prefix);
+    let attempts = 0;
+    while (attempts < 50 && (await db.query.deliveryReceipts.findFirst({ where: eq(schema.deliveryReceipts.drNumber, drNumber) }))) {
+      drNumber = generateNextSequence(drNumber, prefix);
+      attempts++;
+    }
+  }
+
   const deliveryReceiptId = crypto.randomUUID();
-  const drNumber = 'DR-' + Date.now().toString().slice(-6);
+  const drStatus = body.receivedBy ? 'COMPLETED' : 'IN_TRANSIT';
+  const arrivedAt = body.receivedBy ? new Date().toISOString() : null;
 
   const drInsert = db.insert(schema.deliveryReceipts).values({
     id: deliveryReceiptId,
     drNumber,
     salesOrderId: so.id,
     invoiceId: resolvedInvoiceId,
-    receivedBy: body.receivedBy,
+    receivedBy: body.receivedBy || null,
+    status: drStatus,
+    arrivedAt,
     notes: body.notes,
   });
 
@@ -1593,6 +1930,8 @@ async function executeDeliveryReceipt(
   return {
     deliveryReceiptId,
     drNumber,
+    deliveryStatus: drStatus,
+    arrivedAt,
     invoiceId: resolvedInvoiceId,
   };
 }
@@ -1604,6 +1943,7 @@ app.post(
   zValidator(
     'json',
     z.object({
+      drNumber: z.string().trim().min(1).max(64).optional(),
       notes: z.string().optional(),
       receivedBy: z.string().optional(),
       invoiceId: z.string().uuid().optional(),
@@ -1630,6 +1970,8 @@ app.post(
       message: 'Delivery Receipt issued and stock ledger updated.',
       deliveryReceiptId: result.deliveryReceiptId,
       drNumber: result.drNumber,
+      status: result.deliveryStatus,
+      arrivedAt: result.arrivedAt,
       invoiceId: result.invoiceId,
     });
   }
@@ -1642,6 +1984,7 @@ app.post(
     'json',
     z.object({
       salesOrderId: z.string().uuid(),
+      drNumber: z.string().trim().min(1).max(64).optional(),
       invoiceId: z.string().uuid().optional(),
       notes: z.string().optional(),
       receivedBy: z.string().optional(),
@@ -1667,8 +2010,60 @@ app.post(
       message: 'Delivery Receipt issued and stock ledger updated.',
       deliveryReceiptId: result.deliveryReceiptId,
       drNumber: result.drNumber,
+      status: result.deliveryStatus,
+      arrivedAt: result.arrivedAt,
       invoiceId: result.invoiceId,
     }, 201);
+  }
+);
+
+// POST /api/outbound/receipts/:id/mark-arrived - Mark a Delivery Receipt as Arrived & Completed
+app.post(
+  '/api/outbound/receipts/:id/mark-arrived',
+  zValidator(
+    'json',
+    z.object({
+      receivedBy: z.string().trim().min(1, 'Receiver name is required'),
+      notes: z.string().optional(),
+      arrivedAt: z.string().optional(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const drId = c.req.param('id');
+    const body = c.req.valid('json');
+
+    const dr = await db.query.deliveryReceipts.findFirst({
+      where: eq(schema.deliveryReceipts.id, drId),
+    });
+    if (!dr) return c.json({ success: false, error: 'Delivery receipt not found' }, 404);
+
+    const arrivalTimestamp = body.arrivedAt || new Date().toISOString();
+    const updatedNotes = body.notes
+      ? (dr.notes ? `${dr.notes} | ${body.notes}` : body.notes)
+      : dr.notes;
+
+    await db
+      .update(schema.deliveryReceipts)
+      .set({
+        status: 'COMPLETED',
+        receivedBy: body.receivedBy,
+        arrivedAt: arrivalTimestamp,
+        notes: updatedNotes,
+      })
+      .where(eq(schema.deliveryReceipts.id, drId));
+
+    return c.json({
+      success: true,
+      message: `Delivery Receipt ${dr.drNumber} marked as Arrived and Completed.`,
+      data: {
+        id: dr.id,
+        drNumber: dr.drNumber,
+        status: 'COMPLETED',
+        receivedBy: body.receivedBy,
+        arrivedAt: arrivalTimestamp,
+      },
+    });
   }
 );
 
@@ -4583,7 +4978,8 @@ export const DEFAULT_SETTINGS = [
       defaultUom: 'pcs',
       defaultPaymentTermsDays: 30,
       poPrefix: 'PO-',
-      soPrefix: 'SO-',
+      siPrefix: 'SI-',
+      soPrefix: 'SI-',
       invPrefix: 'INV-',
       grnPrefix: 'GRN-',
     }),
