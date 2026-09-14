@@ -34,7 +34,12 @@ export function renderDirectoryView(): string {
         border-collapse: separate;
         border-spacing: 0;
         width: 100%;
+        min-width: 1100px;
         margin: 0;
+      }
+      .directory-smart-scroll th,
+      .directory-smart-scroll td {
+        vertical-align: middle;
       }
       .directory-smart-scroll thead th {
         position: sticky;
@@ -44,12 +49,14 @@ export function renderDirectoryView(): string {
         border-bottom: 2px solid var(--border-color);
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
         transition: background-color 0.15s ease;
+        padding: 0.75rem 1rem;
       }
       .directory-smart-scroll thead th.sortable-th:hover {
         background: #f1f5f9;
       }
       .directory-smart-scroll td {
         border-bottom: 1px solid var(--border-color);
+        padding: 0.75rem 1rem;
       }
       .directory-smart-scroll tbody tr {
         transition: background-color 0.15s ease;
@@ -440,21 +447,37 @@ function renderDirectoryTable(keepScroll = false) {
     visibleRowsCount = rows.length;
 
     tableHeaderHtml = \`<thead><tr>
-      <th class="sortable-th" style="width: 130px; cursor: pointer; user-select: none;" onclick="setDirectorySort('sku')" title="Sort by SKU">SKU \${directorySortIndicator('sku')}</th>
-      <th class="sortable-th" style="cursor: pointer; user-select: none;" onclick="setDirectorySort('name')" title="Sort by Name">Product Name \${directorySortIndicator('name')}</th>
-      <th class="sortable-th" style="width: 170px; cursor: pointer; user-select: none;" onclick="setDirectorySort('category')" title="Sort by Category">Category \${directorySortIndicator('category')}</th>
-      <th class="sortable-th" style="width: 90px; cursor: pointer; user-select: none;" onclick="setDirectorySort('unitOfMeasure')" title="Sort by UOM">UOM \${directorySortIndicator('unitOfMeasure')}</th>
-      <th class="sortable-th" style="width: 140px; cursor: pointer; user-select: none;" onclick="setDirectorySort('costPriceCents')" title="Sort by Cost Price">Cost Price \${directorySortIndicator('costPriceCents')}</th>
-      <th style="width: 140px; text-align: right;"></th>
+      <th class="sortable-th" style="width: 110px; min-width: 100px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('sku')" title="Sort by SKU">SKU \${directorySortIndicator('sku')}</th>
+      <th class="sortable-th" style="width: 360px; min-width: 340px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('name')" title="Sort by Name">Product Name \${directorySortIndicator('name')}</th>
+      <th class="sortable-th" style="width: 160px; min-width: 140px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('category')" title="Sort by Category">Category \${directorySortIndicator('category')}</th>
+      <th class="sortable-th" style="width: 75px; min-width: 65px; text-align: center; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('unitOfMeasure')" title="Sort by UOM">UOM \${directorySortIndicator('unitOfMeasure')}</th>
+      <th class="sortable-th" style="width: 140px; min-width: 130px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('costPriceCents')" title="Sort by Cost Price">Cost Price \${directorySortIndicator('costPriceCents')}</th>
+      <th style="width: 140px; text-align: right; white-space: nowrap;"></th>
     </tr></thead>\`;
     tbodyHtml = rows.map((p) => \`
       <tr>
-        <td><strong style="font-family: monospace;">\${p.sku}</strong></td>
-        <td><strong>\${p.name}</strong></td>
-        <td><span class="badge badge-neutral" style="font-size: 0.74rem;">\${p.category || '—'}</span></td>
-        <td>\${p.unitOfMeasure}</td>
-        <td>\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.75rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8;">Not purchased yet</span>'}</td>
-        <td style="text-align: right;"><button class="btn btn-secondary btn-sm" onclick="openChangeCategoryModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}', '\${(p.category || '').replace(/'/g, "\\\\'")}')">Change Category</button></td>
+        <td style="white-space: nowrap;"><strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: #334155;">\${p.sku}</strong></td>
+        <td style="width: 360px; min-width: 340px; max-width: 520px;">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div style="width: 32px; height: 32px; border-radius: 6px; background: #f8fafc; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #64748b;" title="Product">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+              </svg>
+            </div>
+            <div style="min-width: 0; flex: 1;">
+              <div style="font-weight: 600; color: #0f172a; font-size: 0.88rem; line-height: 1.35; word-break: normal;">
+                \${p.name}
+              </div>
+              \${p.description && !p.description.startsWith('Section:') ? \`<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px;" title="\${(p.description || '').replace(/"/g, '&quot;')}">\${p.description}</div>\` : ''}
+            </div>
+          </div>
+        </td>
+        <td style="white-space: nowrap;"><span class="badge badge-neutral" style="font-size: 0.74rem;">\${p.category || '—'}</span></td>
+        <td style="text-align: center; color: #64748b; font-size: 0.82rem; white-space: nowrap;">\${p.unitOfMeasure}</td>
+        <td style="white-space: nowrap;">\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.72rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8; font-size: 0.8rem;">Not purchased yet</span>'}</td>
+        <td style="text-align: right; white-space: nowrap;"><button class="btn btn-secondary btn-sm" onclick="openChangeCategoryModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}', '\${(p.category || '').replace(/'/g, "\\\\'")}')">Change Category</button></td>
       </tr>
     \`).join('') || '<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 2rem;">No products found.</td></tr>';
 
@@ -474,21 +497,37 @@ function renderDirectoryTable(keepScroll = false) {
     visibleRowsCount = rows.length;
 
     tableHeaderHtml = \`<thead><tr>
-      <th class="sortable-th" style="width: 130px; cursor: pointer; user-select: none;" onclick="setDirectorySort('sku')" title="Sort by SKU">SKU \${directorySortIndicator('sku')}</th>
-      <th class="sortable-th" style="cursor: pointer; user-select: none;" onclick="setDirectorySort('name')" title="Sort by Name">Product Name \${directorySortIndicator('name')}</th>
-      <th class="sortable-th" style="width: 170px; cursor: pointer; user-select: none;" onclick="setDirectorySort('category')" title="Sort by Category">Category \${directorySortIndicator('category')}</th>
-      <th class="sortable-th" style="width: 140px; cursor: pointer; user-select: none;" onclick="setDirectorySort('costPriceCents')" title="Sort by Cost Price">Cost Price \${directorySortIndicator('costPriceCents')}</th>
-      <th class="sortable-th" style="width: 150px; cursor: pointer; user-select: none;" onclick="setDirectorySort('sellingPriceCents')" title="Sort by Selling Price">Selling Price \${directorySortIndicator('sellingPriceCents')}</th>
-      <th style="width: 120px; text-align: right;"></th>
+      <th class="sortable-th" style="width: 110px; min-width: 100px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('sku')" title="Sort by SKU">SKU \${directorySortIndicator('sku')}</th>
+      <th class="sortable-th" style="width: 360px; min-width: 340px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('name')" title="Sort by Name">Product Name \${directorySortIndicator('name')}</th>
+      <th class="sortable-th" style="width: 160px; min-width: 140px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('category')" title="Sort by Category">Category \${directorySortIndicator('category')}</th>
+      <th class="sortable-th" style="width: 140px; min-width: 130px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('costPriceCents')" title="Sort by Cost Price">Cost Price \${directorySortIndicator('costPriceCents')}</th>
+      <th class="sortable-th" style="width: 150px; min-width: 140px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('sellingPriceCents')" title="Sort by Selling Price">Selling Price \${directorySortIndicator('sellingPriceCents')}</th>
+      <th style="width: 120px; text-align: right; white-space: nowrap;"></th>
     </tr></thead>\`;
     tbodyHtml = rows.map((p) => \`
       <tr>
-        <td><strong style="font-family: monospace;">\${p.sku}</strong></td>
-        <td><strong>\${p.name}</strong></td>
-        <td><span class="badge badge-neutral" style="font-size: 0.74rem;">\${p.category || '—'}</span></td>
-        <td>\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.75rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8;">Not purchased yet</span>'}</td>
-        <td style="font-weight: 700; font-family: monospace; color: #0f172a;">\${p.sellingPriceCents > 0 ? formatCurrency(p.sellingPriceCents, p.sellingPriceCurrency) : '<span style="color: #94a3b8; font-weight: normal;">Not set</span>'}</td>
-        <td style="text-align: right;"><button class="btn btn-secondary btn-sm" onclick="openSetPriceModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}', \${p.sellingPriceCents}, '\${p.sellingPriceCurrency}')">Set Price</button></td>
+        <td style="white-space: nowrap;"><strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: #334155;">\${p.sku}</strong></td>
+        <td style="width: 360px; min-width: 340px; max-width: 520px;">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div style="width: 32px; height: 32px; border-radius: 6px; background: #f8fafc; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #64748b;" title="Product">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+              </svg>
+            </div>
+            <div style="min-width: 0; flex: 1;">
+              <div style="font-weight: 600; color: #0f172a; font-size: 0.88rem; line-height: 1.35; word-break: normal;">
+                \${p.name}
+              </div>
+              \${p.description && !p.description.startsWith('Section:') ? \`<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px;" title="\${(p.description || '').replace(/"/g, '&quot;')}">\${p.description}</div>\` : ''}
+            </div>
+          </div>
+        </td>
+        <td style="white-space: nowrap;"><span class="badge badge-neutral" style="font-size: 0.74rem;">\${p.category || '—'}</span></td>
+        <td style="white-space: nowrap;">\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.72rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8; font-size: 0.8rem;">Not purchased yet</span>'}</td>
+        <td style="white-space: nowrap; font-weight: 700; font-family: monospace; color: #0f172a;">\${p.sellingPriceCents > 0 ? formatCurrency(p.sellingPriceCents, p.sellingPriceCurrency) : '<span style="color: #94a3b8; font-weight: normal; font-size: 0.8rem;">Not set</span>'}</td>
+        <td style="text-align: right; white-space: nowrap;"><button class="btn btn-secondary btn-sm" onclick="openSetPriceModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}', \${p.sellingPriceCents}, '\${p.sellingPriceCurrency}')">Set Price</button></td>
       </tr>
     \`).join('') || '<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 2rem;">No products found.</td></tr>';
 
