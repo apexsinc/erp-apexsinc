@@ -135,4 +135,25 @@ export const AUTH_CSS = `
   letter-spacing: 0.01em;
   margin-top: 1.5rem;
 }
+
+@media (max-width: 480px) {
+  .login-container {
+    padding: 0.75rem;
+  }
+  .login-card {
+    padding: 1.85rem 1.25rem;
+    max-width: calc(100vw - 1.5rem);
+    border-radius: var(--radius-md);
+  }
+  .login-logo-box img {
+    width: 68px;
+    height: 68px;
+  }
+  .login-title {
+    font-size: 1.35rem;
+  }
+  .login-subtitle {
+    font-size: 0.82rem;
+  }
+}
 `;

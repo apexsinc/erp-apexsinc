@@ -101,6 +101,21 @@ export function renderDirectoryView(): string {
         font-size: 0.75rem;
         line-height: 1;
       }
+      @media (max-width: 768px) {
+        .directory-panel-inner {
+          padding-left: 0.75rem !important;
+          padding-right: 0.75rem !important;
+        }
+        .directory-search-box {
+          max-width: 100% !important;
+        }
+      }
+      @media (max-width: 480px) {
+        .directory-panel-inner {
+          padding-left: 0.5rem !important;
+          padding-right: 0.5rem !important;
+        }
+      }
     </style>
     <div id="view-directory" class="tab-view" style="display: none;"></div>
   `;
@@ -273,12 +288,12 @@ function renderDirectoryContent() {
         <div class="panel-title">Business Directory</div>
         <div class="panel-actions">\${addButton}</div>
       </div>
-      <p style="padding: 0 1.35rem 1rem; font-size: 0.85rem; color: #64748b;">
+      <p class="directory-panel-inner" style="padding: 0 1.35rem 1rem; font-size: 0.85rem; color: #64748b;">
         The single source of truth for customers, products, and suppliers — referenced by Purchasing, Inbound, and Sales, but managed here.
       </p>
-      <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0 1.35rem 1rem; flex-wrap: wrap;">
-        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">\${tabsHtml}</div>
-        <div style="position: relative; max-width: 280px; width: 100%;">
+      <div class="directory-panel-inner" style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0 1.35rem 1rem; flex-wrap: wrap;">
+        <div class="category-pills-strip" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">\${tabsHtml}</div>
+        <div class="directory-search-box" style="position: relative; max-width: 280px; width: 100%;">
           <input
             type="text"
             id="directory-search-input"
@@ -297,8 +312,8 @@ function renderDirectoryContent() {
           >✕</button>
         </div>
       </div>
-      \${(directoryActiveTab === 'products' || directoryActiveTab === 'pricelist') ? '<div id="directory-category-tabs" style="padding: 0 1.35rem 1rem;"></div>' : ''}
-      <div id="directory-table-wrap" style="padding: 0 1.35rem 0.5rem;"></div>
+      \${(directoryActiveTab === 'products' || directoryActiveTab === 'pricelist') ? '<div id="directory-category-tabs" class="directory-panel-inner" style="padding: 0 1.35rem 1rem;"></div>' : ''}
+      <div id="directory-table-wrap" class="directory-panel-inner" style="padding: 0 1.35rem 0.5rem;"></div>
     </div>
   \`;
   if (directoryActiveTab === 'products' || directoryActiveTab === 'pricelist') renderProductCategoryTabs();
@@ -328,9 +343,9 @@ function renderProductCategoryTabs() {
   }).join('');
 
   wrap.innerHTML = \`
-    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; border-top: 1px dashed var(--border-color); padding-top: 1rem;">
+    <div class="category-pills-strip" style="border-top: 1px dashed var(--border-color); padding-top: 1rem;">
       \${pillsHtml}
-      \${can('directory', 'create') || can('inventory', 'create') ? '<button type="button" onclick="openAddCategoryModal()" style="padding: 0.4rem 0.9rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; border: 1px dashed var(--border-color); background: transparent; color: #64748b; cursor: pointer;">+ Add Category</button>' : ''}
+      \${can('directory', 'create') || can('inventory', 'create') ? '<button type="button" onclick="openAddCategoryModal()" style="padding: 0.4rem 0.9rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; border: 1px dashed var(--border-color); background: transparent; color: #64748b; cursor: pointer; white-space: nowrap; flex-shrink: 0;">+ Add Category</button>' : ''}
     </div>
   \`;
 }

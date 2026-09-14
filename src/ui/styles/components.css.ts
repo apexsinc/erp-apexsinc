@@ -543,7 +543,22 @@ export const COMPONENTS_CSS = `
 
 .table-responsive {
   width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.table-responsive table,
+.table-responsive .data-table {
+  min-width: 680px;
+}
+
+.category-pills-strip {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .data-table {
@@ -995,7 +1010,28 @@ export const COMPONENTS_CSS = `
   display: none;
 }
 
-/* Responsive Auto-Cascade & Full Mobile Optimization (Screen Width <= 992px) */
+/* ========================================================================== */
+/* UNIVERSAL RESPONSIVE ENGINE & BREAKPOINTS                                  */
+/* ========================================================================== */
+
+@media (min-width: 1600px) {
+  .page-body {
+    max-width: 1780px;
+    margin: 0 auto;
+    width: 100%;
+  }
+}
+
+@media (min-width: 993px) and (max-width: 1280px) {
+  .sidebar {
+    width: 235px !important;
+  }
+  .page-body {
+    padding: 1.25rem 1.35rem !important;
+  }
+}
+
+/* Responsive Auto-Cascade & Tablet/Mobile Optimization (Screen Width <= 992px) */
 @media (max-width: 992px) {
   /* Mobile Sidebar Off-Canvas Navigation */
   .mobile-menu-btn {
@@ -1007,8 +1043,8 @@ export const COMPONENTS_CSS = `
     top: 0 !important;
     left: 0 !important;
     bottom: 0 !important;
-    width: 270px !important;
-    max-width: 82vw !important;
+    width: 275px !important;
+    max-width: 84vw !important;
     z-index: 1000 !important;
     transform: translateX(-100%);
     transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1033,28 +1069,38 @@ export const COMPONENTS_CSS = `
   }
 
   .top-bar {
-    padding: 0 0.85rem !important;
+    padding: 0 1rem !important;
     gap: 0.5rem !important;
   }
 
   .topbar-clock-badge {
-    padding: 0.25rem 0.5rem !important;
-    font-size: 0.74rem !important;
+    padding: 0.25rem 0.6rem !important;
+    font-size: 0.76rem !important;
   }
 
   .breadcrumbs {
-    font-size: 0.8rem !important;
+    font-size: 0.82rem !important;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .page-body {
-    padding: 0.75rem 0.5rem !important;
+    padding: 1rem 0.85rem !important;
     width: 100% !important;
     max-width: 100vw !important;
     overflow-x: hidden !important;
     box-sizing: border-box !important;
+  }
+
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.85rem !important;
+  }
+
+  .inventory-smart-scroll,
+  .directory-smart-scroll {
+    max-height: calc(100vh - 240px) !important;
   }
 
   /* Voucher module container responsive wrapping */
@@ -1342,7 +1388,148 @@ export const COMPONENTS_CSS = `
   }
 }
 
+/* Responsive Tablet & Mobile System (Screen Width <= 768px) */
+@media (max-width: 768px) {
+  .breadcrumb-root,
+  .breadcrumb-sep {
+    display: none !important;
+  }
+
+  .breadcrumbs {
+    font-size: 0.86rem !important;
+    font-weight: 600 !important;
+    max-width: 60vw;
+  }
+
+  .topbar-clock-date,
+  .topbar-clock-divider {
+    display: none !important;
+  }
+
+  .topbar-clock-badge {
+    padding: 0.28rem 0.65rem !important;
+  }
+
+  .panel-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.75rem !important;
+    padding: 0.9rem 1rem !important;
+  }
+
+  .panel-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    width: 100% !important;
+    gap: 0.45rem !important;
+  }
+
+  .panel-actions .btn,
+  .panel-actions button,
+  .panel-actions a {
+    flex: 1 1 auto !important;
+    justify-content: center !important;
+  }
+
+  .category-pills-strip {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    padding-bottom: 6px !important;
+  }
+
+  .category-pills-strip::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .category-pills-strip button {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  .modal-backdrop {
+    padding: 0.5rem !important;
+    align-items: center !important;
+  }
+
+  .modal-dialog,
+  .modal-dialog-sm,
+  .modal-dialog-lg,
+  .modal-dialog-xl {
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: calc(100dvh - 1rem) !important;
+    margin: 0 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .modal-body {
+    max-height: calc(100dvh - 125px) !important;
+    padding: 1rem !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .modal-header {
+    padding: 0.95rem 1.15rem !important;
+  }
+}
+
+/* Responsive Grid Auto-Collapse & Mobile Ergonomics (Screen Width <= 640px) */
+@media (max-width: 640px) {
+  /* Automatically collapse multi-column form grids inside modals and views into single column */
+  .modal-body form div[style*="grid-template-columns"],
+  .modal-dialog form div[style*="grid-template-columns"],
+  form div[style*="grid-template-columns: 1fr 1fr"],
+  form div[style*="grid-template-columns: 1fr 1fr 1fr"],
+  form div[style*="grid-template-columns: 1.25fr 0.75fr"],
+  form div[style*="grid-template-columns: 2fr 1fr"],
+  form div[style*="grid-template-columns: 1fr 2fr"],
+  form div[style*="grid-template-columns: repeat(2"],
+  form div[style*="grid-template-columns: repeat(3"],
+  form div[style*="grid-template-columns: repeat(4"] {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+
+  .kpi-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.65rem !important;
+  }
+
+  .kpi-value {
+    font-size: 1.3rem !important;
+  }
+
+  .inventory-scroll-pill,
+  .directory-scroll-pill {
+    bottom: 0.75rem !important;
+    right: 0.75rem !important;
+    padding: 0.35rem 0.75rem !important;
+    font-size: 0.72rem !important;
+  }
+}
+
+/* Small Smartphone Optimization (Screen Width <= 480px) */
 @media (max-width: 480px) {
+  .page-body {
+    padding: 0.65rem 0.45rem !important;
+  }
+
+  .top-bar {
+    padding: 0 0.65rem !important;
+  }
+
+  .topbar-clock-badge {
+    padding: 0.2rem 0.45rem !important;
+  }
+
+  .topbar-clock-time {
+    font-size: 0.78rem !important;
+  }
+
   .pv-header-actions {
     grid-template-columns: 1fr !important;
   }
@@ -1354,6 +1541,38 @@ export const COMPONENTS_CSS = `
   .responsive-cascade-table:not(.view-mode-table) td.td-actions button,
   .responsive-cascade-table.view-mode-cards td.td-actions button {
     flex: 1 1 calc(50% - 0.35rem) !important;
+  }
+
+  .modal-footer {
+    flex-direction: column-reverse !important;
+    gap: 0.5rem !important;
+    padding: 0.75rem 1rem !important;
+  }
+
+  .modal-footer button,
+  .modal-footer .btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .toast-container {
+    bottom: 0.75rem !important;
+    right: 0.75rem !important;
+    left: 0.75rem !important;
+  }
+
+  .toast {
+    max-width: 100% !important;
+  }
+}
+
+/* Micro-screen fallback (Screen Width <= 360px) */
+@media (max-width: 360px) {
+  .topbar-clock-badge {
+    display: none !important;
+  }
+  .breadcrumbs {
+    font-size: 0.8rem !important;
   }
 }
 

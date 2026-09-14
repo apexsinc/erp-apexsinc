@@ -139,11 +139,11 @@ function renderSalesContent(container) {
         </div>
       </div>
       <div style="padding: 0 1.35rem 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
-        <p style="font-size: 0.85rem; color: #64748b; margin: 0;">
+        <p style="font-size: 0.85rem; color: #64748b; margin: 0; flex: 1 1 260px;">
           Manage customers in the Business Directory. Confirmed Sales Invoices post directly to Accounts Receivable. Issue delivery receipts as goods are fulfilled.
         </p>
-        <div style="min-width: 260px;">
-          <input type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search SI #, customer, status..." value="\${salesSearchQuery}" oninput="handleSalesSearch(this.value)" />
+        <div style="max-width: 280px; width: 100%;">
+          <input type="text" class="form-input" style="width: 100%; padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search SI #, customer, status..." value="\${salesSearchQuery}" oninput="handleSalesSearch(this.value)" />
         </div>
       </div>
       <div class="table-responsive">

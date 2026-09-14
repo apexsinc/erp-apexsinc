@@ -101,6 +101,21 @@ export function renderInventoryView(): string {
         font-size: 0.75rem;
         line-height: 1;
       }
+      @media (max-width: 768px) {
+        .inventory-panel-inner {
+          padding-left: 0.75rem !important;
+          padding-right: 0.75rem !important;
+        }
+        .inventory-search-box {
+          max-width: 100% !important;
+        }
+      }
+      @media (max-width: 480px) {
+        .inventory-panel-inner {
+          padding-left: 0.5rem !important;
+          padding-right: 0.5rem !important;
+        }
+      }
     </style>
     <div id="view-inventory" class="tab-view" style="display: none;"></div>
   `;
@@ -317,11 +332,11 @@ function renderInventoryContent(container) {
           \${can('inventory', 'update') ? '<button class="btn btn-secondary btn-sm" onclick="openStockAdjustmentModal()">Stock Adjustment</button>' : ''}
         </div>
       </div>
-      <div style="padding: 0 1.35rem 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
-        <p style="font-size: 0.85rem; color: #64748b; margin: 0;">
+      <div class="inventory-panel-inner" style="padding: 0 1.35rem 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+        <p style="font-size: 0.85rem; color: #64748b; margin: 0; flex: 1 1 280px;">
           Add new products from the Business Directory. This view tracks stock levels, valuation, and movement history.
         </p>
-        <div style="position: relative; max-width: 280px; width: 100%;">
+        <div class="inventory-search-box" style="position: relative; max-width: 280px; width: 100%;">
           <input
             type="text"
             id="inventory-search-input"
@@ -340,8 +355,8 @@ function renderInventoryContent(container) {
           >✕</button>
         </div>
       </div>
-      <div id="inventory-category-tabs" style="padding: 0 1.35rem 1rem;"></div>
-      <div id="inventory-table-wrap" style="padding: 0 1.35rem 0.5rem;"></div>
+      <div id="inventory-category-tabs" class="inventory-panel-inner" style="padding: 0 1.35rem 1rem;"></div>
+      <div id="inventory-table-wrap" class="inventory-panel-inner" style="padding: 0 1.35rem 0.5rem;"></div>
     </div>
   \`;
   renderInventoryCategoryTabs();
@@ -371,7 +386,7 @@ function renderInventoryCategoryTabs() {
   }).join('');
 
   wrap.innerHTML = \`
-    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; border-top: 1px dashed var(--border-color); padding-top: 1rem;">
+    <div class="category-pills-strip" style="border-top: 1px dashed var(--border-color); padding-top: 1rem;">
       \${pillsHtml}
     </div>
   \`;

@@ -106,11 +106,11 @@ function renderPurchasingContent(container) {
         </div>
       </div>
       <div style="padding: 0 1.35rem 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
-        <p style="font-size: 0.85rem; color: #64748b; margin: 0;">
+        <p style="font-size: 0.85rem; color: #64748b; margin: 0; flex: 1 1 260px;">
           Manage suppliers in the Business Directory. Click a purchase order to open it in Inbound Deliveries.
         </p>
-        <div style="min-width: 260px;">
-          <input type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search PO #, vendor, status..." value="\${purchasingSearchQuery}" oninput="handlePurchasingSearch(this.value)" />
+        <div style="max-width: 280px; width: 100%;">
+          <input type="text" class="form-input" style="width: 100%; padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search PO #, vendor, status..." value="\${purchasingSearchQuery}" oninput="handlePurchasingSearch(this.value)" />
         </div>
       </div>
       <div class="table-responsive">
