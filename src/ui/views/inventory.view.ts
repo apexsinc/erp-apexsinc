@@ -116,6 +116,41 @@ export function renderInventoryView(): string {
           padding-right: 0.5rem !important;
         }
       }
+      /* Autocomplete Product Combobox */
+      .product-combobox-container {
+        position: relative;
+        width: 100%;
+      }
+      .product-combobox-dropdown {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        z-index: 1050;
+        background: #ffffff;
+        border: 1px solid var(--border-color, #cbd5e1);
+        border-radius: 8px;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+        max-height: 270px;
+        overflow: hidden;
+        overscroll-behavior: contain;
+      }
+      .product-combobox-item {
+        padding: 0.65rem 0.85rem;
+        border-bottom: 1px solid #f1f5f9;
+        cursor: pointer;
+        transition: background-color 0.12s ease;
+      }
+      .product-combobox-item:last-child {
+        border-bottom: none;
+      }
+      .product-combobox-item:hover,
+      .product-combobox-item.active {
+        background-color: #f1f5f9;
+      }
+      .product-combobox-item.selected {
+        background-color: #f0fdf4;
+      }
     </style>
     <div id="view-inventory" class="tab-view" style="display: none;"></div>
   `;
@@ -561,36 +596,70 @@ async function openProductHistoryModal(productId, productName) {
   }
 }
 
-function openAddStockModal() {
-  if (!state.products.length) {
+function openAddStockModal(defaultProductId) {
+  if (!state.products || !state.products.length) {
     showToast('Please add products first', 'warning');
     return;
   }
-  let options = state.products
-    .map((p) => \`<option value="\${p.id}">\${p.sku} - \${p.name} (Current: \${p.onHandStock})</option>\`)
-    .join('');
   const body = \`
     <form id="form-add-stock" onsubmit="submitAddStock(event)">
-      <p style="margin: 0 0 1rem; font-size: 0.85rem; color: #64748b;">
+      <p style="margin: 0 0 1rem; font-size: 0.85rem; color: #64748b; line-height: 1.45;">
         Use this for stock that isn't coming through a Purchase Order — e.g. legacy products
         already on hand before this system was in use. If the product has no cost price yet,
         set one here so its valuation is accurate.
       </p>
-      <div class="form-group">
-        <label class="form-label">Select Product *</label>
-        <select id="add-stock-product" class="form-select" onchange="handleAddStockProductChange()">\${options}</select>
+      <div class="form-group" style="margin-bottom: 1.15rem;">
+        <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem;">
+          <span style="font-weight: 600; color: #0f172a;">Select Product *</span>
+          <span style="font-size: 0.75rem; color: #64748b; font-weight: 500;">\${state.products.length} products available</span>
+        </label>
+        <div id="add-stock-combobox-container" class="product-combobox-container">
+          <input type="hidden" id="add-stock-product" value="" required />
+          <div style="position: relative; display: flex; align-items: center;">
+            <span style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; font-size: 0.95rem; display: flex; align-items: center;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </span>
+            <input
+              type="text"
+              id="add-stock-search-input"
+              class="form-input"
+              placeholder="Type SKU or product name to search..."
+              autocomplete="off"
+              style="padding-left: 2.35rem; padding-right: 2.25rem; font-size: 0.88rem;"
+              oninput="handleProductSearchInput('add-stock', this.value)"
+              onfocus="handleProductSearchFocus('add-stock')"
+              onkeydown="handleProductSearchKeydown('add-stock', event)"
+            />
+            <button
+              type="button"
+              id="add-stock-clear-btn"
+              onclick="clearProductSelection('add-stock')"
+              style="display: none; position: absolute; right: 0.65rem; top: 50%; transform: translateY(-50%); background: #f1f5f9; border: none; color: #64748b; cursor: pointer; padding: 0; font-size: 0.78rem; border-radius: 50%; width: 22px; height: 22px; align-items: center; justify-content: center; line-height: 1; transition: all 0.15s ease;"
+              onmouseover="this.style.background='#e2e8f0'; this.style.color='#0f172a';"
+              onmouseout="this.style.background='#f1f5f9'; this.style.color='#64748b';"
+              title="Clear selection"
+            >✕</button>
+          </div>
+          <div id="add-stock-dropdown" class="product-combobox-dropdown" style="display: none;"></div>
+          <div id="add-stock-selected-card">
+            <div style="font-size: 0.78rem; color: #94a3b8; padding: 0.35rem 0.1rem; display: flex; align-items: center; gap: 0.35rem;">
+              <span>💡</span>
+              <span>Type SKU or product name above to instantly filter products</span>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Quantity to Add *</label>
-        <input type="number" id="add-stock-qty" class="form-input" placeholder="10" min="1" required />
+        <label class="form-label" style="font-weight: 600; color: #0f172a;">Quantity to Add *</label>
+        <input type="number" id="add-stock-qty" class="form-input" placeholder="e.g. 10" min="1" required />
       </div>
       <div class="form-group" style="display: flex; gap: 0.75rem;">
         <div style="flex: 2;">
-          <label class="form-label">Unit Cost <span id="add-stock-cost-hint" style="color: #94a3b8; font-weight: normal;"></span></label>
+          <label class="form-label" style="font-weight: 600; color: #0f172a;">Unit Cost <span id="add-stock-cost-hint" style="color: #94a3b8; font-weight: normal; font-size: 0.8rem;"></span></label>
           <input type="number" id="add-stock-cost" class="form-input" placeholder="0.00" min="0" step="0.01" />
         </div>
         <div style="flex: 1;">
-          <label class="form-label">Currency</label>
+          <label class="form-label" style="font-weight: 600; color: #0f172a;">Currency</label>
           <select id="add-stock-currency" class="form-select">
             <option value="PHP">PHP</option>
             <option value="USD">USD</option>
@@ -598,7 +667,7 @@ function openAddStockModal() {
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Reason / Notes</label>
+        <label class="form-label" style="font-weight: 600; color: #0f172a;">Reason / Notes</label>
         <input type="text" id="add-stock-notes" class="form-input" placeholder="Legacy stock on hand, no PO on record" />
       </div>
     </form>
@@ -608,31 +677,54 @@ function openAddStockModal() {
     <button class="btn btn-primary" onclick="document.getElementById('form-add-stock').requestSubmit()">Add Stock</button>
   \`;
   openModal('Add Stock (No PO)', body, footer);
-  handleAddStockProductChange();
+
+  setTimeout(() => {
+    if (defaultProductId) {
+      selectProductFromSearch('add-stock', defaultProductId);
+    } else {
+      const input = document.getElementById('add-stock-search-input');
+      if (input) {
+        input.focus();
+        renderProductComboboxDropdown('add-stock', '');
+      }
+    }
+  }, 100);
 }
 
 function handleAddStockProductChange() {
-  const select = document.getElementById('add-stock-product');
-  const product = (state.products || []).find((p) => p.id === select.value);
+  const hidden = document.getElementById('add-stock-product');
+  if (!hidden) return;
+  const product = (state.products || []).find((p) => p.id === hidden.value);
   if (!product) return;
 
   const costInput = document.getElementById('add-stock-cost');
   const currencySelect = document.getElementById('add-stock-currency');
   const hint = document.getElementById('add-stock-cost-hint');
 
-  currencySelect.value = product.costPriceCurrency || 'PHP';
-  if (product.costPriceCents > 0) {
-    costInput.value = (product.costPriceCents / 100).toFixed(2);
-    hint.textContent = '(currently ' + formatCurrency(product.costPriceCents, product.costPriceCurrency) + ')';
-  } else {
-    costInput.value = '';
-    hint.textContent = '(not set yet — recommended for accurate valuation)';
+  if (currencySelect) currencySelect.value = product.costPriceCurrency || 'PHP';
+  if (costInput && hint) {
+    if (product.costPriceCents > 0) {
+      costInput.value = (product.costPriceCents / 100).toFixed(2);
+      hint.textContent = '(currently ' + formatCurrency(product.costPriceCents, product.costPriceCurrency) + ')';
+    } else {
+      costInput.value = '';
+      hint.textContent = '(not set yet — recommended for accurate valuation)';
+    }
   }
 }
 
 async function submitAddStock(e) {
   e.preventDefault();
   const productId = document.getElementById('add-stock-product').value;
+  if (!productId) {
+    showToast('Please search and select a product from the list', 'warning');
+    const input = document.getElementById('add-stock-search-input');
+    if (input) {
+      input.focus();
+      renderProductComboboxDropdown('add-stock', input.value || '');
+    }
+    return;
+  }
   const quantity = parseInt(document.getElementById('add-stock-qty').value, 10);
   const costInput = document.getElementById('add-stock-cost').value;
   const currency = document.getElementById('add-stock-currency').value;
@@ -681,20 +773,56 @@ async function submitAddStock(e) {
   }
 }
 
-function openStockAdjustmentModal() {
-  if (!state.products.length) {
+function openStockAdjustmentModal(defaultProductId) {
+  if (!state.products || !state.products.length) {
     showToast('Please add products first', 'warning');
     return;
   }
-  let options = state.products.map((p) => \`<option value="\${p.id}">\${p.sku} - \${p.name} (Current: \${p.onHandStock})</option>\`).join('');
   const body = \`
     <form id="form-stock-adj" onsubmit="submitStockAdjustment(event)">
-      <div class="form-group">
-        <label class="form-label">Select Product *</label>
-        <select id="adj-product" class="form-select">\${options}</select>
+      <div class="form-group" style="margin-bottom: 1.15rem;">
+        <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem;">
+          <span style="font-weight: 600; color: #0f172a;">Select Product *</span>
+          <span style="font-size: 0.75rem; color: #64748b; font-weight: 500;">\${state.products.length} products available</span>
+        </label>
+        <div id="adj-combobox-container" class="product-combobox-container">
+          <input type="hidden" id="adj-product" value="" required />
+          <div style="position: relative; display: flex; align-items: center;">
+            <span style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; font-size: 0.95rem; display: flex; align-items: center;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </span>
+            <input
+              type="text"
+              id="adj-search-input"
+              class="form-input"
+              placeholder="Type SKU or product name to search..."
+              autocomplete="off"
+              style="padding-left: 2.35rem; padding-right: 2.25rem; font-size: 0.88rem;"
+              oninput="handleProductSearchInput('adj', this.value)"
+              onfocus="handleProductSearchFocus('adj')"
+              onkeydown="handleProductSearchKeydown('adj', event)"
+            />
+            <button
+              type="button"
+              id="adj-clear-btn"
+              onclick="clearProductSelection('adj')"
+              style="display: none; position: absolute; right: 0.65rem; top: 50%; transform: translateY(-50%); background: #f1f5f9; border: none; color: #64748b; cursor: pointer; padding: 0; font-size: 0.78rem; border-radius: 50%; width: 22px; height: 22px; align-items: center; justify-content: center; line-height: 1; transition: all 0.15s ease;"
+              onmouseover="this.style.background='#e2e8f0'; this.style.color='#0f172a';"
+              onmouseout="this.style.background='#f1f5f9'; this.style.color='#64748b';"
+              title="Clear selection"
+            >✕</button>
+          </div>
+          <div id="adj-dropdown" class="product-combobox-dropdown" style="display: none;"></div>
+          <div id="adj-selected-card">
+            <div style="font-size: 0.78rem; color: #94a3b8; padding: 0.35rem 0.1rem; display: flex; align-items: center; gap: 0.35rem;">
+              <span>💡</span>
+              <span>Type SKU or product name above to instantly filter products</span>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Adjustment Type *</label>
+        <label class="form-label" style="font-weight: 600; color: #0f172a;">Adjustment Type *</label>
         <select id="adj-type" class="form-select">
           <option value="IN">IN (Stock Addition)</option>
           <option value="OUT">OUT (Stock Reduction)</option>
@@ -702,11 +830,11 @@ function openStockAdjustmentModal() {
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Quantity *</label>
-        <input type="number" id="adj-qty" class="form-input" placeholder="10" required />
+        <label class="form-label" style="font-weight: 600; color: #0f172a;">Quantity *</label>
+        <input type="number" id="adj-qty" class="form-input" placeholder="e.g. 10" required />
       </div>
       <div class="form-group">
-        <label class="form-label">Reason / Notes</label>
+        <label class="form-label" style="font-weight: 600; color: #0f172a;">Reason / Notes</label>
         <input type="text" id="adj-notes" class="form-input" placeholder="Physical inventory reconciliation" />
       </div>
     </form>
@@ -716,13 +844,34 @@ function openStockAdjustmentModal() {
     <button class="btn btn-primary" onclick="document.getElementById('form-stock-adj').requestSubmit()">Post Adjustment</button>
   \`;
   openModal('Post Stock Adjustment', body, footer);
-  handleAddStockProductChange();
+
+  setTimeout(() => {
+    if (defaultProductId) {
+      selectProductFromSearch('adj', defaultProductId);
+    } else {
+      const input = document.getElementById('adj-search-input');
+      if (input) {
+        input.focus();
+        renderProductComboboxDropdown('adj', '');
+      }
+    }
+  }, 100);
 }
 
 async function submitStockAdjustment(e) {
   e.preventDefault();
+  const productId = document.getElementById('adj-product').value;
+  if (!productId) {
+    showToast('Please search and select a product from the list', 'warning');
+    const input = document.getElementById('adj-search-input');
+    if (input) {
+      input.focus();
+      renderProductComboboxDropdown('adj', input.value || '');
+    }
+    return;
+  }
   const payload = {
-    productId: document.getElementById('adj-product').value,
+    productId,
     type: document.getElementById('adj-type').value,
     quantity: parseInt(document.getElementById('adj-qty').value, 10),
     referenceType: 'ADJUSTMENT',
@@ -744,5 +893,292 @@ async function submitStockAdjustment(e) {
   } catch (err) {
     showToast(err.message, 'danger');
   }
+}
+
+// ---------------------------------------------------------------------------
+// Product Search Combobox Helpers (Real-Time Autocomplete)
+// ---------------------------------------------------------------------------
+let comboboxActiveIndex = -1;
+
+function highlightComboboxMatch(text, query) {
+  if (!text) return '';
+  const str = String(text);
+  if (!query || !query.trim()) return escapeHtml(str);
+  const q = query.trim().toLowerCase();
+  const lower = str.toLowerCase();
+  const idx = lower.indexOf(q);
+  if (idx === -1) return escapeHtml(str);
+  const before = escapeHtml(str.slice(0, idx));
+  const match = escapeHtml(str.slice(idx, idx + q.length));
+  const after = highlightComboboxMatch(str.slice(idx + q.length), query);
+  return before + '<mark style="background: #fef08a; color: #854d0e; padding: 0 2px; border-radius: 2px; font-weight: 700;">' + match + '</mark>' + after;
+}
+
+function handleProductSearchFocus(prefix) {
+  const input = document.getElementById(prefix + '-search-input');
+  const val = input ? input.value : '';
+  renderProductComboboxDropdown(prefix, val);
+  if (input && val) {
+    input.select();
+  }
+}
+
+function handleProductSearchInput(prefix, query) {
+  const clearBtn = document.getElementById(prefix + '-clear-btn');
+  if (clearBtn) {
+    clearBtn.style.display = query && query.length > 0 ? 'inline-flex' : 'none';
+  }
+  renderProductComboboxDropdown(prefix, query);
+}
+
+function renderProductComboboxDropdown(prefix, query) {
+  const dropdown = document.getElementById(prefix + '-dropdown');
+  if (!dropdown) return;
+
+  comboboxActiveIndex = -1;
+  const q = (query || '').toLowerCase().trim();
+  const allProducts = state.products || [];
+
+  let matches = allProducts;
+  if (q) {
+    const terms = q.split(/\\s+/).filter(Boolean);
+    matches = allProducts.filter((p) => {
+      const sku = (p.sku || '').toLowerCase();
+      const name = (p.name || '').toLowerCase();
+      const cat = (p.category || '').toLowerCase();
+      const desc = (p.description || '').toLowerCase();
+      return terms.every((t) => sku.includes(t) || name.includes(t) || cat.includes(t) || desc.includes(t));
+    });
+  }
+
+  if (q) {
+    matches.sort((a, b) => {
+      const aSkuStarts = (a.sku || '').toLowerCase().startsWith(q) ? 1 : 0;
+      const bSkuStarts = (b.sku || '').toLowerCase().startsWith(q) ? 1 : 0;
+      if (aSkuStarts !== bSkuStarts) return bSkuStarts - aSkuStarts;
+      const aNameStarts = (a.name || '').toLowerCase().startsWith(q) ? 1 : 0;
+      const bNameStarts = (b.name || '').toLowerCase().startsWith(q) ? 1 : 0;
+      if (aNameStarts !== bNameStarts) return bNameStarts - aNameStarts;
+      return (b.onHandStock || 0) - (a.onHandStock || 0);
+    });
+  } else {
+    matches = matches.slice().sort((a, b) => (b.onHandStock || 0) - (a.onHandStock || 0));
+  }
+
+  const limit = 45;
+  const visible = matches.slice(0, limit);
+
+  if (matches.length === 0) {
+    dropdown.innerHTML = \`
+      <div style="padding: 1.5rem 1rem; text-align: center; color: #94a3b8; font-size: 0.85rem;">
+        <div style="font-size: 1.25rem; margin-bottom: 0.35rem;">🔍</div>
+        No products found matching "<strong>\${escapeHtml(q)}</strong>"<br/>
+        <span style="font-size: 0.76rem; color: #cbd5e1; margin-top: 4px; display: inline-block;">Try searching by part number, SKU, or keyword</span>
+      </div>
+    \`;
+    dropdown.style.display = 'block';
+    return;
+  }
+
+  let headerText = q
+    ? \`Found <strong>\${matches.length}</strong> matching product\${matches.length === 1 ? '' : 's'}\`
+    : \`All <strong>\${matches.length}</strong> products (type to filter)\`;
+
+  let itemsHtml = '';
+  const currentVal = document.getElementById(prefix + '-product')?.value;
+
+  visible.forEach((p, idx) => {
+    const isSelected = p.id === currentVal;
+    const isStockPositive = (p.onHandStock || 0) > 0;
+    const stockBadge = isStockPositive
+      ? \`<span class="badge badge-success" style="font-size: 0.72rem; padding: 2px 7px;">Stock: \${p.onHandStock} \${escapeHtml(p.unitOfMeasure || '')}</span>\`
+      : \`<span class="badge badge-secondary" style="font-size: 0.72rem; padding: 2px 7px; opacity: 0.85;">Stock: 0</span>\`;
+
+    const costDisplay = p.costPriceCents > 0
+      ? \`Cost: <strong style="color: #334155;">\${formatCurrency(p.costPriceCents, p.costPriceCurrency)}</strong>\`
+      : \`<span style="color: #94a3b8;">Cost: not set</span>\`;
+
+    const categoryDisplay = p.category
+      ? \`<span style="background: #f1f5f9; color: #475569; padding: 1px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 500;">\${escapeHtml(p.category)}</span>\`
+      : '';
+
+    itemsHtml += \`
+      <div class="product-combobox-item \${isSelected ? 'selected' : ''}" 
+           data-index="\${idx}" 
+           data-product-id="\${p.id}" 
+           onclick="selectProductFromSearch('\${prefix}', '\${p.id}')"
+           style="padding: 0.65rem 0.85rem; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.12s ease; \${isSelected ? 'background: #f0fdf4;' : ''}">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 3px;">
+          <div style="display: flex; align-items: center; gap: 0.45rem;">
+            <span style="font-family: monospace; font-size: 0.78rem; font-weight: 700; background: #e2e8f0; color: #0f172a; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.02em;">
+              \${highlightComboboxMatch(p.sku, q)}
+            </span>
+            \${categoryDisplay}
+          </div>
+          \${stockBadge}
+        </div>
+        <div style="font-size: 0.85rem; font-weight: 600; color: #0f172a; line-height: 1.35;">
+          \${highlightComboboxMatch(p.name, q)}
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.73rem; color: #64748b; margin-top: 3px;">
+          <div>\${costDisplay}</div>
+          \${isSelected ? '<span style="color: #16a34a; font-weight: 700; font-size: 0.75rem;">✓ Selected</span>' : ''}
+        </div>
+      </div>
+    \`;
+  });
+
+  const footerText = matches.length > limit
+    ? \`<div style="padding: 0.45rem 0.85rem; font-size: 0.72rem; color: #64748b; background: #f8fafc; text-align: center; border-top: 1px solid #f1f5f9;">Showing first \${limit} of \${matches.length} products. Type more letters to narrow down.</div>\`
+    : '';
+
+  dropdown.innerHTML = \`
+    <div style="padding: 0.4rem 0.85rem; font-size: 0.72rem; color: #64748b; background: #f8fafc; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;">
+      <span>\${headerText}</span>
+      <span style="font-size: 0.68rem; color: #94a3b8;">↑↓ navigate • Enter select</span>
+    </div>
+    <div style="max-height: 230px; overflow-y: auto;">
+      \${itemsHtml}
+    </div>
+    \${footerText}
+  \`;
+  dropdown.style.display = 'block';
+}
+
+function selectProductFromSearch(prefix, productId) {
+  const product = (state.products || []).find((p) => p.id === productId);
+  if (!product) return;
+
+  const hidden = document.getElementById(prefix + '-product');
+  if (hidden) hidden.value = product.id;
+
+  const input = document.getElementById(prefix + '-search-input');
+  if (input) input.value = product.sku + ' — ' + product.name;
+
+  const dropdown = document.getElementById(prefix + '-dropdown');
+  if (dropdown) dropdown.style.display = 'none';
+
+  const clearBtn = document.getElementById(prefix + '-clear-btn');
+  if (clearBtn) clearBtn.style.display = 'inline-flex';
+
+  const card = document.getElementById(prefix + '-selected-card');
+  if (card) {
+    const isStockPositive = (product.onHandStock || 0) > 0;
+    card.innerHTML = \`
+      <div style="margin-top: 0.45rem; padding: 0.55rem 0.85rem; border-radius: 6px; background: #f0fdf4; border: 1px solid #bbf7d0; display: flex; align-items: center; justify-content: space-between; font-size: 0.82rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; min-width: 0; flex: 1;">
+          <span style="color: #16a34a; font-weight: 700; flex-shrink: 0;">✓</span>
+          <span style="font-family: monospace; font-weight: 700; color: #0f172a; flex-shrink: 0; background: #dcfce7; padding: 1px 5px; border-radius: 4px;">\${escapeHtml(product.sku)}</span>
+          <span style="color: #166534; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">\${escapeHtml(product.name)}</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
+          <span class="badge \${isStockPositive ? 'badge-success' : 'badge-secondary'}" style="font-size: 0.72rem;">
+            Current: \${product.onHandStock} \${escapeHtml(product.unitOfMeasure || 'units')}
+          </span>
+        </div>
+      </div>
+    \`;
+  }
+
+  if (prefix === 'add-stock') {
+    handleAddStockProductChange();
+    const qtyInput = document.getElementById('add-stock-qty');
+    if (qtyInput) qtyInput.focus();
+  } else if (prefix === 'adj') {
+    const qtyInput = document.getElementById('adj-qty');
+    if (qtyInput) qtyInput.focus();
+  }
+}
+
+function clearProductSelection(prefix) {
+  const hidden = document.getElementById(prefix + '-product');
+  if (hidden) hidden.value = '';
+
+  const input = document.getElementById(prefix + '-search-input');
+  if (input) {
+    input.value = '';
+    input.focus();
+  }
+
+  const clearBtn = document.getElementById(prefix + '-clear-btn');
+  if (clearBtn) clearBtn.style.display = 'none';
+
+  const card = document.getElementById(prefix + '-selected-card');
+  if (card) {
+    card.innerHTML = \`
+      <div style="font-size: 0.78rem; color: #94a3b8; padding: 0.35rem 0.1rem; display: flex; align-items: center; gap: 0.35rem;">
+        <span>💡</span>
+        <span>Type SKU or product name above to instantly filter products</span>
+      </div>
+    \`;
+  }
+
+  if (prefix === 'add-stock') {
+    const hint = document.getElementById('add-stock-cost-hint');
+    if (hint) hint.textContent = '';
+    const costInput = document.getElementById('add-stock-cost');
+    if (costInput) costInput.value = '';
+  }
+
+  renderProductComboboxDropdown(prefix, '');
+}
+
+function handleProductSearchKeydown(prefix, event) {
+  const dropdown = document.getElementById(prefix + '-dropdown');
+  if (!dropdown || dropdown.style.display === 'none') {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      renderProductComboboxDropdown(prefix, document.getElementById(prefix + '-search-input')?.value || '');
+      event.preventDefault();
+    }
+    return;
+  }
+
+  const items = dropdown.querySelectorAll('.product-combobox-item');
+  if (!items.length) return;
+
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    comboboxActiveIndex = (comboboxActiveIndex + 1) % items.length;
+    updateComboboxActiveItem(items);
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    comboboxActiveIndex = (comboboxActiveIndex - 1 + items.length) % items.length;
+    updateComboboxActiveItem(items);
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
+    if (comboboxActiveIndex >= 0 && comboboxActiveIndex < items.length) {
+      items[comboboxActiveIndex].click();
+    } else if (items.length > 0) {
+      items[0].click();
+    }
+  } else if (event.key === 'Escape') {
+    dropdown.style.display = 'none';
+  }
+}
+
+function updateComboboxActiveItem(items) {
+  items.forEach((it, idx) => {
+    if (idx === comboboxActiveIndex) {
+      it.classList.add('active');
+      it.style.backgroundColor = '#f1f5f9';
+      it.scrollIntoView({ block: 'nearest' });
+    } else {
+      it.classList.remove('active');
+      it.style.backgroundColor = '';
+    }
+  });
+}
+
+if (typeof window !== 'undefined' && !window._inventoryComboboxListenerAdded) {
+  window._inventoryComboboxListenerAdded = true;
+  document.addEventListener('click', function(e) {
+    ['add-stock', 'adj'].forEach((prefix) => {
+      const container = document.getElementById(prefix + '-combobox-container');
+      const dropdown = document.getElementById(prefix + '-dropdown');
+      if (dropdown && container && !container.contains(e.target)) {
+        dropdown.style.display = 'none';
+      }
+    });
+  });
 }
 `;
