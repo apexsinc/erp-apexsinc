@@ -362,8 +362,8 @@ function renderInventoryContent(container) {
       <div class="panel-header">
         <div class="panel-title">Product Catalog & Stock Levels</div>
         <div class="panel-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-          <button class="btn btn-secondary btn-sm" onclick="exportInventoryCsv()">📥 Export CSV</button>
-          \${can('inventory', 'create') ? '<button class="btn btn-primary btn-sm" onclick="openAddStockModal()">➕ Add Stock</button>' : ''}
+          <button class="btn btn-secondary btn-sm" onclick="exportInventoryCsv()">Export CSV</button>
+          \${can('inventory', 'create') ? '<button class="btn btn-primary btn-sm" onclick="openAddStockModal()">Add Stock</button>' : ''}
           \${can('inventory', 'update') ? '<button class="btn btn-secondary btn-sm" onclick="openStockAdjustmentModal()">Stock Adjustment</button>' : ''}
         </div>
       </div>
@@ -523,7 +523,7 @@ function renderInventoryTable(keepScroll = false) {
         <a href="javascript:void(0)" onclick="inventoryLoadMoreRows()" style="color: var(--primary); font-weight: 600; text-decoration: none; margin-right: 0.75rem;">Load next \${Math.min(INVENTORY_CHUNK_SIZE, allRowsCount - visibleRowsCount)}</a>
         <a href="javascript:void(0)" onclick="inventoryLoadAllRows()" style="color: #64748b; font-weight: 500; text-decoration: underline;">Load all \${allRowsCount}</a>
       </td></tr>\`
-    : (allRowsCount > 25 ? \`<tr><td colspan="10" style="text-align: center; color: #94a3b8; font-size: 0.74rem; padding: 0.65rem;">✓ All \${allRowsCount} items loaded</td></tr>\` : '');
+    : (allRowsCount > 25 ? \`<tr><td colspan="10" style="text-align: center; color: #94a3b8; font-size: 0.74rem; padding: 0.65rem;">All \${allRowsCount} items loaded</td></tr>\` : '');
 
   wrap.innerHTML = \`
     <div class="inventory-smart-scroll-container">
@@ -603,27 +603,19 @@ function openAddStockModal(defaultProductId) {
   }
   const body = \`
     <form id="form-add-stock" onsubmit="submitAddStock(event)">
-      <p style="margin: 0 0 1rem; font-size: 0.85rem; color: #64748b; line-height: 1.45;">
-        Use this for stock that isn't coming through a Purchase Order — e.g. legacy products
-        already on hand before this system was in use. If the product has no cost price yet,
-        set one here so its valuation is accurate.
-      </p>
-      <div class="form-group" style="margin-bottom: 1.15rem;">
-        <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem;">
-          <span style="font-weight: 600; color: #0f172a;">Select Product *</span>
-          <span style="font-size: 0.75rem; color: #64748b; font-weight: 500;">\${state.products.length} products available</span>
-        </label>
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label class="form-label">Select Product *</label>
         <div id="add-stock-combobox-container" class="product-combobox-container">
           <input type="hidden" id="add-stock-product" value="" required />
           <div style="position: relative; display: flex; align-items: center;">
-            <span style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; font-size: 0.95rem; display: flex; align-items: center;">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <span style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; display: flex; align-items: center;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 15px; height: 15px;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
             </span>
             <input
               type="text"
               id="add-stock-search-input"
               class="form-input"
-              placeholder="Type SKU or product name to search..."
+              placeholder="Search by SKU or product name..."
               autocomplete="off"
               style="padding-left: 2.35rem; padding-right: 2.25rem; font-size: 0.88rem;"
               oninput="handleProductSearchInput('add-stock', this.value)"
@@ -634,19 +626,14 @@ function openAddStockModal(defaultProductId) {
               type="button"
               id="add-stock-clear-btn"
               onclick="clearProductSelection('add-stock')"
-              style="display: none; position: absolute; right: 0.65rem; top: 50%; transform: translateY(-50%); background: #f1f5f9; border: none; color: #64748b; cursor: pointer; padding: 0; font-size: 0.78rem; border-radius: 50%; width: 22px; height: 22px; align-items: center; justify-content: center; line-height: 1; transition: all 0.15s ease;"
-              onmouseover="this.style.background='#e2e8f0'; this.style.color='#0f172a';"
-              onmouseout="this.style.background='#f1f5f9'; this.style.color='#64748b';"
+              style="display: none; position: absolute; right: 0.65rem; top: 50%; transform: translateY(-50%); background: #f1f5f9; border: none; color: #64748b; cursor: pointer; padding: 0; border-radius: 50%; width: 20px; height: 20px; align-items: center; justify-content: center; transition: all 0.15s ease;"
               title="Clear selection"
-            >✕</button>
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 11px; height: 11px; display: block;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
           </div>
           <div id="add-stock-dropdown" class="product-combobox-dropdown" style="display: none;"></div>
-          <div id="add-stock-selected-card">
-            <div style="font-size: 0.78rem; color: #94a3b8; padding: 0.35rem 0.1rem; display: flex; align-items: center; gap: 0.35rem;">
-              <span>💡</span>
-              <span>Type SKU or product name above to instantly filter products</span>
-            </div>
-          </div>
+          <div id="add-stock-selected-card"></div>
         </div>
       </div>
       <div class="form-group">
@@ -780,22 +767,19 @@ function openStockAdjustmentModal(defaultProductId) {
   }
   const body = \`
     <form id="form-stock-adj" onsubmit="submitStockAdjustment(event)">
-      <div class="form-group" style="margin-bottom: 1.15rem;">
-        <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem;">
-          <span style="font-weight: 600; color: #0f172a;">Select Product *</span>
-          <span style="font-size: 0.75rem; color: #64748b; font-weight: 500;">\${state.products.length} products available</span>
-        </label>
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label class="form-label">Select Product *</label>
         <div id="adj-combobox-container" class="product-combobox-container">
           <input type="hidden" id="adj-product" value="" required />
           <div style="position: relative; display: flex; align-items: center;">
-            <span style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; font-size: 0.95rem; display: flex; align-items: center;">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <span style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; display: flex; align-items: center;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 15px; height: 15px;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
             </span>
             <input
               type="text"
               id="adj-search-input"
               class="form-input"
-              placeholder="Type SKU or product name to search..."
+              placeholder="Search by SKU or product name..."
               autocomplete="off"
               style="padding-left: 2.35rem; padding-right: 2.25rem; font-size: 0.88rem;"
               oninput="handleProductSearchInput('adj', this.value)"
@@ -806,19 +790,14 @@ function openStockAdjustmentModal(defaultProductId) {
               type="button"
               id="adj-clear-btn"
               onclick="clearProductSelection('adj')"
-              style="display: none; position: absolute; right: 0.65rem; top: 50%; transform: translateY(-50%); background: #f1f5f9; border: none; color: #64748b; cursor: pointer; padding: 0; font-size: 0.78rem; border-radius: 50%; width: 22px; height: 22px; align-items: center; justify-content: center; line-height: 1; transition: all 0.15s ease;"
-              onmouseover="this.style.background='#e2e8f0'; this.style.color='#0f172a';"
-              onmouseout="this.style.background='#f1f5f9'; this.style.color='#64748b';"
+              style="display: none; position: absolute; right: 0.65rem; top: 50%; transform: translateY(-50%); background: #f1f5f9; border: none; color: #64748b; cursor: pointer; padding: 0; border-radius: 50%; width: 20px; height: 20px; align-items: center; justify-content: center; transition: all 0.15s ease;"
               title="Clear selection"
-            >✕</button>
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 11px; height: 11px; display: block;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
           </div>
           <div id="adj-dropdown" class="product-combobox-dropdown" style="display: none;"></div>
-          <div id="adj-selected-card">
-            <div style="font-size: 0.78rem; color: #94a3b8; padding: 0.35rem 0.1rem; display: flex; align-items: center; gap: 0.35rem;">
-              <span>💡</span>
-              <span>Type SKU or product name above to instantly filter products</span>
-            </div>
-          </div>
+          <div id="adj-selected-card"></div>
         </div>
       </div>
       <div class="form-group">
@@ -970,10 +949,8 @@ function renderProductComboboxDropdown(prefix, query) {
 
   if (matches.length === 0) {
     dropdown.innerHTML = \`
-      <div style="padding: 1.5rem 1rem; text-align: center; color: #94a3b8; font-size: 0.85rem;">
-        <div style="font-size: 1.25rem; margin-bottom: 0.35rem;">🔍</div>
-        No products found matching "<strong>\${escapeHtml(q)}</strong>"<br/>
-        <span style="font-size: 0.76rem; color: #cbd5e1; margin-top: 4px; display: inline-block;">Try searching by part number, SKU, or keyword</span>
+      <div style="padding: 1.25rem 1rem; text-align: center; color: #64748b; font-size: 0.82rem;">
+        No products found matching "<strong style="color: #0f172a;">\${escapeHtml(q)}</strong>"
       </div>
     \`;
     dropdown.style.display = 'block';
@@ -981,8 +958,8 @@ function renderProductComboboxDropdown(prefix, query) {
   }
 
   let headerText = q
-    ? \`Found <strong>\${matches.length}</strong> matching product\${matches.length === 1 ? '' : 's'}\`
-    : \`All <strong>\${matches.length}</strong> products (type to filter)\`;
+    ? \`\${matches.length} matching product\${matches.length === 1 ? '' : 's'}\`
+    : \`All products (\${matches.length})\`;
 
   let itemsHtml = '';
   const currentVal = document.getElementById(prefix + '-product')?.value;
@@ -991,8 +968,8 @@ function renderProductComboboxDropdown(prefix, query) {
     const isSelected = p.id === currentVal;
     const isStockPositive = (p.onHandStock || 0) > 0;
     const stockBadge = isStockPositive
-      ? \`<span class="badge badge-success" style="font-size: 0.72rem; padding: 2px 7px;">Stock: \${p.onHandStock} \${escapeHtml(p.unitOfMeasure || '')}</span>\`
-      : \`<span class="badge badge-secondary" style="font-size: 0.72rem; padding: 2px 7px; opacity: 0.85;">Stock: 0</span>\`;
+      ? \`<span class="badge badge-success" style="font-size: 0.7rem; padding: 1px 6px;">\${p.onHandStock} in stock</span>\`
+      : \`<span class="badge badge-secondary" style="font-size: 0.7rem; padding: 1px 6px; opacity: 0.85;">0 in stock</span>\`;
 
     const costDisplay = p.costPriceCents > 0
       ? \`Cost: <strong style="color: #334155;">\${formatCurrency(p.costPriceCents, p.costPriceCurrency)}</strong>\`
@@ -1022,20 +999,19 @@ function renderProductComboboxDropdown(prefix, query) {
         </div>
         <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.73rem; color: #64748b; margin-top: 3px;">
           <div>\${costDisplay}</div>
-          \${isSelected ? '<span style="color: #16a34a; font-weight: 700; font-size: 0.75rem;">✓ Selected</span>' : ''}
+          \${isSelected ? '<span style="color: #16a34a; font-weight: 600; font-size: 0.72rem;">Selected</span>' : ''}
         </div>
       </div>
     \`;
   });
 
   const footerText = matches.length > limit
-    ? \`<div style="padding: 0.45rem 0.85rem; font-size: 0.72rem; color: #64748b; background: #f8fafc; text-align: center; border-top: 1px solid #f1f5f9;">Showing first \${limit} of \${matches.length} products. Type more letters to narrow down.</div>\`
+    ? \`<div style="padding: 0.4rem 0.85rem; font-size: 0.72rem; color: #64748b; background: #f8fafc; text-align: center; border-top: 1px solid #f1f5f9;">Showing \${limit} of \${matches.length} products</div>\`
     : '';
 
   dropdown.innerHTML = \`
-    <div style="padding: 0.4rem 0.85rem; font-size: 0.72rem; color: #64748b; background: #f8fafc; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;">
+    <div style="padding: 0.4rem 0.85rem; font-size: 0.72rem; color: #64748b; background: #f8fafc; border-bottom: 1px solid #f1f5f9;">
       <span>\${headerText}</span>
-      <span style="font-size: 0.68rem; color: #94a3b8;">↑↓ navigate • Enter select</span>
     </div>
     <div style="max-height: 230px; overflow-y: auto;">
       \${itemsHtml}
@@ -1065,17 +1041,9 @@ function selectProductFromSearch(prefix, productId) {
   if (card) {
     const isStockPositive = (product.onHandStock || 0) > 0;
     card.innerHTML = \`
-      <div style="margin-top: 0.45rem; padding: 0.55rem 0.85rem; border-radius: 6px; background: #f0fdf4; border: 1px solid #bbf7d0; display: flex; align-items: center; justify-content: space-between; font-size: 0.82rem;">
-        <div style="display: flex; align-items: center; gap: 0.5rem; min-width: 0; flex: 1;">
-          <span style="color: #16a34a; font-weight: 700; flex-shrink: 0;">✓</span>
-          <span style="font-family: monospace; font-weight: 700; color: #0f172a; flex-shrink: 0; background: #dcfce7; padding: 1px 5px; border-radius: 4px;">\${escapeHtml(product.sku)}</span>
-          <span style="color: #166534; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">\${escapeHtml(product.name)}</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
-          <span class="badge \${isStockPositive ? 'badge-success' : 'badge-secondary'}" style="font-size: 0.72rem;">
-            Current: \${product.onHandStock} \${escapeHtml(product.unitOfMeasure || 'units')}
-          </span>
-        </div>
+      <div style="margin-top: 0.35rem; font-size: 0.78rem; color: #64748b; display: flex; align-items: center; justify-content: space-between;">
+        <span>On-Hand: <strong style="color: \${isStockPositive ? '#16a34a' : '#64748b'};">\${product.onHandStock} \${escapeHtml(product.unitOfMeasure || 'units')}</strong></span>
+        \${product.category ? \`<span style="color: #94a3b8;">\${escapeHtml(product.category)}</span>\` : ''}
       </div>
     \`;
   }
@@ -1105,12 +1073,7 @@ function clearProductSelection(prefix) {
 
   const card = document.getElementById(prefix + '-selected-card');
   if (card) {
-    card.innerHTML = \`
-      <div style="font-size: 0.78rem; color: #94a3b8; padding: 0.35rem 0.1rem; display: flex; align-items: center; gap: 0.35rem;">
-        <span>💡</span>
-        <span>Type SKU or product name above to instantly filter products</span>
-      </div>
-    \`;
+    card.innerHTML = '';
   }
 
   if (prefix === 'add-stock') {
