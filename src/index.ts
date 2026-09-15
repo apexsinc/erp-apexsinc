@@ -4,7 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { eq, desc, asc, like, and, ne } from 'drizzle-orm';
 import { createDbClient, type Database } from './db/client';
 import * as schema from './db/schema';
-import { renderAppHtml } from './ui';
+import { renderAppHtml, renderPurchaseOrderPrintHtml } from './ui';
 import { authMiddleware, requireAdmin, requireModule } from './middleware/auth';
 import { hashPassword, verifyPasswordLegacyAware } from './lib/password';
 import { verifyTurnstileToken } from './lib/turnstile';
@@ -181,7 +181,42 @@ app.get('/app', serveHtmlApp);
 app.get('/dashboard', serveHtmlApp);
 app.get('/directory', serveHtmlApp);
 app.get('/inventory', serveHtmlApp);
+
+async function servePurchaseOrderPrint(c: any) {
+  const db = createDbClient(c.env.DB);
+  const poIdOrNumber = c.req.param('id');
+  const altPoNumber = poIdOrNumber.includes('APX-26-0010')
+    ? 'APX-26-00010'
+    : poIdOrNumber.includes('APX-26-00010')
+    ? 'APX-26-0010'
+    : poIdOrNumber;
+
+  const po = await db.query.purchaseOrders.findFirst({
+    where: (poTable, { eq, or }) =>
+      or(
+        eq(poTable.id, poIdOrNumber),
+        eq(poTable.poNumber, poIdOrNumber),
+        eq(poTable.poNumber, altPoNumber)
+      ),
+    with: { vendor: true, items: { with: { product: true } } },
+  });
+
+  if (!po) {
+    return c.html(
+      '<div style="padding: 3rem; font-family: sans-serif; color: #dc2626; text-align: center;"><h2>Purchase Order not found</h2><p>The requested Purchase Order could not be located in the database.</p></div>',
+      404
+    );
+  }
+
+  c.header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  return c.html(renderPurchaseOrderPrintHtml(po as any));
+}
+
 app.get('/purchasing', serveHtmlApp);
+app.get('/purchasing/orders/:id/print', servePurchaseOrderPrint);
+app.get('/purchasing/po/:id/print', servePurchaseOrderPrint);
+app.get('/purchasing/po/:id', servePurchaseOrderPrint);
+app.get('/purchasing/orders/:id', servePurchaseOrderPrint);
 app.get('/inbound', serveHtmlApp);
 app.get('/sales', serveHtmlApp);
 app.get('/outbound', serveHtmlApp);
@@ -1203,6 +1238,162 @@ app.get('/api/purchasing/orders', async (c) => {
     with: { vendor: true, items: { with: { product: true } } },
   });
   return c.json({ success: true, data: orders });
+});
+
+// GET /api/purchasing/orders/:id - Get Single PO
+app.get('/api/purchasing/orders/:id', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const idOrNumber = c.req.param('id');
+  const altPoNumber = idOrNumber.includes('APX-26-0010')
+    ? 'APX-26-00010'
+    : idOrNumber.includes('APX-26-00010')
+    ? 'APX-26-0010'
+    : idOrNumber;
+
+  const po = await db.query.purchaseOrders.findFirst({
+    where: (poTable, { eq, or }) =>
+      or(
+        eq(poTable.id, idOrNumber),
+        eq(poTable.poNumber, idOrNumber),
+        eq(poTable.poNumber, altPoNumber)
+      ),
+    with: { vendor: true, items: { with: { product: true } } },
+  });
+  if (!po) return c.json({ success: false, error: 'Purchase Order not found' }, 404);
+  return c.json({ success: true, data: po });
+});
+
+// PUT /api/purchasing/orders/:id - Update Purchase Order
+app.put(
+  '/api/purchasing/orders/:id',
+  zValidator(
+    'json',
+    z.object({
+      vendorId: z.string().uuid().optional(),
+      poNumber: z.string().trim().min(1).max(64).optional(),
+      status: z.enum(['DRAFT', 'APPROVED', 'DELIVERED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED']).optional(),
+      currency: z.enum(['USD', 'PHP']).optional(),
+      notes: z.string().optional(),
+      items: z
+        .array(
+          z.object({
+            productId: z.string().uuid(),
+            quantityOrdered: z.number().int().positive(),
+            unitOfMeasure: z.string().min(1),
+            unitPriceCents: z.number().int().nonnegative(),
+          })
+        )
+        .min(1)
+        .optional(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const poId = c.req.param('id');
+    const body = c.req.valid('json');
+
+    const existing = await db.query.purchaseOrders.findFirst({
+      where: (poTable, { eq, or }) => or(eq(poTable.id, poId), eq(poTable.poNumber, poId)),
+      with: { items: true },
+    });
+    if (!existing) return c.json({ success: false, error: 'Purchase Order not found' }, 404);
+
+    const targetId = existing.id;
+
+    if (body.poNumber && body.poNumber !== existing.poNumber) {
+      const clash = await db.query.purchaseOrders.findFirst({
+        where: and(eq(schema.purchaseOrders.poNumber, body.poNumber), ne(schema.purchaseOrders.id, targetId)),
+      });
+      if (clash) {
+        return c.json({ success: false, error: `PO number "${body.poNumber}" is already in use` }, 409);
+      }
+    }
+
+    let totalAmountCents = existing.totalAmountCents;
+    if (body.items) {
+      totalAmountCents = body.items.reduce((acc, it) => acc + it.quantityOrdered * it.unitPriceCents, 0);
+    }
+
+    const now = new Date().toISOString();
+    await db
+      .update(schema.purchaseOrders)
+      .set({
+        vendorId: body.vendorId ?? existing.vendorId,
+        poNumber: body.poNumber ?? existing.poNumber,
+        status: body.status ?? existing.status,
+        currency: body.currency ?? existing.currency,
+        totalAmountCents,
+        notes: body.notes !== undefined ? body.notes : existing.notes,
+        updatedAt: now,
+      })
+      .where(eq(schema.purchaseOrders.id, targetId));
+
+    if (body.items) {
+      await db.delete(schema.purchaseOrderItems).where(eq(schema.purchaseOrderItems.purchaseOrderId, targetId));
+
+      const itemInserts = body.items.map((item) =>
+        db.insert(schema.purchaseOrderItems).values({
+          id: crypto.randomUUID(),
+          purchaseOrderId: targetId,
+          productId: item.productId,
+          quantityOrdered: item.quantityOrdered,
+          quantityReceived: 0,
+          unitPriceCents: item.unitPriceCents,
+          subtotalCents: item.quantityOrdered * item.unitPriceCents,
+        })
+      );
+
+      const currency = body.currency || existing.currency;
+      const productSyncs = body.items.map((item) =>
+        db
+          .update(schema.products)
+          .set({
+            unitOfMeasure: item.unitOfMeasure,
+            costPriceCents: item.unitPriceCents,
+            costPriceCurrency: currency,
+            updatedAt: now,
+          })
+          .where(eq(schema.products.id, item.productId))
+      );
+
+      await db.batch([...itemInserts, ...productSyncs] as any);
+    }
+
+    const updated = await db.query.purchaseOrders.findFirst({
+      where: eq(schema.purchaseOrders.id, targetId),
+      with: { vendor: true, items: { with: { product: true } } },
+    });
+    return c.json({ success: true, data: updated });
+  }
+);
+
+// DELETE /api/purchasing/orders/:id - Delete Purchase Order
+app.delete('/api/purchasing/orders/:id', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const poId = c.req.param('id');
+
+  const existing = await db.query.purchaseOrders.findFirst({
+    where: (poTable, { eq, or }) => or(eq(poTable.id, poId), eq(poTable.poNumber, poId)),
+    with: { items: true, grns: { with: { items: true } } },
+  });
+  if (!existing) return c.json({ success: false, error: 'Purchase Order not found' }, 404);
+
+  const targetId = existing.id;
+
+  // 1. Delete associated Goods Received Note items and notes if any exist
+  const grnIds = (existing.grns || []).map((g) => g.id);
+  for (const grnId of grnIds) {
+    await db.delete(schema.goodsReceivedNoteItems).where(eq(schema.goodsReceivedNoteItems.grnId, grnId));
+    await db.delete(schema.goodsReceivedNotes).where(eq(schema.goodsReceivedNotes.id, grnId));
+  }
+
+  // 2. Delete purchase order items
+  await db.delete(schema.purchaseOrderItems).where(eq(schema.purchaseOrderItems.purchaseOrderId, targetId));
+
+  // 3. Delete the purchase order record
+  await db.delete(schema.purchaseOrders).where(eq(schema.purchaseOrders.id, targetId));
+
+  return c.json({ success: true, message: `Purchase Order ${existing.poNumber} deleted successfully` });
 });
 
 /* ========================================================================== */
