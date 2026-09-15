@@ -34,7 +34,7 @@ export function renderDirectoryView(): string {
         border-collapse: separate;
         border-spacing: 0;
         width: 100%;
-        min-width: 1100px;
+        min-width: 100%;
         margin: 0;
       }
       .directory-smart-scroll th,

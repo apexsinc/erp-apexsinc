@@ -34,7 +34,7 @@ export function renderInventoryView(): string {
         border-collapse: separate;
         border-spacing: 0;
         width: 100%;
-        min-width: 1100px;
+        min-width: 100%;
         margin: 0;
       }
       .inventory-smart-scroll th,
@@ -49,14 +49,14 @@ export function renderInventoryView(): string {
         border-bottom: 2px solid var(--border-color);
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
         transition: background-color 0.15s ease;
-        padding: 0.75rem 1rem;
+        padding: 0.7rem 0.85rem;
       }
       .inventory-smart-scroll thead th.sortable-th:hover {
         background: #f1f5f9;
       }
       .inventory-smart-scroll td {
         border-bottom: 1px solid var(--border-color);
-        padding: 0.75rem 1rem;
+        padding: 0.65rem 0.85rem;
       }
       .inventory-smart-scroll tbody tr {
         transition: background-color 0.15s ease;
@@ -479,8 +479,8 @@ function renderInventoryTable(keepScroll = false) {
   rows.forEach((p) => {
     rowsHtml += \`
       <tr>
-        <td style="white-space: nowrap;"><strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: #334155;">\${p.sku}</strong></td>
-        <td style="width: 360px; min-width: 340px; max-width: 540px;">
+        <td style="white-space: nowrap; width: 85px;"><strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: #334155;">\${p.sku}</strong></td>
+        <td style="min-width: 180px;">
           <div style="display: flex; align-items: center; gap: 0.75rem;">
             <div style="width: 32px; height: 32px; border-radius: 6px; background: #f8fafc; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #64748b;" title="Product">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -493,7 +493,7 @@ function renderInventoryTable(keepScroll = false) {
               <div style="font-weight: 600; color: #0f172a; font-size: 0.88rem; line-height: 1.35; word-break: normal; cursor: pointer;" onclick="openProductHistoryModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}')" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='#0f172a'" title="View stock ledger for \${(p.name || '').replace(/"/g, '&quot;')}">
                 \${p.name}
               </div>
-              \${p.description && !p.description.startsWith('Section:') ? \`<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 380px;" title="\${(p.description || '').replace(/"/g, '&quot;')}">\${p.description}</div>\` : ''}
+              \${p.description && !p.description.startsWith('Section:') ? \`<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;" title="\${(p.description || '').replace(/"/g, '&quot;')}">\${p.description}</div>\` : ''}
             </div>
           </div>
         </td>
@@ -520,14 +520,14 @@ function renderInventoryTable(keepScroll = false) {
   });
 
   const tableHeaderHtml = \`<thead><tr>
-    <th class="sortable-th" style="width: 110px; min-width: 100px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('sku')" title="Sort by SKU">SKU \${inventorySortIndicator('sku')}</th>
-    <th class="sortable-th" style="width: 360px; min-width: 340px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('name')" title="Sort by Product Name">Product Name \${inventorySortIndicator('name')}</th>
-    <th class="sortable-th" style="width: 160px; min-width: 140px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('category')" title="Sort by Category">Category \${inventorySortIndicator('category')}</th>
-    <th class="sortable-th" style="width: 140px; min-width: 130px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('costPriceCents')" title="Sort by Cost Price">Cost Price \${inventorySortIndicator('costPriceCents')}</th>
-    <th class="sortable-th" style="width: 140px; min-width: 130px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('sellingPriceCents')" title="Sort by Selling Price">Selling Price \${inventorySortIndicator('sellingPriceCents')}</th>
-    <th class="sortable-th" style="width: 135px; min-width: 125px; text-align: center; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('onHandStock')" title="Sort by Available Stock">Available \${inventorySortIndicator('onHandStock')}</th>
-    <th class="sortable-th" style="width: 120px; min-width: 110px; text-align: center; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('damagedStock')" title="Sort by Damaged Stock">Damaged \${inventorySortIndicator('damagedStock')}</th>
-    <th style="width: 80px; min-width: 80px; text-align: center; white-space: nowrap;">Audit</th>
+    <th class="sortable-th" style="width: 85px; min-width: 75px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('sku')" title="Sort by SKU">SKU \${inventorySortIndicator('sku')}</th>
+    <th class="sortable-th" style="min-width: 180px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('name')" title="Sort by Product Name">Product Name \${inventorySortIndicator('name')}</th>
+    <th class="sortable-th" style="width: 130px; min-width: 105px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('category')" title="Sort by Category">Category \${inventorySortIndicator('category')}</th>
+    <th class="sortable-th" style="width: 120px; min-width: 100px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('costPriceCents')" title="Sort by Cost Price">Cost Price \${inventorySortIndicator('costPriceCents')}</th>
+    <th class="sortable-th" style="width: 120px; min-width: 105px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('sellingPriceCents')" title="Sort by Selling Price">Selling Price \${inventorySortIndicator('sellingPriceCents')}</th>
+    <th class="sortable-th" style="width: 105px; min-width: 90px; text-align: center; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('onHandStock')" title="Sort by Available Stock">Available \${inventorySortIndicator('onHandStock')}</th>
+    <th class="sortable-th" style="width: 95px; min-width: 80px; text-align: center; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('damagedStock')" title="Sort by Damaged Stock">Damaged \${inventorySortIndicator('damagedStock')}</th>
+    <th style="width: 75px; min-width: 70px; text-align: center; white-space: nowrap;">Audit</th>
   </tr></thead>\`;
 
   const hasMore = visibleRowsCount < allRowsCount;
