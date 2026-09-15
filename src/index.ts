@@ -167,24 +167,32 @@ async function renderApp(c: { req: any; env: Bindings }) {
   const turnstileSiteKey = isProduction ? c.env.TURNSTILE_SITE_KEY : undefined;
   return renderAppHtml(rolePermissions, { turnstileSiteKey, crudMatrix, roles: allRoles });
 }
-app.get('/', async (c) => c.html(await renderApp(c)));
-app.get('/login', async (c) => c.html(await renderApp(c)));
-app.get('/app', async (c) => c.html(await renderApp(c)));
-app.get('/dashboard', async (c) => c.html(await renderApp(c)));
-app.get('/directory', async (c) => c.html(await renderApp(c)));
-app.get('/inventory', async (c) => c.html(await renderApp(c)));
-app.get('/purchasing', async (c) => c.html(await renderApp(c)));
-app.get('/inbound', async (c) => c.html(await renderApp(c)));
-app.get('/sales', async (c) => c.html(await renderApp(c)));
-app.get('/outbound', async (c) => c.html(await renderApp(c)));
-app.get('/vouchers', async (c) => c.html(await renderApp(c)));
-app.get('/accounting', async (c) => c.html(await renderApp(c)));
-app.get('/payroll', async (c) => c.html(await renderApp(c)));
-app.get('/staff', async (c) => c.html(await renderApp(c)));
-app.get('/admin', async (c) => c.html(await renderApp(c)));
-app.get('/permissions', async (c) => c.html(await renderApp(c)));
-app.get('/settings', async (c) => c.html(await renderApp(c)));
-app.get('/settings/*', async (c) => c.html(await renderApp(c)));
+
+async function serveHtmlApp(c: any) {
+  c.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  c.header('Pragma', 'no-cache');
+  c.header('Expires', '0');
+  return c.html(await renderApp(c));
+}
+
+app.get('/', serveHtmlApp);
+app.get('/login', serveHtmlApp);
+app.get('/app', serveHtmlApp);
+app.get('/dashboard', serveHtmlApp);
+app.get('/directory', serveHtmlApp);
+app.get('/inventory', serveHtmlApp);
+app.get('/purchasing', serveHtmlApp);
+app.get('/inbound', serveHtmlApp);
+app.get('/sales', serveHtmlApp);
+app.get('/outbound', serveHtmlApp);
+app.get('/vouchers', serveHtmlApp);
+app.get('/accounting', serveHtmlApp);
+app.get('/payroll', serveHtmlApp);
+app.get('/staff', serveHtmlApp);
+app.get('/admin', serveHtmlApp);
+app.get('/permissions', serveHtmlApp);
+app.get('/settings', serveHtmlApp);
+app.get('/settings/*', serveHtmlApp);
 
 // Static Asset & Branding Routes
 app.get('/assets/logo.png', (c) => {
@@ -5289,7 +5297,7 @@ app.put(
 // SPA wildcard fallback for all client routes and subpaths
 app.get('*', async (c, next) => {
   if (c.req.path.startsWith('/api/')) return next();
-  return c.html(await renderApp(c));
+  return serveHtmlApp(c);
 });
 
 export default app;
