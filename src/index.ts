@@ -4687,36 +4687,246 @@ app.get('/api/payroll/runs', async (c) => {
 app.get('/api/dashboard', async (c) => {
   const db = createDbClient(c.env.DB);
 
-  const [products, customers, vendors, employees, soList, poList, payrollList] = await Promise.all([
+  const [
+    products,
+    customers,
+    vendors,
+    employees,
+    soList,
+    poList,
+    payrollList,
+    paymentVouchersList,
+    receiptVouchersList,
+    stockMovementsList,
+  ] = await Promise.all([
     db.query.products.findMany(),
     db.query.customers.findMany(),
     db.query.vendors.findMany(),
-    db.query.employees.findMany({ where: eq(schema.employees.status, 'ACTIVE') }),
-    db.query.salesOrders.findMany(),
-    db.query.purchaseOrders.findMany(),
-    db.query.payrollRuns.findMany({ where: eq(schema.payrollRuns.status, 'FINALIZED') }),
+    db.query.employees.findMany(),
+    db.query.salesOrders.findMany({ with: { customer: true } }),
+    db.query.purchaseOrders.findMany({ with: { vendor: true } }),
+    db.query.payrollRuns.findMany({ orderBy: [desc(schema.payrollRuns.createdAt)] }),
+    db.query.paymentVouchers.findMany({ where: ne(schema.paymentVouchers.status, 'VOID') }),
+    db.query.receiptVouchers.findMany({ where: ne(schema.receiptVouchers.status, 'VOID') }),
+    db.select().from(schema.stockMovements),
   ]);
 
-  // Each product/order carries its own currency, so these totals are grouped
-  // by currency rather than summed together - a USD PO and a PHP PO are not
-  // the same unit and must never be added as if they were.
-  const inventoryValuationByCurrency: Record<string, number> = {};
-  for (const prod of products) {
-    const stock = await getProductStockBalance(db, prod.id);
-    inventoryValuationByCurrency[prod.costPriceCurrency] = (inventoryValuationByCurrency[prod.costPriceCurrency] || 0) + stock * prod.costPriceCents;
+  // 1. In-memory stock calculation from movements for O(N) performance
+  const stockByProductId: Record<string, number> = {};
+  for (const mov of stockMovementsList) {
+    const q = mov.type === 'IN' ? mov.quantity : mov.type === 'OUT' ? -mov.quantity : mov.quantity;
+    stockByProductId[mov.productId] = (stockByProductId[mov.productId] || 0) + q;
   }
 
+  // 2. Inventory Valuations & Category Distributions
+  const inventoryValuationByCurrency: Record<string, number> = {};
+  const categoryStats: Record<string, { count: number; valueCents: number; damagedCount: number }> = {};
+  let healthyStockCount = 0;
+  let lowStockCount = 0;
+  let outOfStockCount = 0;
+  let totalDamagedUnits = 0;
+
+  for (const prod of products) {
+    const stock = stockByProductId[prod.id] || 0;
+    const cat = prod.category || 'Uncategorized';
+    if (!categoryStats[cat]) {
+      categoryStats[cat] = { count: 0, valueCents: 0, damagedCount: 0 };
+    }
+    categoryStats[cat].count++;
+    const prodVal = stock * prod.costPriceCents;
+    categoryStats[cat].valueCents += prodVal;
+    categoryStats[cat].damagedCount += (prod.damagedStock || 0);
+
+    totalDamagedUnits += (prod.damagedStock || 0);
+    if (stock > 5) {
+      healthyStockCount++;
+    } else if (stock > 0) {
+      lowStockCount++;
+    } else {
+      outOfStockCount++;
+    }
+
+    inventoryValuationByCurrency[prod.costPriceCurrency] = (inventoryValuationByCurrency[prod.costPriceCurrency] || 0) + prodVal;
+  }
+
+  // Top Products by estimated cost value or stock
+  const topProducts = [...products]
+    .map(p => ({
+      id: p.id,
+      sku: p.sku,
+      name: p.name,
+      category: p.category,
+      stock: stockByProductId[p.id] || 0,
+      costPriceCents: p.costPriceCents,
+      currency: p.costPriceCurrency,
+      totalValueCents: (stockByProductId[p.id] || 0) * p.costPriceCents,
+    }))
+    .sort((a, b) => b.totalValueCents - a.totalValueCents || b.costPriceCents - a.costPriceCents)
+    .slice(0, 7);
+
+  // 3. Last 6 Months Window (YYYY-MM)
+  const now = new Date();
+  const monthKeys: string[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    const ym = d.toISOString().slice(0, 7);
+    monthKeys.push(ym);
+  }
+
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthlyTrends: Record<string, {
+    month: string;
+    label: string;
+    salesCents: number;
+    purchasesCents: number;
+    cashInCents: number;
+    cashOutCents: number;
+    payrollCents: number;
+    netCashFlowCents: number;
+  }> = {};
+
+  for (const ym of monthKeys) {
+    const [year, monthNum] = ym.split('-');
+    const mName = monthNames[parseInt(monthNum, 10) - 1] || monthNum;
+    monthlyTrends[ym] = {
+      month: ym,
+      label: `${mName} ${year}`,
+      salesCents: 0,
+      purchasesCents: 0,
+      cashInCents: 0,
+      cashOutCents: 0,
+      payrollCents: 0,
+      netCashFlowCents: 0,
+    };
+  }
+
+  // 4. Sales Orders metrics & monthly aggregation
   const salesRevenueByCurrency: Record<string, number> = {};
+  const soStatusCounts: Record<string, number> = {
+    DRAFT: 0,
+    CONFIRMED: 0,
+    PACKED: 0,
+    PARTIALLY_FULFILLED: 0,
+    FULFILLED: 0,
+    CANCELLED: 0,
+  };
+  const customerRevenue: Record<string, { name: string; count: number; revenueCents: number }> = {};
+
   for (const so of soList) {
     salesRevenueByCurrency[so.currency] = (salesRevenueByCurrency[so.currency] || 0) + so.totalAmountCents;
+    if (so.status in soStatusCounts) {
+      soStatusCounts[so.status]++;
+    }
+    const ym = (so.orderDate || so.createdAt || '').slice(0, 7);
+    if (monthlyTrends[ym]) {
+      monthlyTrends[ym].salesCents += so.totalAmountCents;
+    }
+    const custName = so.customer?.name || 'Client';
+    if (!customerRevenue[so.customerId]) {
+      customerRevenue[so.customerId] = { name: custName, count: 0, revenueCents: 0 };
+    }
+    customerRevenue[so.customerId].count++;
+    customerRevenue[so.customerId].revenueCents += so.totalAmountCents;
   }
 
+  // 5. Purchase Orders metrics & monthly aggregation
   const purchaseCommitmentByCurrency: Record<string, number> = {};
+  const poStatusCounts: Record<string, number> = {
+    DRAFT: 0,
+    APPROVED: 0,
+    DELIVERED: 0,
+    PARTIALLY_RECEIVED: 0,
+    RECEIVED: 0,
+    CANCELLED: 0,
+  };
+  const vendorSpend: Record<string, { name: string; count: number; spendCents: number }> = {};
+
   for (const po of poList) {
     purchaseCommitmentByCurrency[po.currency] = (purchaseCommitmentByCurrency[po.currency] || 0) + po.totalAmountCents;
+    if (po.status in poStatusCounts) {
+      poStatusCounts[po.status]++;
+    }
+    const ym = (po.issueDate || po.createdAt || '').slice(0, 7);
+    if (monthlyTrends[ym]) {
+      monthlyTrends[ym].purchasesCents += po.totalAmountCents;
+    }
+    const vName = po.vendor?.name || 'Vendor';
+    if (!vendorSpend[po.vendorId]) {
+      vendorSpend[po.vendorId] = { name: vName, count: 0, spendCents: 0 };
+    }
+    vendorSpend[po.vendorId].count++;
+    vendorSpend[po.vendorId].spendCents += po.totalAmountCents;
   }
 
-  const totalPayrollPaidCents = payrollList.reduce((acc, pr) => acc + pr.totalNetCents, 0);
+  // 6. Vouchers (Cash Flow) metrics & monthly aggregation
+  const paymentMethodStats: Record<string, { count: number; inCents: number; outCents: number }> = {};
+  const recipientTypeStats: Record<string, { count: number; amountCents: number }> = {
+    VENDOR: { count: 0, amountCents: 0 },
+    EMPLOYEE: { count: 0, amountCents: 0 },
+    OTHER: { count: 0, amountCents: 0 },
+  };
+
+  for (const pv of paymentVouchersList) {
+    const ym = (pv.voucherDate || pv.createdAt || '').slice(0, 7);
+    if (monthlyTrends[ym]) {
+      monthlyTrends[ym].cashOutCents += pv.amountCents;
+    }
+    const method = pv.paymentMethod || 'OTHER';
+    if (!paymentMethodStats[method]) {
+      paymentMethodStats[method] = { count: 0, inCents: 0, outCents: 0 };
+    }
+    paymentMethodStats[method].count++;
+    paymentMethodStats[method].outCents += pv.amountCents;
+
+    const rType = pv.recipientType || 'OTHER';
+    if (rType in recipientTypeStats) {
+      recipientTypeStats[rType].count++;
+      recipientTypeStats[rType].amountCents += pv.amountCents;
+    }
+  }
+
+  for (const rv of receiptVouchersList) {
+    const ym = (rv.voucherDate || rv.createdAt || '').slice(0, 7);
+    if (monthlyTrends[ym]) {
+      monthlyTrends[ym].cashInCents += rv.amountCents;
+    }
+    const method = rv.paymentMethod || 'OTHER';
+    if (!paymentMethodStats[method]) {
+      paymentMethodStats[method] = { count: 0, inCents: 0, outCents: 0 };
+    }
+    paymentMethodStats[method].count++;
+    paymentMethodStats[method].inCents += rv.amountCents;
+  }
+
+  // Compute Net Cash Flow per month
+  for (const ym of monthKeys) {
+    monthlyTrends[ym].netCashFlowCents = monthlyTrends[ym].cashInCents - monthlyTrends[ym].cashOutCents;
+  }
+
+  // 7. Payroll metrics & monthly aggregation
+  let totalPayrollPaidCents = 0;
+  for (const pr of payrollList) {
+    if (pr.status === 'FINALIZED') {
+      totalPayrollPaidCents += pr.totalNetCents;
+      const ym = (pr.createdAt || '').slice(0, 7);
+      if (monthlyTrends[ym]) {
+        monthlyTrends[ym].payrollCents += pr.totalNetCents;
+      }
+    }
+  }
+
+  // 8. Staff & Department Headcount
+  const departmentStats: Record<string, { count: number; activeCount: number }> = {};
+  for (const emp of employees) {
+    const dept = emp.department || 'General';
+    if (!departmentStats[dept]) {
+      departmentStats[dept] = { count: 0, activeCount: 0 };
+    }
+    departmentStats[dept].count++;
+    if (emp.status === 'ACTIVE') {
+      departmentStats[dept].activeCount++;
+    }
+  }
 
   return c.json({
     success: true,
@@ -4724,11 +4934,56 @@ app.get('/api/dashboard', async (c) => {
       totalProducts: products.length,
       totalCustomers: customers.length,
       totalVendors: vendors.length,
-      activeEmployees: employees.length,
+      activeEmployees: employees.filter(e => e.status === 'ACTIVE').length,
+      totalEmployees: employees.length,
       inventoryValuationByCurrency,
       salesRevenueByCurrency,
       purchaseCommitmentByCurrency,
       totalPayrollPaidCents,
+      totalPaymentVouchersCount: paymentVouchersList.length,
+      totalReceiptVouchersCount: receiptVouchersList.length,
+    },
+    analytics: {
+      monthlyTrends: monthKeys.map(k => monthlyTrends[k]),
+      inventory: {
+        byCategory: Object.entries(categoryStats).map(([name, stat]) => ({
+          name,
+          count: stat.count,
+          valueCents: stat.valueCents,
+          damagedCount: stat.damagedCount,
+        })),
+        stockHealth: {
+          healthy: healthyStockCount,
+          lowStock: lowStockCount,
+          outOfStock: outOfStockCount,
+          damaged: totalDamagedUnits,
+        },
+        topProducts,
+      },
+      purchasing: {
+        byStatus: poStatusCounts,
+        topVendors: Object.values(vendorSpend).sort((a, b) => b.spendCents - a.spendCents).slice(0, 6),
+      },
+      sales: {
+        byStatus: soStatusCounts,
+        topCustomers: Object.values(customerRevenue).sort((a, b) => b.revenueCents - a.revenueCents).slice(0, 6),
+      },
+      cashFlow: {
+        byPaymentMethod: Object.entries(paymentMethodStats).map(([method, data]) => ({
+          method,
+          ...data,
+        })),
+        byRecipientType: Object.entries(recipientTypeStats).map(([type, data]) => ({
+          type,
+          ...data,
+        })),
+      },
+      staff: {
+        byDepartment: Object.entries(departmentStats).map(([department, data]) => ({
+          department,
+          ...data,
+        })),
+      },
     },
   });
 });
