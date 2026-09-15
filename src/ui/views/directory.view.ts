@@ -496,7 +496,7 @@ function renderDirectoryTable(keepScroll = false) {
       </tr>
     \`).join('') || '<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 2rem;">No products found.</td></tr>';
 
-    footerSubtext = '<p style="padding: 0.75rem 0 1rem; font-size: 0.78rem; color: #94a3b8;">Selling prices are managed on the Price List tab. Stock levels, valuation, and movement history live in Inventory & Stock.</p>';
+    footerSubtext = '<p style="padding: 0.75rem 0 1rem; font-size: 0.78rem; color: #94a3b8;">Selling prices are managed on the Price List tab. Stock levels and movement history live in Inventory & Stock.</p>';
   } else if (directoryActiveTab === 'pricelist') {
     if (productsCategoryTab !== 'all' && !state.productCategories.some((c) => c.name === productsCategoryTab)) {
       productsCategoryTab = 'all';

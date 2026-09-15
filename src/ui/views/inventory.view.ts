@@ -342,7 +342,7 @@ function scrollInventoryToTop() {
 }
 
 function exportInventoryCsv() {
-  const headers = ['SKU', 'Product Name', 'Category', 'UOM', 'Cost Price', 'Selling Price', 'Available Stock', 'Damaged Stock', 'Valuation (PHP)'];
+  const headers = ['SKU', 'Product Name', 'Category', 'UOM', 'Cost Price', 'Selling Price', 'Available Stock', 'Damaged Stock'];
   const rows = (state.products || []).map((p) => [
     p.sku,
     p.name,
@@ -352,7 +352,6 @@ function exportInventoryCsv() {
     p.sellingPriceCents ? (p.sellingPriceCents / 100).toFixed(2) + ' ' + (p.sellingPriceCurrency || 'PHP') : '0.00',
     p.onHandStock,
     p.damagedStock || 0,
-    (p.inventoryValuationCents / 100).toFixed(2),
   ]);
   exportToCsv('inventory_catalog_' + new Date().toISOString().slice(0, 10), headers, rows);
 }
@@ -378,7 +377,7 @@ function renderInventoryContent(container) {
       </div>
       <div class="inventory-panel-inner" style="padding: 0 1.35rem 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
         <p style="font-size: 0.85rem; color: #64748b; margin: 0; flex: 1 1 280px;">
-          Add new products from the Business Directory. This view tracks stock levels, valuation, and movement history.
+          Add new products from the Business Directory. This view tracks stock levels and movement history.
         </p>
         <div class="inventory-search-box" style="position: relative; max-width: 280px; width: 100%;">
           <input
@@ -514,7 +513,6 @@ function renderInventoryTable(keepScroll = false) {
             : \`<span style="color: #cbd5e1; font-size: 0.8rem;">—</span>\`
           }
         </td>
-        <td style="text-align: right; white-space: nowrap;"><strong style="font-family: monospace; color: #0f172a;">\${formatCurrency(p.inventoryValuationCents)}</strong></td>
         <td style="text-align: center; white-space: nowrap;">
           <button class="btn btn-secondary btn-sm" onclick="openProductHistoryModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}')">History</button>
         </td>
@@ -531,19 +529,18 @@ function renderInventoryTable(keepScroll = false) {
     <th class="sortable-th" style="width: 140px; min-width: 130px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('sellingPriceCents')" title="Sort by Selling Price">Selling Price \${inventorySortIndicator('sellingPriceCents')}</th>
     <th class="sortable-th" style="width: 135px; min-width: 125px; text-align: center; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('onHandStock')" title="Sort by Available Stock">Available \${inventorySortIndicator('onHandStock')}</th>
     <th class="sortable-th" style="width: 120px; min-width: 110px; text-align: center; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('damagedStock')" title="Sort by Damaged Stock">Damaged \${inventorySortIndicator('damagedStock')}</th>
-    <th class="sortable-th" style="width: 130px; min-width: 120px; text-align: right; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('inventoryValuationCents')" title="Sort by Valuation">Valuation \${inventorySortIndicator('inventoryValuationCents')}</th>
     <th style="width: 80px; min-width: 80px; text-align: center; white-space: nowrap;">Audit</th>
   </tr></thead>\`;
 
   const hasMore = visibleRowsCount < allRowsCount;
   const bottomLoader = hasMore
-    ? \`<tr><td colspan="10" style="text-align: center; color: #64748b; font-size: 0.8rem; padding: 0.85rem; background: #f8fafc; font-weight: 500;">
+    ? \`<tr><td colspan="9" style="text-align: center; color: #64748b; font-size: 0.8rem; padding: 0.85rem; background: #f8fafc; font-weight: 500;">
         Showing \${visibleRowsCount} of \${allRowsCount} items.
         <span style="color: #cbd5e1; margin: 0 0.5rem;">•</span>
         <a href="javascript:void(0)" onclick="inventoryLoadMoreRows()" style="color: var(--primary); font-weight: 600; text-decoration: none; margin-right: 0.75rem;">Load next \${Math.min(INVENTORY_CHUNK_SIZE, allRowsCount - visibleRowsCount)}</a>
         <a href="javascript:void(0)" onclick="inventoryLoadAllRows()" style="color: #64748b; font-weight: 500; text-decoration: underline;">Load all \${allRowsCount}</a>
       </td></tr>\`
-    : (allRowsCount > 25 ? \`<tr><td colspan="10" style="text-align: center; color: #94a3b8; font-size: 0.74rem; padding: 0.65rem;">All \${allRowsCount} items loaded</td></tr>\` : '');
+    : (allRowsCount > 25 ? \`<tr><td colspan="9" style="text-align: center; color: #94a3b8; font-size: 0.74rem; padding: 0.65rem;">All \${allRowsCount} items loaded</td></tr>\` : '');
 
   wrap.innerHTML = \`
     <div class="inventory-smart-scroll-container">
@@ -551,7 +548,7 @@ function renderInventoryTable(keepScroll = false) {
         <table class="data-table">
           \${tableHeaderHtml}
           <tbody>
-            \${rowsHtml || '<tr><td colspan="10" style="text-align: center; color: #64748b; padding: 2rem;">No products matching search criteria.</td></tr>'}
+            \${rowsHtml || '<tr><td colspan="9" style="text-align: center; color: #64748b; padding: 2rem;">No products matching search criteria.</td></tr>'}
             \${bottomLoader}
           </tbody>
         </table>
@@ -727,7 +724,7 @@ function handleAddStockProductChange() {
       hint.textContent = '(currently ' + formatCurrency(product.costPriceCents, product.costPriceCurrency) + ')';
     } else {
       costInput.value = '';
-      hint.textContent = '(not set yet — recommended for accurate valuation)';
+      hint.textContent = '(not set yet)';
     }
   }
 }
