@@ -275,7 +275,7 @@ function renderDirectoryContent() {
   const canManageCatalog = can('directory', 'create') || can('inventory', 'create');
   const addButton = canManageCatalog
     ? {
-        customers: '<button class="btn btn-primary btn-sm" onclick="openNewCustomerModal()">Add Customer</button>',
+        customers: '<div style="display: flex; gap: 0.5rem;"><button class="btn btn-secondary btn-sm" onclick="openImportCustomersModal()" style="display: inline-flex; align-items: center; gap: 0.35rem;"><span style="font-size: 0.95rem;">📥</span> Import Excel</button><button class="btn btn-primary btn-sm" onclick="openNewCustomerModal()">+ Add Customer</button></div>',
         products: '<div style="display: flex; gap: 0.5rem;"><button class="btn btn-secondary btn-sm" onclick="openImportPricelistModal()" style="display: inline-flex; align-items: center; gap: 0.35rem;"><span style="font-size: 0.95rem;">📥</span> Import Excel</button><button class="btn btn-primary btn-sm" onclick="openNewProductModal()">+ Add Product</button></div>',
         pricelist: '<div style="display: flex; gap: 0.5rem;"><button class="btn btn-secondary btn-sm" onclick="openImportPricelistModal()" style="display: inline-flex; align-items: center; gap: 0.35rem;"><span style="font-size: 0.95rem;">📥</span> Import Pricelist</button></div>',
         suppliers: '<button class="btn btn-primary btn-sm" onclick="openNewVendorModal()">Add Supplier</button>',
@@ -353,7 +353,7 @@ function renderProductCategoryTabs() {
 function getDirectoryFilteredTotal() {
   const q = directorySearch.trim().toLowerCase();
   if (directoryActiveTab === 'customers') {
-    return state.customers.filter((c) => !q || c.name.toLowerCase().includes(q) || c.customerCode.toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q)).length;
+    return state.customers.filter((c) => !q || c.name.toLowerCase().includes(q) || c.customerCode.toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q) || (c.taxId || '').toLowerCase().includes(q)).length;
   }
   if (directoryActiveTab === 'products' || directoryActiveTab === 'pricelist') {
     return state.products.filter((p) => {
@@ -427,26 +427,36 @@ function renderDirectoryTable(keepScroll = false) {
   let visibleRowsCount = 0;
 
   if (directoryActiveTab === 'customers') {
-    const filteredRows = state.customers.filter((c) => !q || c.name.toLowerCase().includes(q) || c.customerCode.toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q));
+    const filteredRows = state.customers.filter((c) => !q || c.name.toLowerCase().includes(q) || c.customerCode.toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q) || (c.taxId || '').toLowerCase().includes(q));
     const allRows = sortDirectoryRows(filteredRows);
     allRowsCount = allRows.length;
     const rows = allRows.slice(0, directoryVisibleCount);
     visibleRowsCount = rows.length;
 
     tableHeaderHtml = \`<thead><tr>
-      <th class="sortable-th" style="cursor: pointer; user-select: none;" onclick="setDirectorySort('customerCode')" title="Sort by Customer Code">Customer Code \${directorySortIndicator('customerCode')}</th>
-      <th class="sortable-th" style="cursor: pointer; user-select: none;" onclick="setDirectorySort('name')" title="Sort by Name">Name \${directorySortIndicator('name')}</th>
-      <th class="sortable-th" style="cursor: pointer; user-select: none;" onclick="setDirectorySort('email')" title="Sort by Email">Email \${directorySortIndicator('email')}</th>
-      <th class="sortable-th" style="cursor: pointer; user-select: none;" onclick="setDirectorySort('createdAt')" title="Sort by Date Added">Added \${directorySortIndicator('createdAt')}</th>
+      <th class="sortable-th" style="cursor: pointer; user-select: none; width: 140px;" onclick="setDirectorySort('customerCode')" title="Sort by Customer Code">Customer Code \${directorySortIndicator('customerCode')}</th>
+      <th class="sortable-th" style="cursor: pointer; user-select: none;" onclick="setDirectorySort('name')" title="Sort by Name">Customer Name \${directorySortIndicator('name')}</th>
+      <th class="sortable-th" style="cursor: pointer; user-select: none; width: 170px;" onclick="setDirectorySort('taxId')" title="Sort by TIN Number">TIN Number \${directorySortIndicator('taxId')}</th>
+      <th class="sortable-th" style="cursor: pointer; user-select: none; width: 180px;" onclick="setDirectorySort('email')" title="Sort by Email">Email \${directorySortIndicator('email')}</th>
+      <th class="sortable-th" style="cursor: pointer; user-select: none; width: 110px;" onclick="setDirectorySort('createdAt')" title="Sort by Date Added">Added \${directorySortIndicator('createdAt')}</th>
+      <th style="width: 75px; text-align: center;">Actions</th>
     </tr></thead>\`;
     tbodyHtml = rows.map((c) => \`
       <tr>
-        <td><strong>\${c.customerCode}</strong></td>
-        <td>\${c.name}</td>
-        <td>\${c.email || '<span style="color: #94a3b8;">—</span>'}</td>
-        <td>\${new Date(c.createdAt).toLocaleDateString()}</td>
+        <td><strong>\${escapeHtml(c.customerCode)}</strong></td>
+        <td><div style="font-weight: 600; color: var(--text-main);">\${escapeHtml(c.name)}</div></td>
+        <td>
+          \${c.taxId ? '<span class="badge badge-secondary" style="font-family: monospace; font-size: 0.8rem; letter-spacing: 0.04em; background: #f1f5f9; color: #334155; padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px solid #e2e8f0;">' + escapeHtml(c.taxId) + '</span>' : '<span style="color: #94a3b8;">—</span>'}
+        </td>
+        <td>\${c.email ? '<span style="color: var(--text-muted); font-size: 0.85rem;">' + escapeHtml(c.email) + '</span>' : '<span style="color: #94a3b8;">—</span>'}</td>
+        <td><span style="font-size: 0.82rem; color: var(--text-muted);">\${new Date(c.createdAt).toLocaleDateString()}</span></td>
+        <td style="text-align: center;">
+          <button class="btn btn-secondary btn-sm" onclick="openEditCustomerModal('\${c.id}')" style="padding: 0.25rem 0.5rem; font-size: 0.76rem;" title="Edit Customer & TIN">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+          </button>
+        </td>
       </tr>
-    \`).join('') || '<tr><td colspan="4" style="text-align: center; color: #64748b; padding: 2rem;">No customers found.</td></tr>';
+    \`).join('') || '<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 2.5rem;">No customers found.</td></tr>';
   } else if (directoryActiveTab === 'products') {
     if (productsCategoryTab !== 'all' && !state.productCategories.some((c) => c.name === productsCategoryTab)) {
       productsCategoryTab = 'all';
@@ -467,7 +477,7 @@ function renderDirectoryTable(keepScroll = false) {
       <th class="sortable-th" style="width: 160px; min-width: 140px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('category')" title="Sort by Category">Category \${directorySortIndicator('category')}</th>
       <th class="sortable-th" style="width: 75px; min-width: 65px; text-align: center; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('unitOfMeasure')" title="Sort by UOM">UOM \${directorySortIndicator('unitOfMeasure')}</th>
       <th class="sortable-th" style="width: 140px; min-width: 130px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('costPriceCents')" title="Sort by Cost Price">Cost Price \${directorySortIndicator('costPriceCents')}</th>
-      <th style="width: 140px; text-align: right; white-space: nowrap;"></th>
+      <th style="width: 80px; text-align: right; white-space: nowrap;">Actions</th>
     </tr></thead>\`;
     tbodyHtml = rows.map((p) => \`
       <tr>
@@ -492,7 +502,16 @@ function renderDirectoryTable(keepScroll = false) {
         <td style="white-space: nowrap;"><span class="badge badge-neutral" style="font-size: 0.74rem;">\${p.category || '—'}</span></td>
         <td style="text-align: center; color: #64748b; font-size: 0.82rem; white-space: nowrap;">\${p.unitOfMeasure}</td>
         <td style="white-space: nowrap;">\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.72rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8; font-size: 0.8rem;">Not purchased yet</span>'}</td>
-        <td style="text-align: right; white-space: nowrap;"><button class="btn btn-secondary btn-sm" onclick="openChangeCategoryModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}', '\${(p.category || '').replace(/'/g, "\\\\'")}')">Change Category</button></td>
+        <td style="text-align: right; white-space: nowrap;">
+          <div style="display: inline-flex; align-items: center; justify-content: flex-end; gap: 0.35rem;">
+            <button class="btn btn-secondary btn-sm" onclick="openEditProductModal('\${p.id}')" style="padding: 0.25rem 0.45rem; line-height: 1; display: inline-flex; align-items: center; justify-content: center;" title="Edit Product">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="deleteProduct('\${p.id}')" style="padding: 0.25rem 0.45rem; line-height: 1; display: inline-flex; align-items: center; justify-content: center; color: #ef4444;" title="Delete Product">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </td>
       </tr>
     \`).join('') || '<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 2rem;">No products found.</td></tr>';
 
@@ -606,7 +625,7 @@ function renderDirectoryTable(keepScroll = false) {
   }
 }
 
-// ---- Create Customer (moved from Sales) ----
+// ---- Create & Edit Customer ----
 
 function openNewCustomerModal() {
   const body = \`
@@ -620,8 +639,20 @@ function openNewCustomerModal() {
         <input type="text" id="nc-name" class="form-input" placeholder="e.g. Globex Corporation" required />
       </div>
       <div class="form-group">
+        <label class="form-label">TIN Number (Tax ID)</label>
+        <input type="text" id="nc-taxid" class="form-input" placeholder="e.g. 000-123-456-000" />
+      </div>
+      <div class="form-group">
         <label class="form-label">Email</label>
         <input type="email" id="nc-email" class="form-input" placeholder="billing@client.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Phone</label>
+        <input type="text" id="nc-phone" class="form-input" placeholder="e.g. +63 917 123 4567" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Billing Address</label>
+        <input type="text" id="nc-address" class="form-input" placeholder="e.g. Makati City, Metro Manila" />
       </div>
     </form>
   \`;
@@ -635,9 +666,12 @@ function openNewCustomerModal() {
 async function submitNewCustomer(e) {
   e.preventDefault();
   const payload = {
-    customerCode: document.getElementById('nc-code').value,
-    name: document.getElementById('nc-name').value,
-    email: document.getElementById('nc-email').value || undefined,
+    customerCode: document.getElementById('nc-code').value.trim(),
+    name: document.getElementById('nc-name').value.trim(),
+    taxId: document.getElementById('nc-taxid').value.trim() || undefined,
+    email: document.getElementById('nc-email').value.trim() || undefined,
+    phone: document.getElementById('nc-phone').value.trim() || undefined,
+    billingAddress: document.getElementById('nc-address').value.trim() || undefined,
   };
 
   try {
@@ -651,6 +685,74 @@ async function submitNewCustomer(e) {
 
     closeModal();
     showToast('Customer ' + json.data.name + ' created', 'success');
+    directoryActiveTab = 'customers';
+    loadDirectory();
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
+}
+
+function openEditCustomerModal(id) {
+  const cust = (state.customers || []).find((c) => c.id === id);
+  if (!cust) return;
+
+  const body = \`
+    <form id="form-edit-cust" onsubmit="submitEditCustomer(event, '\${cust.id}')">
+      <div class="form-group">
+        <label class="form-label">Customer Code *</label>
+        <input type="text" id="ec-code" class="form-input" value="\${escapeHtml(cust.customerCode)}" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Customer Name *</label>
+        <input type="text" id="ec-name" class="form-input" value="\${escapeHtml(cust.name)}" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">TIN Number (Tax ID)</label>
+        <input type="text" id="ec-taxid" class="form-input" value="\${escapeHtml(cust.taxId || '')}" placeholder="e.g. 000-123-456-000" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" id="ec-email" class="form-input" value="\${escapeHtml(cust.email || '')}" placeholder="billing@client.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Phone</label>
+        <input type="text" id="ec-phone" class="form-input" value="\${escapeHtml(cust.phone || '')}" placeholder="e.g. +63 917 123 4567" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Billing Address</label>
+        <input type="text" id="ec-address" class="form-input" value="\${escapeHtml(cust.billingAddress || '')}" placeholder="e.g. Makati City, Metro Manila" />
+      </div>
+    </form>
+  \`;
+  const footer = \`
+    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="document.getElementById('form-edit-cust').requestSubmit()">Update Customer</button>
+  \`;
+  openModal('Edit Customer Details', body, footer);
+}
+
+async function submitEditCustomer(e, id) {
+  e.preventDefault();
+  const payload = {
+    customerCode: document.getElementById('ec-code').value.trim(),
+    name: document.getElementById('ec-name').value.trim(),
+    taxId: document.getElementById('ec-taxid').value.trim() || null,
+    email: document.getElementById('ec-email').value.trim() || null,
+    phone: document.getElementById('ec-phone').value.trim() || null,
+    billingAddress: document.getElementById('ec-address').value.trim() || null,
+  };
+
+  try {
+    const res = await apiFetch('/api/sales/customers/' + id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to update customer');
+
+    closeModal();
+    showToast('Customer ' + json.data.name + ' updated successfully', 'success');
     directoryActiveTab = 'customers';
     loadDirectory();
   } catch (err) {
@@ -773,7 +875,9 @@ async function submitChangeCategory(e, productId) {
   }
 }
 
-// ---- Create Product (moved from Inventory) ----
+// ---- Product Management (Create, Edit, Delete) ----
+
+let isSubmittingProduct = false;
 
 function openNewProductModal() {
   const body = \`
@@ -793,38 +897,189 @@ function openNewProductModal() {
           <button type="button" class="btn btn-secondary btn-sm" onclick="quickAddCategory('np-category')">+ New</button>
         </div>
       </div>
-      <p style="margin: -0.5rem 0 0; font-size: 0.78rem; color: #94a3b8;">
-        Unit of measure, cost price, currency, and quantity are set when you order this product in Purchasing.
-        Selling price is set afterwards from the Price List tab.
+      <div class="form-group">
+        <label class="form-label">Unit of Measure (UOM) *</label>
+        <input type="text" id="np-uom" class="form-input" value="pcs" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description (Optional)</label>
+        <textarea id="np-description" class="form-input" rows="2" placeholder="Product specifications, notes, or details"></textarea>
+      </div>
+      <p style="margin: -0.25rem 0 0; font-size: 0.78rem; color: #94a3b8;">
+        Unit of measure defaults to pcs. Cost price and stock quantities are tracked when you receive inventory in Purchasing.
       </p>
     </form>
   \`;
   const footer = \`
     <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-primary" onclick="document.getElementById('form-new-product').requestSubmit()">Save Product</button>
+    <button id="btn-submit-new-product" class="btn btn-primary" onclick="document.getElementById('form-new-product').requestSubmit()">Save Product</button>
   \`;
   openModal('Add New Product', body, footer);
 }
 
 async function submitNewProduct(e) {
   e.preventDefault();
-  const payload = {
-    sku: document.getElementById('np-sku').value,
-    name: document.getElementById('np-name').value,
-    category: document.getElementById('np-category').value,
-  };
+  if (isSubmittingProduct) return;
+
+  const sku = (document.getElementById('np-sku')?.value || '').trim();
+  const name = (document.getElementById('np-name')?.value || '').trim();
+  const category = (document.getElementById('np-category')?.value || '').trim();
+  const unitOfMeasure = (document.getElementById('np-uom')?.value || 'pcs').trim();
+  const description = (document.getElementById('np-description')?.value || '').trim();
+
+  if (!sku || !name || !category) {
+    showToast('SKU, Name, and Category are required', 'warning');
+    return;
+  }
+
+  const submitBtn = document.getElementById('btn-submit-new-product');
+  isSubmittingProduct = true;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving...';
+  }
 
   try {
     const res = await apiFetch('/api/inventory/products', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        sku,
+        name,
+        category,
+        unitOfMeasure: unitOfMeasure || 'pcs',
+        description: description || undefined,
+      }),
     });
     const json = await res.json();
     if (!res.ok || !json.success) throw new Error(json.error || 'Failed to save product');
 
     closeModal();
     showToast('Product ' + json.data.name + ' created', 'success');
+    directoryActiveTab = 'products';
+    loadDirectory();
+  } catch (err) {
+    showToast(err.message, 'danger');
+  } finally {
+    isSubmittingProduct = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Save Product';
+    }
+  }
+}
+
+function openEditProductModal(productId) {
+  const p = (state.products || []).find((item) => item.id === productId);
+  if (!p) {
+    showToast('Product not found', 'danger');
+    return;
+  }
+
+  const cleanDesc = p.description && !p.description.startsWith('Section:') ? p.description : '';
+
+  const body = \`
+    <form id="form-edit-product" onsubmit="submitEditProduct(event, '\${p.id}')">
+      <div class="form-group">
+        <label class="form-label">Product Number (SKU) *</label>
+        <input type="text" id="ep-sku" class="form-input" value="\${escapeHtml(p.sku || '')}" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Product Name *</label>
+        <input type="text" id="ep-name" class="form-input" value="\${escapeHtml(p.name || '')}" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category *</label>
+        <div style="display: flex; gap: 0.5rem;">
+          <select id="ep-category" class="form-select" style="flex: 1;" required>\${productCategoryOptionsHtml(p.category)}</select>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="quickAddCategory('ep-category')">+ New</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Unit of Measure (UOM) *</label>
+        <input type="text" id="ep-uom" class="form-input" value="\${escapeHtml(p.unitOfMeasure || 'pcs')}" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description (Optional)</label>
+        <textarea id="ep-description" class="form-input" rows="2" placeholder="Product specifications, notes, or details">\${escapeHtml(cleanDesc)}</textarea>
+      </div>
+    </form>
+  \`;
+  const footer = \`
+    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button id="btn-submit-edit-product" class="btn btn-primary" onclick="document.getElementById('form-edit-product').requestSubmit()">Save Changes</button>
+  \`;
+  openModal('Edit Product', body, footer);
+}
+
+async function submitEditProduct(e, productId) {
+  e.preventDefault();
+  if (isSubmittingProduct) return;
+
+  const sku = (document.getElementById('ep-sku')?.value || '').trim();
+  const name = (document.getElementById('ep-name')?.value || '').trim();
+  const category = (document.getElementById('ep-category')?.value || '').trim();
+  const unitOfMeasure = (document.getElementById('ep-uom')?.value || 'pcs').trim();
+  const description = (document.getElementById('ep-description')?.value || '').trim();
+
+  if (!sku || !name || !category) {
+    showToast('SKU, Name, and Category are required', 'warning');
+    return;
+  }
+
+  const submitBtn = document.getElementById('btn-submit-edit-product');
+  isSubmittingProduct = true;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving...';
+  }
+
+  try {
+    const res = await apiFetch('/api/inventory/products/' + productId, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sku,
+        name,
+        category,
+        unitOfMeasure: unitOfMeasure || 'pcs',
+        description,
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to update product');
+
+    closeModal();
+    showToast('Product ' + json.data.name + ' updated successfully', 'success');
+    directoryActiveTab = 'products';
+    loadDirectory();
+  } catch (err) {
+    showToast(err.message, 'danger');
+  } finally {
+    isSubmittingProduct = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Save Changes';
+    }
+  }
+}
+
+async function deleteProduct(productId) {
+  const p = (state.products || []).find((item) => item.id === productId);
+  const name = p ? p.name : 'this product';
+  const sku = p && p.sku ? ' (' + p.sku + ')' : '';
+  if (!confirm('Are you sure you want to delete ' + name + sku + '?\\n\\nThis will permanently remove the product from the directory.')) {
+    return;
+  }
+
+  try {
+    const res = await apiFetch('/api/inventory/products/' + productId, {
+      method: 'DELETE',
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to delete product');
+
+    showToast(json.message || 'Product deleted successfully', 'success');
     directoryActiveTab = 'products';
     loadDirectory();
   } catch (err) {
@@ -1321,7 +1576,7 @@ function parseExcelWorkbook(wb) {
     } else if (upperSheet.includes('PART')) {
       defaultCategory = 'Spare Parts';
     } else if (upperSheet.includes('GOV')) {
-      defaultCategory = 'Government';
+      defaultCategory = 'Weather Station';
     } else {
       defaultCategory = sName.charAt(0).toUpperCase() + sName.slice(1);
     }
@@ -1476,10 +1731,32 @@ function parseExcelWorkbook(wb) {
           }
         }
 
+        // Check if individual product or section belongs to Spare Parts or Weather Station
+        let itemCat = defaultCategory;
+        const upperSec = (currentSection || '').toUpperCase();
+        const upperName = (prodName || '').toUpperCase();
+        if (
+          upperSheet.includes('PART') ||
+          upperSec.includes('PART') ||
+          upperSec.includes('ACCESSOR') ||
+          upperSec.includes('OPTION') ||
+          upperSec.includes('CABLE') ||
+          upperSec.includes('SENSOR TRANSMITTER') ||
+          upperName.includes('PCBA') ||
+          upperName.includes('REPLACEMENT KIT') ||
+          upperName.includes('REPAIR KIT') ||
+          upperName.includes('HARDWARE KIT') ||
+          upperName.includes('SPARE')
+        ) {
+          itemCat = 'Spare Parts';
+        } else if (upperSheet.includes('AWS') || upperSheet.includes('GOV')) {
+          itemCat = 'Weather Station';
+        }
+
         const prodObj = {
           sku: pn.toUpperCase(),
           name: (prodName.replace(/\s+/g, ' ').trim()) || ('Part ' + pn),
-          category: defaultCategory,
+          category: itemCat,
           section: currentSection,
           sellingPrice,
           baseSellingPrice,
@@ -1589,16 +1866,16 @@ async function executeBatchImport() {
   const payloadProducts = [];
   selectedSheets.forEach((sheet) => {
     const cat = sheet.category || 'Other';
-    sheet.products.forEach((p) => {
-      payloadProducts.push({
-        sku: p.sku,
-        name: p.name,
-        category: cat,
+      sheet.products.forEach((p) => {
+        payloadProducts.push({
+          sku: p.sku,
+          name: p.name,
+          category: p.category || cat,
         sellingPriceCents: Math.round((p.sellingPrice || 0) * 100),
         sellingPriceCurrency: p.sellingPriceCurrency || 'PHP',
         costPriceCents: Math.round((p.davisPriceUSD || 0) * 100),
         costPriceCurrency: p.costPriceCurrency || 'USD',
-        unitOfMeasure: 'unit',
+        unitOfMeasure: 'pcs',
         description: p.section ? 'Section: ' + p.section : undefined,
       });
     });
@@ -1640,4 +1917,596 @@ async function executeBatchImport() {
     showToast(err.message, 'danger');
   }
 }
+
+// ==========================================
+// Customer Excel / CSV Import Functionality
+// ==========================================
+
+let importCustomersState = {
+  file: null,
+  fileName: '',
+  fileSize: '',
+  sheets: [],
+  activeSheetIdx: 0,
+  searchFilter: '',
+  isSubmitting: false,
+};
+
+function openImportCustomersModal() {
+  importCustomersState = {
+    file: null,
+    fileName: '',
+    fileSize: '',
+    sheets: [],
+    activeSheetIdx: 0,
+    searchFilter: '',
+    isSubmitting: false,
+  };
+  renderImportCustomersModal();
+}
+
+function toggleImportCustomerSheet(idx, checked) {
+  if (importCustomersState.sheets[idx]) {
+    importCustomersState.sheets[idx].selected = checked;
+    renderImportCustomersModal();
+  }
+}
+
+function setImportCustomerActiveSheet(idx) {
+  importCustomersState.activeSheetIdx = idx;
+  renderImportCustomersModal();
+}
+
+function renderImportCustomersModal() {
+  const { sheets, activeSheetIdx, fileName, fileSize, isSubmitting, searchFilter } = importCustomersState;
+
+  if (!sheets || sheets.length === 0) {
+    // 1. Initial State: Upload / Drag & Drop
+    const body = \`
+      <div style="padding: 1rem 0;">
+        <div
+          id="customer-dropzone"
+          style="border: 2px dashed var(--border-color); border-radius: 12px; padding: 3rem 1.5rem; text-align: center; background: #f8fafc; cursor: pointer; transition: var(--transition);"
+          onclick="document.getElementById('customer-file-input').click()"
+          ondragover="event.preventDefault(); this.style.borderColor='var(--primary)'; this.style.background='#eff6ff';"
+          ondragleave="this.style.borderColor='var(--border-color)'; this.style.background='#f8fafc';"
+          ondrop="handleCustomerFileDrop(event)"
+        >
+          <div style="font-size: 3rem; margin-bottom: 0.75rem;">👥</div>
+          <div style="font-weight: 700; font-size: 1.15rem; color: #0f172a; margin-bottom: 0.35rem;">
+            Click to select or drag & drop your Customer Excel / CSV File
+          </div>
+          <p style="font-size: 0.88rem; color: #64748b; max-width: 520px; margin: 0 auto 1.25rem;">
+            Upload your spreadsheet (e.g. <code>CUSTOMERS.xlsx</code>). The system automatically detects <strong>Customer Name</strong> and <strong>TIN Number</strong> (Tax ID), along with customer codes, contact info, and addresses.
+          </p>
+          <div style="display: flex; gap: 0.75rem; justify-content: center; align-items: center; flex-wrap: wrap;">
+            <button type="button" class="btn btn-primary" onclick="event.stopPropagation(); document.getElementById('customer-file-input').click()">
+              Select Excel / CSV File
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); downloadCustomerTemplate()">
+              📥 Download Excel Template
+            </button>
+          </div>
+          <input
+            type="file"
+            id="customer-file-input"
+            accept=".xlsx,.xls,.csv"
+            style="display: none;"
+            onchange="handleCustomerFileSelect(event)"
+          />
+        </div>
+        <div style="display: flex; gap: 1rem; margin-top: 1.25rem; font-size: 0.8rem; color: #64748b; flex-wrap: wrap;">
+          <div style="flex: 1; min-width: 200px; background: #ffffff; border: 1px solid var(--border-color); border-radius: 8px; padding: 0.75rem 1rem;">
+            <strong>🏢 Smart Column Mapping:</strong> Automatically recognizes column headers like <em>Customer Name, Company, Client, TIN, Tax ID, Phone, Email, Address</em>.
+          </div>
+          <div style="flex: 1; min-width: 200px; background: #ffffff; border: 1px solid var(--border-color); border-radius: 8px; padding: 0.75rem 1rem;">
+            <strong>🔢 Auto Customer Code:</strong> Automatically assigns clean customer codes (e.g. <code>CUST-001</code> or company initials) if not specified in your sheet.
+          </div>
+          <div style="flex: 1; min-width: 200px; background: #ffffff; border: 1px solid var(--border-color); border-radius: 8px; padding: 0.75rem 1rem;">
+            <strong>🔄 Smart Deduplication:</strong> Automatically detects existing customers by TIN, Code, or Name and updates their record without creating duplicates.
+          </div>
+        </div>
+      </div>
+    \`;
+    const footer = \`<button class="btn btn-secondary" onclick="closeModal()">Cancel</button>\`;
+    openModal('Import Customers & TIN', body, footer, 'xl');
+    return;
+  }
+
+  // 2. Active State: Sheets & Customer Preview
+  const activeSheet = sheets[activeSheetIdx] || sheets[0];
+  const q = (searchFilter || '').trim().toLowerCase();
+
+  // Compute totals across all selected sheets
+  let totalCustomers = 0;
+  let newCustomersCount = 0;
+  let updateCustomersCount = 0;
+
+  const existingCustMap = new Map();
+  (state.customers || []).forEach((c) => {
+    if (c.taxId) existingCustMap.set('tin:' + c.taxId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(), c);
+    if (c.customerCode) existingCustMap.set('code:' + c.customerCode.trim().toUpperCase(), c);
+    if (c.name) existingCustMap.set('name:' + c.name.trim().toUpperCase(), c);
+  });
+
+  sheets.forEach((s) => {
+    if (!s.selected) return;
+    s.customers.forEach((c) => {
+      totalCustomers++;
+      const cleanTin = (c.taxId || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      const cleanCode = (c.customerCode || '').trim().toUpperCase();
+      const cleanName = (c.name || '').trim().toUpperCase();
+
+      const isMatch = (cleanTin && existingCustMap.has('tin:' + cleanTin)) ||
+                      (cleanCode && existingCustMap.has('code:' + cleanCode)) ||
+                      (cleanName && existingCustMap.has('name:' + cleanName));
+      if (isMatch) {
+        updateCustomersCount++;
+      } else {
+        newCustomersCount++;
+      }
+    });
+  });
+
+  // Filter customers for active sheet
+  const displayCustomers = (activeSheet.customers || []).filter((c) => {
+    if (!q) return true;
+    return (
+      (c.customerCode && c.customerCode.toLowerCase().includes(q)) ||
+      (c.name && c.name.toLowerCase().includes(q)) ||
+      (c.taxId && c.taxId.toLowerCase().includes(q)) ||
+      (c.email && c.email.toLowerCase().includes(q)) ||
+      (c.phone && c.phone.toLowerCase().includes(q))
+    );
+  });
+
+  // Sheet navigation pills (if more than 1 sheet)
+  let sheetTabsHtml = '';
+  if (sheets.length > 1) {
+    const pills = sheets.map((s, idx) => {
+      const isActive = idx === activeSheetIdx;
+      return \`
+        <div style="display: inline-flex; align-items: center; background: \${isActive ? '#eff6ff' : '#f8fafc'}; border: 1px solid \${isActive ? 'var(--primary)' : 'var(--border-color)'}; border-radius: 8px; padding: 0.35rem 0.65rem; gap: 0.5rem;">
+          <input
+            type="checkbox"
+            id="cust-sheet-cb-\${idx}"
+            \${s.selected ? 'checked' : ''}
+            onchange="toggleImportCustomerSheet(\${idx}, this.checked)"
+            style="cursor: pointer;"
+          />
+          <button
+            type="button"
+            onclick="setImportCustomerActiveSheet(\${idx})"
+            style="border: none; background: transparent; font-weight: \${isActive ? '700' : '500'}; color: \${isActive ? 'var(--primary)' : 'var(--text-main)'}; cursor: pointer; padding: 0; font-size: 0.85rem;"
+          >
+            \${s.name} <span style="font-size: 0.75rem; opacity: 0.8; font-weight: 600;">(\${s.customers.length})</span>
+          </button>
+        </div>
+      \`;
+    }).join('');
+
+    sheetTabsHtml = \`
+      <div>
+        <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; color: #64748b; margin-bottom: 0.4rem;">
+          Detected Sheets (Check sheets to include in import):
+        </div>
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          \${pills}
+        </div>
+      </div>
+    \`;
+  }
+
+  const body = \`
+    <div style="display: flex; flex-direction: column; gap: 1rem;">
+      <!-- File Information & Summary Bar -->
+      <div style="display: flex; align-items: center; justify-content: space-between; background: #f8fafc; border: 1px solid var(--border-color); border-radius: 8px; padding: 0.65rem 1rem; flex-wrap: wrap; gap: 0.75rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span style="font-size: 1.25rem;">📄</span>
+          <div>
+            <strong style="font-size: 0.88rem; color: #0f172a;">\${fileName}</strong>
+            <span style="font-size: 0.78rem; color: #64748b; margin-left: 0.4rem;">(\${fileSize})</span>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('customer-file-input').click()" style="margin-left: 0.5rem; font-size: 0.75rem; padding: 0.2rem 0.5rem;">Change File</button>
+          <input type="file" id="customer-file-input" accept=".xlsx,.xls,.csv" style="display: none;" onchange="handleCustomerFileSelect(event)" />
+        </div>
+        <div style="display: flex; gap: 0.6rem; align-items: center;">
+          <span class="badge" style="background: #e2e8f0; color: #334155; font-size: 0.78rem; padding: 0.25rem 0.6rem; border-radius: 6px; font-weight: 600;">
+            👥 \${totalCustomers} Total
+          </span>
+          <span class="badge" style="background: #dcfce7; color: #166534; font-size: 0.78rem; padding: 0.25rem 0.6rem; border-radius: 6px; font-weight: 600;">
+            ✨ \${newCustomersCount} New
+          </span>
+          <span class="badge" style="background: #e0f2fe; color: #075985; font-size: 0.78rem; padding: 0.25rem 0.6rem; border-radius: 6px; font-weight: 600;">
+            🔄 \${updateCustomersCount} Updates
+          </span>
+        </div>
+      </div>
+
+      \${sheetTabsHtml}
+
+      <!-- Search & Download Template Bar -->
+      <div style="background: #ffffff; border: 1px solid var(--border-color); border-radius: 8px; padding: 0.6rem 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <input
+            type="text"
+            class="form-input"
+            style="padding: 0.35rem 0.75rem; font-size: 0.82rem; width: 260px;"
+            placeholder="Search preview rows..."
+            value="\${searchFilter}"
+            oninput="importCustomersState.searchFilter = this.value; renderImportCustomersModal();"
+          />
+          <span style="font-size: 0.8rem; color: #64748b;">
+            Showing \${displayCustomers.length} of \${activeSheet.customers.length} in \${activeSheet.name}
+          </span>
+        </div>
+        <div>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="downloadCustomerTemplate()" style="font-size: 0.76rem; padding: 0.25rem 0.6rem;">
+            📥 Download Template
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Preview Table -->
+      <div style="border: 1px solid var(--border-color); border-radius: 8px; max-height: 380px; overflow-y: auto; background: #ffffff;">
+        <table class="data-table" style="margin: 0; width: 100%; border-collapse: collapse;">
+          <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 2; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+            <tr>
+              <th style="width: 75px; padding: 0.6rem 0.75rem;">Status</th>
+              <th style="width: 120px; padding: 0.6rem 0.75rem;">Code</th>
+              <th style="padding: 0.6rem 0.75rem;">Customer Name</th>
+              <th style="width: 170px; padding: 0.6rem 0.75rem;">TIN Number</th>
+              <th style="width: 180px; padding: 0.6rem 0.75rem;">Contact</th>
+              <th style="width: 220px; padding: 0.6rem 0.75rem;">Billing Address</th>
+            </tr>
+          </thead>
+          <tbody>
+            \${
+              displayCustomers.length === 0
+                ? '<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 2rem;">No matching customer rows found.</td></tr>'
+                : displayCustomers.map((c) => {
+                    const cleanTin = (c.taxId || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+                    const cleanCode = (c.customerCode || '').trim().toUpperCase();
+                    const cleanName = (c.name || '').trim().toUpperCase();
+
+                    const isMatch = (cleanTin && existingCustMap.has('tin:' + cleanTin)) ||
+                                    (cleanCode && existingCustMap.has('code:' + cleanCode)) ||
+                                    (cleanName && existingCustMap.has('name:' + cleanName));
+
+                    const statusBadge = isMatch
+                      ? '<span class="badge" style="background: #e0f2fe; color: #075985; font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 4px;">UPDATE</span>'
+                      : '<span class="badge" style="background: #dcfce7; color: #166534; font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 4px;">NEW</span>';
+
+                    const tinDisplay = c.taxId
+                      ? '<span class="badge badge-secondary" style="font-family: monospace; font-size: 0.8rem; background: #f1f5f9; color: #334155; padding: 0.15rem 0.45rem; border-radius: 4px; border: 1px solid #e2e8f0;">' + escapeHtml(c.taxId) + '</span>'
+                      : '<span style="color: #94a3b8; font-size: 0.8rem;">—</span>';
+
+                    const contactDisplay = [c.email, c.phone].filter(Boolean).map(escapeHtml).join(' • ') || '<span style="color: #94a3b8;">—</span>';
+
+                    return \`
+                      <tr>
+                        <td style="padding: 0.55rem 0.75rem;">\${statusBadge}</td>
+                        <td style="padding: 0.55rem 0.75rem;"><strong style="font-family: monospace; font-size: 0.82rem; color: #334155;">\${escapeHtml(c.customerCode || 'AUTO')}</strong></td>
+                        <td style="padding: 0.55rem 0.75rem; font-weight: 600; color: #0f172a;">\${escapeHtml(c.name)}</td>
+                        <td style="padding: 0.55rem 0.75rem;">\${tinDisplay}</td>
+                        <td style="padding: 0.55rem 0.75rem; font-size: 0.82rem; color: #64748b;">\${contactDisplay}</td>
+                        <td style="padding: 0.55rem 0.75rem; font-size: 0.8rem; color: #64748b;">\${c.billingAddress ? escapeHtml(c.billingAddress) : '<span style="color: #94a3b8;">—</span>'}</td>
+                      </tr>
+                    \`;
+                  }).join('')
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  \`;
+
+  const footer = isSubmitting
+    ? \`
+      <button class="btn btn-secondary" disabled>Cancel</button>
+      <button class="btn btn-primary" disabled style="display: inline-flex; align-items: center; gap: 0.5rem;">
+        <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #ffffff; border-right-color: transparent; border-radius: 50%; animation: spin 0.75s linear infinite;"></span>
+        Importing Customers...
+      </button>
+    \`
+    : \`
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button
+        class="btn btn-primary"
+        onclick="executeBatchCustomerImport()"
+        \${totalCustomers === 0 ? 'disabled' : ''}
+        style="display: inline-flex; align-items: center; gap: 0.4rem;"
+      >
+        <span>📥</span> Import \${totalCustomers} Customer\${totalCustomers === 1 ? '' : 's'}
+      </button>
+    \`;
+
+  openModal('Import Customers & TIN', body, footer, 'xl');
+}
+
+function handleCustomerFileDrop(e) {
+  e.preventDefault();
+  const dt = e.dataTransfer;
+  if (dt && dt.files && dt.files.length > 0) {
+    processCustomerFile(dt.files[0]);
+  }
+}
+
+function handleCustomerFileSelect(e) {
+  const file = e.target.files && e.target.files[0];
+  if (file) {
+    processCustomerFile(file);
+  }
+}
+
+function processCustomerFile(file) {
+  if (!file) return;
+
+  if (typeof window.XLSX === 'undefined') {
+    showToast('Loading spreadsheet parser... Please try again in a moment.', 'info');
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = () => processCustomerFile(file);
+    s.onerror = () => showToast('Failed to load XLSX engine from CDN.', 'danger');
+    document.head.appendChild(s);
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = window.XLSX.read(data, { type: 'array' });
+      const parsedSheets = parseCustomerWorkbook(wb);
+
+      if (!parsedSheets || parsedSheets.length === 0) {
+        showToast('No valid customer names or records detected in this file.', 'warning');
+        return;
+      }
+
+      importCustomersState.file = file;
+      importCustomersState.fileName = file.name;
+      importCustomersState.fileSize = (file.size / 1024).toFixed(1) + ' KB';
+      importCustomersState.sheets = parsedSheets;
+      importCustomersState.activeSheetIdx = 0;
+      importCustomersState.searchFilter = '';
+
+      renderImportCustomersModal();
+      showToast('Detected ' + parsedSheets.length + ' sheet(s) with customer records.', 'success');
+    } catch (err) {
+      console.error('Error parsing Customer Excel file:', err);
+      showToast('Error reading spreadsheet: ' + err.message, 'danger');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseCustomerWorkbook(wb) {
+  const parsedSheets = [];
+
+  for (let sIdx = 0; sIdx < wb.SheetNames.length; sIdx++) {
+    const rawSheetName = wb.SheetNames[sIdx];
+    const sName = (rawSheetName || '').trim();
+    const sheet = wb.Sheets[rawSheetName];
+    if (!sheet) continue;
+
+    const grid = window.XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
+    if (!grid || !grid.length) continue;
+
+    let headerRowIdx = -1;
+    let nameCol = -1;
+    let tinCol = -1;
+    let codeCol = -1;
+    let emailCol = -1;
+    let phoneCol = -1;
+    let addressCol = -1;
+
+    // Scan first 15 rows for header row
+    for (let r = 0; r < Math.min(15, grid.length); r++) {
+      const row = grid[r] || [];
+      for (let c = 0; c < row.length; c++) {
+        const valStr = String(row[c] || '').trim().toUpperCase();
+        if (!valStr) continue;
+
+        // Customer / Company Name
+        if (
+          nameCol < 0 &&
+          ['CUSTOMER', 'CUSTOMER NAME', 'COMPANY', 'COMPANY NAME', 'CLIENT', 'CLIENT NAME', 'ACCOUNT', 'ACCOUNT NAME', 'BILL TO', 'BUYER', 'ORGANIZATION', 'NAME'].includes(valStr)
+        ) {
+          nameCol = c;
+          headerRowIdx = r;
+        }
+
+        // TIN / Tax ID
+        if (
+          tinCol < 0 &&
+          (valStr === 'TIN' || valStr.startsWith('TIN ') || valStr === 'TIN#' || valStr === 'TIN NO' || valStr === 'TIN NO.' || valStr === 'TIN NUMBER' || valStr === 'TAX ID' || valStr.includes('TAX IDENTIFICATION') || valStr === 'VAT NO' || valStr === 'VAT NO.' || valStr === 'VAT REG' || valStr === 'VAT REG. TIN' || valStr === 'TIN/VAT')
+        ) {
+          tinCol = c;
+          headerRowIdx = r;
+        }
+
+        // Customer Code
+        if (
+          codeCol < 0 &&
+          ['CUSTOMER CODE', 'CUST CODE', 'CODE', 'CUST ID', 'CUSTOMER ID', 'CLIENT ID', 'ACCOUNT NO', 'ACCOUNT #', 'CUST NO'].includes(valStr)
+        ) {
+          codeCol = c;
+          headerRowIdx = r;
+        }
+
+        // Email
+        if (
+          emailCol < 0 &&
+          ['EMAIL', 'E-MAIL', 'EMAIL ADDRESS', 'E-MAIL ADDRESS'].includes(valStr)
+        ) {
+          emailCol = c;
+        }
+
+        // Phone
+        if (
+          phoneCol < 0 &&
+          ['PHONE', 'PHONE NO', 'PHONE NO.', 'PHONE NUMBER', 'TEL', 'TEL NO', 'TELEPHONE', 'MOBILE', 'CONTACT NO', 'CONTACT NUMBER', 'CONTACT'].includes(valStr)
+        ) {
+          phoneCol = c;
+        }
+
+        // Address
+        if (
+          addressCol < 0 &&
+          ['ADDRESS', 'BILLING ADDRESS', 'OFFICE ADDRESS', 'LOCATION', 'STREET', 'ADDRESS 1', 'DELIVERY ADDRESS'].includes(valStr)
+        ) {
+          addressCol = c;
+        }
+      }
+      if (nameCol >= 0 && headerRowIdx >= 0) break;
+    }
+
+    // Fallback: If no header found, inspect row 0
+    if (nameCol < 0) {
+      if (grid.length > 0) {
+        headerRowIdx = 0;
+        nameCol = 0;
+        if (grid[0].length > 1) tinCol = 1;
+        if (grid[0].length > 2) codeCol = 2;
+      }
+    }
+
+    if (nameCol < 0) continue;
+
+    const customers = [];
+    const startRow = headerRowIdx >= 0 ? headerRowIdx + 1 : 0;
+
+    for (let r = startRow; r < grid.length; r++) {
+      const row = grid[r] || [];
+      const rawName = String(row[nameCol] || '').trim();
+      if (!rawName || rawName.length < 2) continue;
+
+      // Skip header repeated row or total rows
+      const upperName = rawName.toUpperCase();
+      if (upperName === 'CUSTOMER NAME' || upperName === 'TOTAL' || upperName === 'GRAND TOTAL') continue;
+
+      const rawTin = tinCol >= 0 ? String(row[tinCol] || '').trim() : '';
+      const rawCode = codeCol >= 0 ? String(row[codeCol] || '').trim() : '';
+      const rawEmail = emailCol >= 0 ? String(row[emailCol] || '').trim() : '';
+      const rawPhone = phoneCol >= 0 ? String(row[phoneCol] || '').trim() : '';
+      const rawAddress = addressCol >= 0 ? String(row[addressCol] || '').trim() : '';
+
+      // Normalize TIN: clean up multiple hyphens, or format 9/12 digit numbers
+      let formattedTin = rawTin;
+      if (formattedTin) {
+        const digitsOnly = formattedTin.replace(/[^0-9]/g, '');
+        if (digitsOnly.length === 9) {
+          formattedTin = digitsOnly.slice(0, 3) + '-' + digitsOnly.slice(3, 6) + '-' + digitsOnly.slice(6, 9) + '-000';
+        } else if (digitsOnly.length === 12) {
+          formattedTin = digitsOnly.slice(0, 3) + '-' + digitsOnly.slice(3, 6) + '-' + digitsOnly.slice(6, 9) + '-' + digitsOnly.slice(9, 12);
+        }
+      }
+
+      customers.push({
+        customerCode: rawCode || '',
+        name: rawName,
+        taxId: formattedTin || '',
+        email: rawEmail || '',
+        phone: rawPhone || '',
+        billingAddress: rawAddress || '',
+      });
+    }
+
+    if (customers.length > 0) {
+      parsedSheets.push({
+        name: sName,
+        selected: true,
+        customers,
+      });
+    }
+  }
+
+  return parsedSheets;
+}
+
+function downloadCustomerTemplate() {
+  if (typeof window.XLSX === 'undefined') {
+    showToast('Spreadsheet engine loading, please try again...', 'info');
+    return;
+  }
+  const headers = ['Customer Name', 'TIN Number', 'Customer Code (Optional)', 'Email', 'Phone', 'Billing Address'];
+  const sampleData = [
+    ['Universal Leaf Philippines, Inc.', '000-123-456-000', 'ULP-001', 'purchasing@ulp.com.ph', '+63 2 8123 4567', 'Agoo, La Union, Philippines'],
+    ['Philippine Atmospheric Geophysical & Astronomical Services (PAGASA)', '000-987-654-000', 'PAGASA-001', 'info@pagasa.dost.gov.ph', '+63 2 8284 0800', 'Science Garden Complex, Agham Road, Diliman, Quezon City'],
+    ['Department of Agriculture - RFO 1', '001-234-567-000', '', 'procurement@ilocos.da.gov.ph', '+63 72 242 1045', 'San Fernando City, La Union'],
+    ['Aero Weather Solutions Corp.', '123-456-789-001', '', 'admin@aeroweather.ph', '+63 2 8900 1234', 'Makati City, Metro Manila'],
+  ];
+
+  const ws = window.XLSX.utils.aoa_to_sheet([headers, ...sampleData]);
+  ws['!cols'] = [
+    { wch: 45 },
+    { wch: 22 },
+    { wch: 25 },
+    { wch: 30 },
+    { wch: 20 },
+    { wch: 45 },
+  ];
+
+  const wb = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb, ws, 'Customers');
+  window.XLSX.writeFile(wb, 'Apexs_Customer_Import_Template.xlsx');
+  showToast('Downloaded Customer Import Template', 'success');
+}
+
+async function executeBatchCustomerImport() {
+  const selectedSheets = (importCustomersState.sheets || []).filter((s) => s.selected);
+  if (!selectedSheets.length) {
+    showToast('Please select at least one sheet to import.', 'warning');
+    return;
+  }
+
+  const payloadCustomers = [];
+  selectedSheets.forEach((sheet) => {
+    sheet.customers.forEach((c) => {
+      payloadCustomers.push({
+        customerCode: c.customerCode || undefined,
+        name: c.name,
+        taxId: c.taxId || undefined,
+        email: c.email || undefined,
+        phone: c.phone || undefined,
+        billingAddress: c.billingAddress || undefined,
+      });
+    });
+  });
+
+  if (!payloadCustomers.length) {
+    showToast('No customers found in selected sheets to import.', 'warning');
+    return;
+  }
+
+  importCustomersState.isSubmitting = true;
+  renderImportCustomersModal();
+
+  try {
+    const res = await apiFetch('/api/sales/customers/batch-import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ customers: payloadCustomers }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || 'Failed to import customers');
+    }
+
+    const { total, createdCount, updatedCount } = json.data;
+    closeModal();
+
+    showToast('Import complete: ' + total + ' customers processed (' + createdCount + ' added, ' + updatedCount + ' updated)', 'success');
+
+    // Reload directory data
+    directoryActiveTab = 'customers';
+    await loadDirectory();
+  } catch (err) {
+    importCustomersState.isSubmitting = false;
+    renderImportCustomersModal();
+    showToast(err.message, 'danger');
+  }
+}
 `;
+

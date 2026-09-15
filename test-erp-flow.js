@@ -53,6 +53,40 @@ async function runTests() {
   }
   console.log(`  ✓ Route /favicon.ico                   -> 200 OK (image/png)`);
 
+  // Check PWA Manifest, Service Worker & Mobile App Icons
+  const manifestRes = await fetch(`${baseUrl}/manifest.webmanifest`);
+  if (manifestRes.status !== 200 || !manifestRes.headers.get('content-type')?.includes('json')) {
+    console.error(`❌ Manifest check failed: status=${manifestRes.status}`);
+    process.exit(1);
+  }
+  const manifestJson = await manifestRes.json();
+  if (manifestJson.name !== 'Apexs ERP — Enterprise Business Management' || manifestJson.display !== 'standalone') {
+    console.error(`❌ Manifest content verification failed:`, manifestJson);
+    process.exit(1);
+  }
+  console.log(`  ✓ Route /manifest.webmanifest          -> 200 OK (application/manifest+json, standalone)`);
+
+  const swRes = await fetch(`${baseUrl}/sw.js`);
+  if (swRes.status !== 200 || !swRes.headers.get('content-type')?.includes('javascript')) {
+    console.error(`❌ Service Worker check failed: status=${swRes.status}`);
+    process.exit(1);
+  }
+  console.log(`  ✓ Route /sw.js                         -> 200 OK (application/javascript)`);
+
+  const icon192Res = await fetch(`${baseUrl}/assets/icon-192.png`);
+  if (icon192Res.status !== 200 || !icon192Res.headers.get('content-type')?.includes('image/png')) {
+    console.error(`❌ Icon 192 check failed: status=${icon192Res.status}`);
+    process.exit(1);
+  }
+  console.log(`  ✓ Route /assets/icon-192.png           -> 200 OK (image/png, mobile launcher icon)`);
+
+  const icon512Res = await fetch(`${baseUrl}/assets/icon-512.png`);
+  if (icon512Res.status !== 200 || !icon512Res.headers.get('content-type')?.includes('image/png')) {
+    console.error(`❌ Icon 512 check failed: status=${icon512Res.status}`);
+    process.exit(1);
+  }
+  console.log(`  ✓ Route /assets/icon-512.png           -> 200 OK (image/png, mobile splash icon)`);
+
   console.log('\n=== 2. SEED CHART OF ACCOUNTS & ADMIN ===');
   const seedRes = await fetch(`${baseUrl}/api/setup/seed`, { method: 'POST' });
   const seedJson = await seedRes.json();

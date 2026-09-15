@@ -2002,16 +2002,16 @@ function renderOfficialVoucherSlipMarkup(v) {
     '<div>' +
     '<div style="font-size: 1.28rem; font-weight: 900; color: #dc2626; font-family: Arial, Helvetica, sans-serif; letter-spacing: 0.5px; line-height: 1.1;">APEXS, INC.</div>' +
     '<div style="font-size: 0.76rem; font-weight: 700; font-style: italic; color: #0f172a; line-height: 1.15;">Applied Expert Systems & Software, Inc.</div>' +
-    '<div style="font-size: 0.7rem; font-style: italic; color: #0284c7; font-weight: 600; font-family: Georgia, serif; line-height: 1.15;">“We put technology to work for you”</div>' +
-    '</div>' +
-    '</div>' +
-    '<!-- Address & Contact -->' +
-    '<div style="text-align: center; font-size: 0.68rem; font-weight: 600; color: #1e293b; margin-bottom: 0.45rem; line-height: 1.35;">' +
-    '<div>Suite 714 EGI City by the Sea, Maribago, Lapu-Lapu City 6015</div>' +
-    '<div>Telefax# 495-2106</div>' +
-    '</div>' +
-    '<!-- Top Voucher Number, Date & Pay to Rows -->' +
-    '<div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 0.45rem; font-size: 0.8rem;">' +
+      '<div style="font-size: 0.7rem; font-style: italic; color: #0284c7; font-weight: 600; font-family: Georgia, serif; line-height: 1.15;">“We put technology to work for you”</div>' +
+      '</div>' +
+      '</div>' +
+      '<!-- Address & Contact -->' +
+      '<div style="text-align: center; font-size: 0.68rem; font-weight: 600; color: #1e293b; margin-bottom: 0.45rem; line-height: 1.35;">' +
+      '<div>Suite 714 EGI City by the Sea, Maribago, Lapu-Lapu City 6015</div>' +
+      '<div>Telefax# 495-2106</div>' +
+      '</div>' +
+      '<!-- Top Voucher Number, Date & Pay to Rows -->' +
+      '<div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 0.45rem; font-size: 0.8rem;">' +
     '<div style="display: flex; align-items: baseline; flex: 1; margin-right: 1.25rem;">' +
     '<span style="font-weight: 700; font-size: 0.82rem; margin-right: 0.4rem; white-space: nowrap;">Pay to:</span>' +
     '<span style="border-bottom: 1.5px solid #000000; flex: 1; font-weight: 700; font-size: 0.86rem; text-transform: uppercase; padding-left: 0.25rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' +

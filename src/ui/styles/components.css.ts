@@ -2525,4 +2525,52 @@ export const COMPONENTS_CSS = `
   height: 32px;
   color: #cbd5e1;
 }
+
+/* ========================================================================== */
+/* PWA & Mobile Native App Adaptations (Safe Areas, Touch & Standalone)        */
+/* ========================================================================== */
+
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+@supports (padding-top: env(safe-area-inset-top)) {
+  .top-bar {
+    padding-top: max(0.4rem, env(safe-area-inset-top));
+    height: auto;
+    min-height: calc(58px + env(safe-area-inset-top));
+  }
+  .sidebar {
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  .modal-dialog {
+    margin-bottom: max(1.5rem, env(safe-area-inset-bottom));
+  }
+  .page-body {
+    padding-bottom: max(2rem, calc(env(safe-area-inset-bottom) + 1rem));
+  }
+}
+
+/* Standalone PWA / Native App enhancements */
+@media all and (display-mode: standalone) {
+  body {
+    user-select: none;
+  }
+  input, textarea, select {
+    user-select: auto;
+  }
+  .main-content {
+    overscroll-behavior-y: contain;
+  }
+}
 `;
+

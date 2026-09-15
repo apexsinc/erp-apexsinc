@@ -688,7 +688,7 @@ function openAddStockModal(defaultProductId) {
   \`;
   const footer = \`
     <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-primary" onclick="document.getElementById('form-add-stock').requestSubmit()">Add Stock</button>
+    <button id="btn-submit-add-stock" class="btn btn-primary" onclick="document.getElementById('form-add-stock').requestSubmit()">Add Stock</button>
   \`;
   openModal('Add Stock (No PO)', body, footer);
 
@@ -727,8 +727,12 @@ function handleAddStockProductChange() {
   }
 }
 
+let isInventorySubmitting = false;
+
 async function submitAddStock(e) {
   e.preventDefault();
+  if (isInventorySubmitting) return;
+
   const productId = document.getElementById('add-stock-product').value;
   if (!productId) {
     showToast('Please search and select a product from the list', 'warning');
@@ -747,6 +751,13 @@ async function submitAddStock(e) {
   if (!quantity || quantity <= 0) {
     showToast('Quantity must be a positive number', 'warning');
     return;
+  }
+
+  const submitBtn = document.getElementById('btn-submit-add-stock');
+  isInventorySubmitting = true;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Adding...';
   }
 
   const unitCostCents = costInput !== '' ? Math.round(parseFloat(costInput) * 100) : undefined;
@@ -784,6 +795,12 @@ async function submitAddStock(e) {
     loadInventory();
   } catch (err) {
     showToast(err.message, 'danger');
+  } finally {
+    isInventorySubmitting = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Add Stock';
+    }
   }
 }
 
@@ -847,7 +864,7 @@ function openStockAdjustmentModal(defaultProductId) {
   \`;
   const footer = \`
     <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-primary" onclick="document.getElementById('form-stock-adj').requestSubmit()">Post Adjustment</button>
+    <button id="btn-submit-stock-adj" class="btn btn-primary" onclick="document.getElementById('form-stock-adj').requestSubmit()">Post Adjustment</button>
   \`;
   openModal('Post Stock Adjustment', body, footer);
 
@@ -866,6 +883,8 @@ function openStockAdjustmentModal(defaultProductId) {
 
 async function submitStockAdjustment(e) {
   e.preventDefault();
+  if (isInventorySubmitting) return;
+
   const productId = document.getElementById('adj-product').value;
   if (!productId) {
     showToast('Please search and select a product from the list', 'warning');
@@ -884,6 +903,13 @@ async function submitStockAdjustment(e) {
     notes: document.getElementById('adj-notes').value || 'Manual adjustment',
   };
 
+  const submitBtn = document.getElementById('btn-submit-stock-adj');
+  isInventorySubmitting = true;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Posting...';
+  }
+
   try {
     const res = await apiFetch('/api/inventory/movements', {
       method: 'POST',
@@ -898,6 +924,12 @@ async function submitStockAdjustment(e) {
     loadInventory();
   } catch (err) {
     showToast(err.message, 'danger');
+  } finally {
+    isInventorySubmitting = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Post Adjustment';
+    }
   }
 }
 
@@ -973,7 +1005,7 @@ function openDamagedStockModal(defaultProductId) {
   \`;
   const footer = \`
     <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-primary" onclick="document.getElementById('form-damaged-stock').requestSubmit()">Save</button>
+    <button id="btn-submit-damaged-stock" class="btn btn-primary" onclick="document.getElementById('form-damaged-stock').requestSubmit()">Save</button>
   \`;
   openModal('Damaged & Quarantine Stock', body, footer);
 
@@ -1020,6 +1052,8 @@ function handleDamagedActionChange() {
 
 async function submitDamagedStock(e) {
   e.preventDefault();
+  if (isInventorySubmitting) return;
+
   const productId = document.getElementById('dmg-product').value;
   if (!productId) {
     showToast('Please search and select a product', 'warning');
@@ -1040,12 +1074,19 @@ async function submitDamagedStock(e) {
   if (!product) return;
 
   if (action === 'MOVE_TO_DAMAGED' && quantity > (product.onHandStock || 0)) {
-    showToast(\`Quantity cannot exceed available stock (\${product.onHandStock})\`, 'warning');
+    showToast('Quantity cannot exceed available stock (' + (product.onHandStock || 0) + ')', 'warning');
     return;
   }
   if (action !== 'MOVE_TO_DAMAGED' && quantity > (product.damagedStock || 0)) {
-    showToast(\`Quantity cannot exceed current damaged stock (\${product.damagedStock || 0})\`, 'warning');
+    showToast('Quantity cannot exceed current damaged stock (' + (product.damagedStock || 0) + ')', 'warning');
     return;
+  }
+
+  const submitBtn = document.getElementById('btn-submit-damaged-stock');
+  isInventorySubmitting = true;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving...';
   }
 
   try {
@@ -1062,6 +1103,12 @@ async function submitDamagedStock(e) {
     loadInventory();
   } catch (err) {
     showToast(err.message, 'danger');
+  } finally {
+    isInventorySubmitting = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Save';
+    }
   }
 }
 
@@ -1234,7 +1281,7 @@ function selectProductFromSearch(prefix, productId) {
     const isDamagedPositive = (product.damagedStock || 0) > 0;
     card.innerHTML = \`
       <div style="margin-top: 0.35rem; font-size: 0.78rem; color: #64748b; display: flex; align-items: center; justify-content: space-between;">
-        <span>Available: <strong style="color: \${isStockPositive ? '#16a34a' : '#64748b'};">\${product.onHandStock} \${escapeHtml(product.unitOfMeasure || 'units')}</strong> | Damaged: <strong style="color: \${isDamagedPositive ? '#d97706' : '#64748b'};">\${product.damagedStock || 0}</strong></span>
+        <span>Available: <strong style="color: \${isStockPositive ? '#16a34a' : '#64748b'};">\${product.onHandStock} \${escapeHtml(product.unitOfMeasure || 'pcs')}</strong> | Damaged: <strong style="color: \${isDamagedPositive ? '#d97706' : '#64748b'};">\${product.damagedStock || 0}</strong></span>
         \${product.category ? \`<span style="color: #94a3b8;">\${escapeHtml(product.category)}</span>\` : ''}
       </div>
     \`;

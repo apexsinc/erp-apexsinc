@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { eq, desc, asc, like, and, ne } from 'drizzle-orm';
+import { eq, desc, asc, like, and, ne, sql } from 'drizzle-orm';
 import { createDbClient, type Database } from './db/client';
 import * as schema from './db/schema';
 import { renderAppHtml, renderPurchaseOrderPrintHtml } from './ui';
@@ -29,6 +29,7 @@ import {
   type CrudAction,
 } from './lib/permissions';
 import { APEXS_LOGO_BASE64 } from './ui/assets/logo';
+import { MANIFEST_JSON, SERVICE_WORKER_JS } from './ui/pwa';
 
 // Environment Bindings for Cloudflare Workers
 type Bindings = {
@@ -240,6 +241,51 @@ app.get('/assets/logo.png', (c) => {
   });
 });
 app.get('/favicon.ico', (c) => {
+  const binary = Uint8Array.from(atob(APEXS_LOGO_BASE64.split(',')[1]), (char) => char.charCodeAt(0));
+  return new Response(binary, {
+    headers: {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    },
+  });
+});
+
+// Progressive Web App (PWA) & Mobile Manifest Routes
+app.get('/manifest.webmanifest', () => {
+  return new Response(MANIFEST_JSON, {
+    headers: {
+      'Content-Type': 'application/manifest+json; charset=utf-8',
+      'Cache-Control': 'public, max-age=86400',
+    },
+  });
+});
+app.get('/manifest.json', () => {
+  return new Response(MANIFEST_JSON, {
+    headers: {
+      'Content-Type': 'application/manifest+json; charset=utf-8',
+      'Cache-Control': 'public, max-age=86400',
+    },
+  });
+});
+app.get('/sw.js', () => {
+  return new Response(SERVICE_WORKER_JS, {
+    headers: {
+      'Content-Type': 'application/javascript; charset=utf-8',
+      'Service-Worker-Allowed': '/',
+      'Cache-Control': 'no-cache',
+    },
+  });
+});
+app.get('/assets/icon-192.png', () => {
+  const binary = Uint8Array.from(atob(APEXS_LOGO_BASE64.split(',')[1]), (char) => char.charCodeAt(0));
+  return new Response(binary, {
+    headers: {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    },
+  });
+});
+app.get('/assets/icon-512.png', () => {
   const binary = Uint8Array.from(atob(APEXS_LOGO_BASE64.split(',')[1]), (char) => char.charCodeAt(0));
   return new Response(binary, {
     headers: {
@@ -527,6 +573,34 @@ app.post(
   }
 );
 
+// DELETE /api/inventory/categories/:id - Delete a product category
+app.delete('/api/inventory/categories/:id', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const id = c.req.param('id');
+
+  const existing = await db.query.productCategories.findFirst({
+    where: eq(schema.productCategories.id, id),
+  });
+  if (!existing) return c.json({ success: false, error: 'Category not found' }, 404);
+
+  // Check if any products currently use this category name
+  const inUse = await db.query.products.findFirst({
+    where: eq(schema.products.category, existing.name),
+  });
+  if (inUse) {
+    return c.json(
+      {
+        success: false,
+        error: `Cannot delete category "${existing.name}" because it is still in use by products. Please reassign the products first.`,
+      },
+      400
+    );
+  }
+
+  await db.delete(schema.productCategories).where(eq(schema.productCategories.id, id));
+  return c.json({ success: true, message: `Category "${existing.name}" deleted successfully` });
+});
+
 // POST /api/inventory/products - Create Product
 // Identity, category, and name only. Unit of measure, cost price/currency, and
 // quantity are captured later, per purchase, on the Purchasing PO form —
@@ -536,9 +610,10 @@ app.post(
   zValidator(
     'json',
     z.object({
-      sku: z.string().min(2),
+      sku: z.string().min(1),
       name: z.string().min(1),
       category: z.string().min(1),
+      unitOfMeasure: z.string().optional().default('pcs'),
       description: z.string().optional(),
     })
   ),
@@ -551,12 +626,20 @@ app.post(
     });
     if (!category) return c.json({ success: false, error: 'Unknown category' }, 400);
 
+    const existingSku = await db.query.products.findFirst({
+      where: eq(schema.products.sku, body.sku.toUpperCase()),
+    });
+    if (existingSku) {
+      return c.json({ success: false, error: `Product with SKU "${body.sku.toUpperCase()}" already exists` }, 409);
+    }
+
     const productId = crypto.randomUUID();
     await db.insert(schema.products).values({
       id: productId,
       sku: body.sku.toUpperCase(),
       name: body.name,
       category: body.category,
+      unitOfMeasure: body.unitOfMeasure || 'pcs',
       description: body.description,
     });
 
@@ -588,7 +671,7 @@ app.post(
             sellingPriceCurrency: z.enum(['USD', 'PHP']).optional().nullable().default('PHP'),
             costPriceCents: z.number().int().nonnegative().optional().nullable().default(0),
             costPriceCurrency: z.enum(['USD', 'PHP']).optional().nullable().default('USD'),
-            unitOfMeasure: z.string().optional().nullable().default('unit'),
+            unitOfMeasure: z.string().optional().nullable().default('pcs'),
             description: z.string().optional().nullable(),
           })
         )
@@ -606,7 +689,7 @@ app.post(
       sellingPriceCurrency: (item.sellingPriceCurrency || 'PHP') as 'USD' | 'PHP',
       costPriceCents: item.costPriceCents ?? 0,
       costPriceCurrency: (item.costPriceCurrency || 'USD') as 'USD' | 'PHP',
-      unitOfMeasure: item.unitOfMeasure || 'unit',
+      unitOfMeasure: item.unitOfMeasure || 'pcs',
       description: item.description || undefined,
     }));
 
@@ -686,7 +769,7 @@ app.post(
             sku: normalizedSku,
             name: item.name.trim(),
             category: item.category.trim(),
-            unitOfMeasure: item.unitOfMeasure || 'unit',
+            unitOfMeasure: item.unitOfMeasure || 'pcs',
             sellingPriceCents: item.sellingPriceCents || 0,
             sellingPriceCurrency: item.sellingPriceCurrency || 'PHP',
             costPriceCents: item.costPriceCents || 0,
@@ -877,6 +960,100 @@ app.patch(
   }
 );
 
+// PATCH /api/inventory/products/:id - Edit product details (name, sku, category, unitOfMeasure, description)
+app.patch(
+  '/api/inventory/products/:id',
+  zValidator(
+    'json',
+    z.object({
+      name: z.string().min(1).optional(),
+      sku: z.string().min(1).optional(),
+      category: z.string().min(1).optional(),
+      unitOfMeasure: z.string().min(1).optional(),
+      description: z.string().optional().nullable(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const id = c.req.param('id');
+    const body = c.req.valid('json');
+
+    const product = await db.query.products.findFirst({ where: eq(schema.products.id, id) });
+    if (!product) return c.json({ success: false, error: 'Product not found' }, 404);
+
+    if (body.category) {
+      const cat = await db.query.productCategories.findFirst({
+        where: eq(schema.productCategories.name, body.category),
+      });
+      if (!cat) return c.json({ success: false, error: 'Unknown category' }, 400);
+    }
+
+    if (body.sku && body.sku.toUpperCase() !== product.sku.toUpperCase()) {
+      const existingSku = await db.query.products.findFirst({
+        where: eq(schema.products.sku, body.sku.toUpperCase()),
+      });
+      if (existingSku) {
+        return c.json({ success: false, error: `Product with SKU "${body.sku.toUpperCase()}" already exists` }, 409);
+      }
+    }
+
+    const updateData: Partial<typeof schema.products.$inferInsert> = {
+      updatedAt: new Date().toISOString(),
+    };
+    if (body.name !== undefined) updateData.name = body.name.trim();
+    if (body.sku !== undefined) updateData.sku = body.sku.trim().toUpperCase();
+    if (body.category !== undefined) updateData.category = body.category.trim();
+    if (body.unitOfMeasure !== undefined) updateData.unitOfMeasure = body.unitOfMeasure.trim() || 'pcs';
+    if (body.description !== undefined) updateData.description = body.description ? body.description.trim() : null;
+
+    await db.update(schema.products).set(updateData).where(eq(schema.products.id, id));
+
+    const updated = await db.query.products.findFirst({ where: eq(schema.products.id, id) });
+    return c.json({ success: true, data: updated });
+  }
+);
+
+// DELETE /api/inventory/products/:id - Delete a product
+app.delete('/api/inventory/products/:id', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const id = c.req.param('id');
+
+  const product = await db.query.products.findFirst({ where: eq(schema.products.id, id) });
+  if (!product) return c.json({ success: false, error: 'Product not found' }, 404);
+
+  // Check if product is in purchase orders
+  const poItem = await db.query.purchaseOrderItems.findFirst({
+    where: eq(schema.purchaseOrderItems.productId, id),
+  });
+  if (poItem) {
+    return c.json({ success: false, error: 'Cannot delete product because it has purchase order history' }, 400);
+  }
+
+  // Check if product is in sales orders
+  const soItem = await db.query.salesOrderItems.findFirst({
+    where: eq(schema.salesOrderItems.productId, id),
+  });
+  if (soItem) {
+    return c.json({ success: false, error: 'Cannot delete product because it has sales order history' }, 400);
+  }
+
+  // Check if product is in invoice items
+  const invItem = await db.query.invoiceItems.findFirst({
+    where: eq(schema.invoiceItems.productId, id),
+  });
+  if (invItem) {
+    return c.json({ success: false, error: 'Cannot delete product because it has invoice history' }, 400);
+  }
+
+  // Delete associated stock movements
+  await db.delete(schema.stockMovements).where(eq(schema.stockMovements.productId, id));
+
+  // Delete product
+  await db.delete(schema.products).where(eq(schema.products.id, id));
+
+  return c.json({ success: true, message: `Product "${product.name}" (${product.sku}) deleted successfully` });
+});
+
 // POST /api/inventory/movements - Stock Adjustment
 app.post(
   '/api/inventory/movements',
@@ -900,6 +1077,28 @@ app.post(
       where: eq(schema.products.id, body.productId),
     });
     if (!product) return c.json({ success: false, error: 'Product not found' }, 404);
+
+    // De-duplication check: prevent accidental double-click submissions within 3 seconds
+    const twoSecondsAgo = new Date(Date.now() - 3000).toISOString();
+    const recentDuplicate = await db.query.stockMovements.findFirst({
+      where: (m, { and, eq, gte }) =>
+        and(
+          eq(m.productId, body.productId),
+          eq(m.type, body.type),
+          eq(m.quantity, body.quantity),
+          gte(m.createdAt, twoSecondsAgo)
+        ),
+    });
+    if (recentDuplicate) {
+      const currentStock = await getProductStockBalance(db, body.productId);
+      return c.json({
+        success: true,
+        message: 'Stock movement recorded successfully (deduplicated)',
+        movementId: recentDuplicate.id,
+        productId: body.productId,
+        newOnHandStock: currentStock,
+      });
+    }
 
     const movementId = crypto.randomUUID();
     await db.insert(schema.stockMovements).values({
@@ -1588,6 +1787,196 @@ app.get('/api/sales/customers', async (c) => {
   return c.json({ success: true, data: customers });
 });
 
+// PUT /api/sales/customers/:id - Update Customer Details
+app.put(
+  '/api/sales/customers/:id',
+  zValidator(
+    'json',
+    z.object({
+      customerCode: z.string().min(2).optional(),
+      name: z.string().min(1).optional(),
+      email: z.string().optional().nullable(),
+      phone: z.string().optional().nullable(),
+      billingAddress: z.string().optional().nullable(),
+      shippingAddress: z.string().optional().nullable(),
+      taxId: z.string().optional().nullable(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const id = c.req.param('id');
+    const body = c.req.valid('json');
+
+    const existing = await db.query.customers.findFirst({ where: eq(schema.customers.id, id) });
+    if (!existing) return c.json({ success: false, error: 'Customer not found' }, 404);
+
+    await db
+      .update(schema.customers)
+      .set({
+        customerCode: body.customerCode ? body.customerCode.trim().toUpperCase() : undefined,
+        name: body.name ? body.name.trim() : undefined,
+        email: body.email !== undefined ? (body.email ? body.email.trim() : null) : undefined,
+        phone: body.phone !== undefined ? (body.phone ? body.phone.trim() : null) : undefined,
+        billingAddress: body.billingAddress !== undefined ? (body.billingAddress ? body.billingAddress.trim() : null) : undefined,
+        shippingAddress: body.shippingAddress !== undefined ? (body.shippingAddress ? body.shippingAddress.trim() : null) : undefined,
+        taxId: body.taxId !== undefined ? (body.taxId ? body.taxId.trim() : null) : undefined,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(schema.customers.id, id));
+
+    const updated = await db.query.customers.findFirst({ where: eq(schema.customers.id, id) });
+    return c.json({ success: true, data: updated });
+  }
+);
+
+// POST /api/sales/customers/batch-import - Batch Import Customers from Excel/CSV
+app.post(
+  '/api/sales/customers/batch-import',
+  zValidator(
+    'json',
+    z.object({
+      customers: z
+        .array(
+          z.object({
+            name: z.string().min(1),
+            taxId: z.string().optional().nullable(),
+            customerCode: z.string().optional().nullable(),
+            email: z.string().optional().nullable(),
+            phone: z.string().optional().nullable(),
+            billingAddress: z.string().optional().nullable(),
+            shippingAddress: z.string().optional().nullable(),
+          })
+        )
+        .min(1),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const validBody = c.req.valid('json');
+
+    // 1. Fetch all existing customers for deduplication
+    const allExisting = await db.query.customers.findMany();
+    const existingByCode = new Map<string, typeof allExisting[0]>();
+    const existingByName = new Map<string, typeof allExisting[0]>();
+    const existingByTaxId = new Map<string, typeof allExisting[0]>();
+    const usedCodes = new Set<string>();
+
+    for (const cust of allExisting) {
+      if (cust.customerCode) {
+        const upper = cust.customerCode.trim().toUpperCase();
+        existingByCode.set(upper, cust);
+        usedCodes.add(upper);
+      }
+      if (cust.name) {
+        existingByName.set(cust.name.trim().toLowerCase(), cust);
+      }
+      if (cust.taxId) {
+        existingByTaxId.set(cust.taxId.trim().toUpperCase(), cust);
+      }
+    }
+
+    let createdCount = 0;
+    let updatedCount = 0;
+    const batchStatements: any[] = [];
+    let autoSeq = 1;
+
+    for (const item of validBody.customers) {
+      const name = item.name ? item.name.trim() : '';
+      if (!name) continue;
+
+      const cleanTaxId = item.taxId && item.taxId.trim() ? item.taxId.trim() : null;
+      const cleanEmail = item.email && item.email.trim() ? item.email.trim() : null;
+      const cleanPhone = item.phone && item.phone.trim() ? item.phone.trim() : null;
+      const cleanAddress = item.billingAddress && item.billingAddress.trim() ? item.billingAddress.trim() : null;
+      const rawCode = item.customerCode && item.customerCode.trim() ? item.customerCode.trim().toUpperCase() : '';
+
+      // Match against existing records by: Code -> Exact Name -> Tax ID
+      let matched = rawCode ? existingByCode.get(rawCode) : undefined;
+      if (!matched) {
+        matched = existingByName.get(name.toLowerCase());
+      }
+      if (!matched && cleanTaxId) {
+        matched = existingByTaxId.get(cleanTaxId.toUpperCase());
+      }
+
+      const now = new Date().toISOString();
+
+      if (matched) {
+        // Update existing customer record
+        batchStatements.push(
+          db
+            .update(schema.customers)
+            .set({
+              name,
+              taxId: cleanTaxId || matched.taxId,
+              email: cleanEmail || matched.email,
+              phone: cleanPhone || matched.phone,
+              billingAddress: cleanAddress || matched.billingAddress,
+              updatedAt: now,
+            })
+            .where(eq(schema.customers.id, matched.id))
+        );
+        updatedCount++;
+      } else {
+        // Determine unique customer code
+        let code = rawCode;
+        if (!code || usedCodes.has(code)) {
+          // Generate code from company initials
+          const words = name.replace(/[^a-zA-Z0-9\s]/g, '').trim().split(/\s+/).filter(Boolean);
+          let prefix = 'CUST';
+          if (words.length > 1) {
+            prefix = words.slice(0, 4).map((w) => w[0]).join('').toUpperCase();
+          } else if (words.length === 1 && words[0].length >= 3) {
+            prefix = words[0].slice(0, 4).toUpperCase();
+          }
+          if (prefix.length < 2) prefix = 'CUST';
+
+          let candidate = `${prefix}-${String(autoSeq).padStart(3, '0')}`;
+          while (usedCodes.has(candidate)) {
+            autoSeq++;
+            candidate = `${prefix}-${String(autoSeq).padStart(3, '0')}`;
+          }
+          code = candidate;
+          autoSeq++;
+        }
+
+        usedCodes.add(code);
+        const newId = crypto.randomUUID();
+
+        batchStatements.push(
+          db.insert(schema.customers).values({
+            id: newId,
+            customerCode: code,
+            name,
+            taxId: cleanTaxId,
+            email: cleanEmail,
+            phone: cleanPhone,
+            billingAddress: cleanAddress,
+            isActive: true,
+            createdAt: now,
+            updatedAt: now,
+          })
+        );
+        createdCount++;
+      }
+    }
+
+    // Execute in chunks of 50 to respect Cloudflare D1 batch constraints
+    for (let i = 0; i < batchStatements.length; i += 50) {
+      await db.batch(batchStatements.slice(i, i + 50) as any);
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        total: validBody.customers.length,
+        createdCount,
+        updatedCount,
+      },
+    });
+  }
+);
+
 // POST /api/sales/orders - Create Sales Order
 app.post(
   '/api/sales/orders',
@@ -2195,6 +2584,13 @@ async function executeDeliveryReceipt(
   const deliveryReceiptId = crypto.randomUUID();
   const drStatus = body.receivedBy ? 'COMPLETED' : 'IN_TRANSIT';
   const arrivedAt = body.receivedBy ? new Date().toISOString() : null;
+
+  try {
+    await db.run(sql`ALTER TABLE delivery_receipts ADD COLUMN status text NOT NULL DEFAULT 'IN_TRANSIT'`);
+  } catch {}
+  try {
+    await db.run(sql`ALTER TABLE delivery_receipts ADD COLUMN arrived_at text`);
+  } catch {}
 
   const drInsert = db.insert(schema.deliveryReceipts).values({
     id: deliveryReceiptId,

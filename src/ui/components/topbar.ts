@@ -13,6 +13,11 @@ export function renderTopbar(): string {
       </div>
 
       <div class="top-actions">
+        <button type="button" class="btn btn-secondary btn-sm" id="install-app-topbar-btn" onclick="handleInstallAppClick()" style="display: none; align-items: center; gap: 0.4rem; padding: 0.35rem 0.75rem; font-size: 0.8rem; font-weight: 600; border-radius: 8px;" title="Install Apexs ERP on your device">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          <span>Install App</span>
+        </button>
+
         <div class="topbar-clock-badge" id="live-clock-badge" title="Live System Date & Time">
           <span class="topbar-clock-dot"></span>
           <span class="topbar-clock-date" id="live-system-date">Loading date...</span>

@@ -11,9 +11,17 @@
     "db:migrate:local": "wrangler d1 migrations apply apexsinc-erp-db --local",
     "db:migrate:prod": "wrangler d1 migrations apply apexsinc-erp-db --remote",
     "db:studio": "drizzle-kit studio",
+    "cap:build:dist": "node generate-mobile-assets.js",
+    "cap:sync": "npx cap sync",
+    "cap:copy": "npx cap copy",
+    "cap:android": "npx cap open android",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/core": "^7.0.1",
+    "@capacitor/splash-screen": "^7.0.0",
+    "@capacitor/status-bar": "^7.0.0",
     "@casl/ability": "^7.0.1",
     "@hono/zod-validator": "^0.4.3",
     "drizzle-orm": "^0.45.2",
@@ -21,7 +29,11 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@capacitor/android": "^7.0.1",
+    "@capacitor/cli": "^7.0.1",
+    "@capacitor/ios": "^7.6.9",
     "@cloudflare/workers-types": "^5.20260903.1",
+    "@esbuild/linux-x64": "^0.28.1",
     "drizzle-kit": "^0.31.10",
     "pdf-parse": "^2.4.5",
     "typescript": "^5.7.3",

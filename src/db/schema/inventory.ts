@@ -28,7 +28,7 @@ export const products = sqliteTable('products', {
   name: text('name').notNull(),
   description: text('description'),
   category: text('category').notNull().default('Other'),
-  unitOfMeasure: text('unit_of_measure').notNull().default('unit'),
+  unitOfMeasure: text('unit_of_measure').notNull().default('pcs'),
   costPriceCents: integer('cost_price_cents').notNull().default(0),
   costPriceCurrency: text('cost_price_currency', { enum: ['USD', 'PHP'] }).notNull().default('PHP'),
   // Set separately from the Business Directory's Price List — not collected at product creation.
