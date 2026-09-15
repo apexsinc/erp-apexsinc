@@ -9,7 +9,7 @@ export function renderPasswordField(id: string, labelText: string, opts: { place
     <div class="form-group">
       <label class="form-label" for="${id}">${labelText}</label>
       <div class="password-input-wrapper">
-        <input type="password" id="${id}" class="form-input" placeholder="${opts.placeholder || 'Enter your password'}" required autocomplete="${opts.autocomplete || 'new-password'}" />
+        <input type="password" id="${id}" class="form-input" placeholder="${opts.placeholder || 'Enter your password'}" required autocomplete="${opts.autocomplete || 'new-password'}" oninput="typeof clearLoginError === 'function' && clearLoginError()" />
         <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('${id}', this)" tabindex="-1" aria-label="Show password">
           ${EYE_ICON}
         </button>
@@ -34,16 +34,25 @@ export function renderLoginView(turnstileSiteKey?: string): string {
       </div>
 
       <form id="login-form" onsubmit="handleLogin(event)">
+        <div id="login-error-banner" class="login-error-banner" style="display: none;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span id="login-error-text">Incorrect email or password. Please try again.</span>
+        </div>
+
         <div class="form-group">
           <label class="form-label" for="login-email">Email Address</label>
-          <input type="email" id="login-email" class="form-input" placeholder="name@company.com" required autocomplete="email" />
+          <input type="email" id="login-email" class="form-input" placeholder="name@company.com" required autocomplete="email" oninput="typeof clearLoginError === 'function' && clearLoginError()" />
         </div>
 
         ${renderPasswordField('login-password', 'Password', { placeholder: 'Enter your password', autocomplete: 'current-password' })}
 
         ${
           turnstileSiteKey
-            ? `<div class="form-group">
+            ? `<div class="login-turnstile-container">
                  <div class="cf-turnstile" data-sitekey="${turnstileSiteKey}" data-theme="light" data-error-callback="onTurnstileError"></div>
                </div>`
             : ''
@@ -64,8 +73,38 @@ function onTurnstileError(code) {
   console.warn('[Cloudflare Turnstile] Challenge notice (handled):', code);
 }
 
+function clearLoginError() {
+  const banner = document.getElementById('login-error-banner');
+  if (banner) banner.style.display = 'none';
+  const pwdInput = document.getElementById('login-password');
+  if (pwdInput) pwdInput.classList.remove('has-error');
+  const emailInput = document.getElementById('login-email');
+  if (emailInput) emailInput.classList.remove('has-error');
+}
+
+function showLoginError(msg) {
+  const banner = document.getElementById('login-error-banner');
+  const textEl = document.getElementById('login-error-text');
+  const pwdInput = document.getElementById('login-password');
+
+  if (banner && textEl) {
+    textEl.textContent = msg || 'Incorrect email or password. Please try again.';
+    banner.style.display = 'flex';
+    banner.style.animation = 'none';
+    void banner.offsetWidth;
+    banner.style.animation = 'loginShake 0.35s ease-in-out';
+  }
+
+  if (pwdInput) {
+    pwdInput.classList.add('has-error');
+    pwdInput.focus();
+    pwdInput.select();
+  }
+}
+
 async function handleLogin(e) {
   e.preventDefault();
+  clearLoginError();
   const email = document.getElementById('login-email').value;
   const password = document.getElementById('login-password').value;
   const submitBtn = document.getElementById('login-btn');
@@ -83,7 +122,12 @@ async function handleLogin(e) {
     const json = await res.json();
 
     if (!res.ok || !json.success) {
-      showToast(json.error || 'Authentication failed', 'danger');
+      let errMsg = json.error || 'Incorrect email or password. Please try again.';
+      if (res.status === 401 || errMsg.toLowerCase().includes('invalid')) {
+        errMsg = 'Incorrect email or password. Please try again.';
+      }
+      showLoginError(errMsg);
+      showToast(errMsg, 'danger');
       submitBtn.disabled = false;
       submitBtn.innerText = 'Sign In';
       if (typeof turnstile !== 'undefined') turnstile.reset();
@@ -97,7 +141,9 @@ async function handleLogin(e) {
     showToast('Signed in successfully', 'success');
     showApp();
   } catch (err) {
-    showToast('Network error: ' + err.message, 'danger');
+    const errMsg = 'Network error: ' + err.message;
+    showLoginError(errMsg);
+    showToast(errMsg, 'danger');
     submitBtn.disabled = false;
     submitBtn.innerText = 'Sign In';
   }
@@ -165,6 +211,7 @@ function showLogin() {
   const appView = document.getElementById('app-view');
   const submitBtn = document.getElementById('login-btn');
 
+  clearLoginError();
   if (loginView) loginView.style.display = 'flex';
   if (appView) appView.style.display = 'none';
   if (submitBtn) {

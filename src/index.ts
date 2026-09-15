@@ -216,9 +216,14 @@ app.post(
     'json',
     z.object({
       email: z.string().email(),
-      password: z.string().min(6),
+      password: z.string().min(1),
       cfTurnstileToken: z.string().optional(),
-    })
+    }),
+    (result, c) => {
+      if (!result.success) {
+        return c.json({ success: false, error: 'Invalid email or password' }, 401);
+      }
+    }
   ),
   async (c) => {
     const db = createDbClient(c.env.DB);

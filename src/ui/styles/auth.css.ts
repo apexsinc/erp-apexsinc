@@ -136,6 +136,63 @@ export const AUTH_CSS = `
   margin-top: 1.5rem;
 }
 
+/* Centered Cloudflare Turnstile */
+.login-turnstile-container {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  width: 100% !important;
+  margin: 1.25rem 0 0.5rem 0 !important;
+  text-align: center !important;
+}
+
+.login-turnstile-container .cf-turnstile {
+  margin: 0 auto !important;
+  display: inline-block !important;
+}
+
+.login-turnstile-container .cf-turnstile > iframe,
+.login-turnstile-container iframe {
+  margin: 0 auto !important;
+  display: block !important;
+}
+
+/* Inline Login Error Alert */
+.login-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.75rem 1rem;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-sm);
+  color: #991b1b;
+  font-size: 0.84rem;
+  font-weight: 500;
+  margin-bottom: 1.25rem;
+  line-height: 1.4;
+  animation: loginShake 0.35s ease-in-out;
+}
+
+.login-error-banner svg {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: #dc2626;
+}
+
+.login-card .form-input.has-error {
+  border-color: #ef4444 !important;
+  background-color: #fffbfb !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15) !important;
+}
+
+@keyframes loginShake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
 @media (max-width: 480px) {
   .login-container {
     padding: 0.75rem;
