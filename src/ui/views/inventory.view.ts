@@ -34,7 +34,7 @@ export function renderInventoryView(): string {
         border-collapse: separate;
         border-spacing: 0;
         width: 100%;
-        min-width: 1280px;
+        min-width: 1100px;
         margin: 0;
       }
       .inventory-smart-scroll th,
@@ -498,7 +498,6 @@ function renderInventoryTable(keepScroll = false) {
           </div>
         </td>
         <td style="white-space: nowrap;"><span class="badge badge-neutral" style="font-size: 0.74rem;">\${p.category || '—'}</span></td>
-        <td style="text-align: center; color: #64748b; font-size: 0.82rem; white-space: nowrap;">\${p.unitOfMeasure}</td>
         <td style="white-space: nowrap;">\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.72rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8; font-size: 0.8rem;">Not purchased yet</span>'}</td>
         <td style="white-space: nowrap;">\${p.sellingPriceCents > 0 ? '<strong style="font-family: monospace; color: #0f172a;">' + formatCurrency(p.sellingPriceCents, p.sellingPriceCurrency) + '</strong>' : '<span style="color: #94a3b8; font-size: 0.8rem;">Not set</span>'}</td>
         <td style="text-align: center; white-space: nowrap;">
@@ -524,7 +523,6 @@ function renderInventoryTable(keepScroll = false) {
     <th class="sortable-th" style="width: 110px; min-width: 100px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('sku')" title="Sort by SKU">SKU \${inventorySortIndicator('sku')}</th>
     <th class="sortable-th" style="width: 360px; min-width: 340px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('name')" title="Sort by Product Name">Product Name \${inventorySortIndicator('name')}</th>
     <th class="sortable-th" style="width: 160px; min-width: 140px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('category')" title="Sort by Category">Category \${inventorySortIndicator('category')}</th>
-    <th class="sortable-th" style="width: 75px; min-width: 65px; text-align: center; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('unitOfMeasure')" title="Sort by UOM">UOM \${inventorySortIndicator('unitOfMeasure')}</th>
     <th class="sortable-th" style="width: 140px; min-width: 130px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('costPriceCents')" title="Sort by Cost Price">Cost Price \${inventorySortIndicator('costPriceCents')}</th>
     <th class="sortable-th" style="width: 140px; min-width: 130px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('sellingPriceCents')" title="Sort by Selling Price">Selling Price \${inventorySortIndicator('sellingPriceCents')}</th>
     <th class="sortable-th" style="width: 135px; min-width: 125px; text-align: center; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setInventorySort('onHandStock')" title="Sort by Available Stock">Available \${inventorySortIndicator('onHandStock')}</th>
@@ -534,13 +532,13 @@ function renderInventoryTable(keepScroll = false) {
 
   const hasMore = visibleRowsCount < allRowsCount;
   const bottomLoader = hasMore
-    ? \`<tr><td colspan="9" style="text-align: center; color: #64748b; font-size: 0.8rem; padding: 0.85rem; background: #f8fafc; font-weight: 500;">
+    ? \`<tr><td colspan="8" style="text-align: center; color: #64748b; font-size: 0.8rem; padding: 0.85rem; background: #f8fafc; font-weight: 500;">
         Showing \${visibleRowsCount} of \${allRowsCount} items.
         <span style="color: #cbd5e1; margin: 0 0.5rem;">•</span>
         <a href="javascript:void(0)" onclick="inventoryLoadMoreRows()" style="color: var(--primary); font-weight: 600; text-decoration: none; margin-right: 0.75rem;">Load next \${Math.min(INVENTORY_CHUNK_SIZE, allRowsCount - visibleRowsCount)}</a>
         <a href="javascript:void(0)" onclick="inventoryLoadAllRows()" style="color: #64748b; font-weight: 500; text-decoration: underline;">Load all \${allRowsCount}</a>
       </td></tr>\`
-    : (allRowsCount > 25 ? \`<tr><td colspan="9" style="text-align: center; color: #94a3b8; font-size: 0.74rem; padding: 0.65rem;">All \${allRowsCount} items loaded</td></tr>\` : '');
+    : (allRowsCount > 25 ? \`<tr><td colspan="8" style="text-align: center; color: #94a3b8; font-size: 0.74rem; padding: 0.65rem;">All \${allRowsCount} items loaded</td></tr>\` : '');
 
   wrap.innerHTML = \`
     <div class="inventory-smart-scroll-container">
@@ -548,7 +546,7 @@ function renderInventoryTable(keepScroll = false) {
         <table class="data-table">
           \${tableHeaderHtml}
           <tbody>
-            \${rowsHtml || '<tr><td colspan="9" style="text-align: center; color: #64748b; padding: 2rem;">No products matching search criteria.</td></tr>'}
+            \${rowsHtml || '<tr><td colspan="8" style="text-align: center; color: #64748b; padding: 2rem;">No products matching search criteria.</td></tr>'}
             \${bottomLoader}
           </tbody>
         </table>
