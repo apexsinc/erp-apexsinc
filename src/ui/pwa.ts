@@ -36,7 +36,7 @@ export const MANIFEST_JSON = JSON.stringify(
 );
 
 export const SERVICE_WORKER_JS = `
-const CACHE_NAME = 'apexs-erp-v17';
+const CACHE_NAME = 'apexs-erp-v18';
 
 const STATIC_ASSETS = [
   '/',
