@@ -36,7 +36,7 @@ export const MANIFEST_JSON = JSON.stringify(
 );
 
 export const SERVICE_WORKER_JS = `
-const CACHE_NAME = 'apexs-erp-v2';
+const CACHE_NAME = 'apexs-erp-v17';
 
 const STATIC_ASSETS = [
   '/',
@@ -44,7 +44,6 @@ const STATIC_ASSETS = [
   '/assets/logo.png',
   '/assets/icon-192.png',
   '/assets/icon-512.png',
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
   'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
@@ -77,7 +76,16 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
+
+  // Only handle GET requests with HTTP/HTTPS schemes
+  if (req.method !== 'GET') return;
   const url = new URL(req.url);
+  if (!url.protocol.startsWith('http')) return;
+
+  // Let browser natively handle Google fonts (prevents WOFF2 decompression / OTS parsing corruption)
+  if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
+    return;
+  }
 
   // API calls are network-first with graceful offline JSON response
   if (url.pathname.startsWith('/api/')) {
@@ -92,51 +100,71 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation requests (HTML pages) use network-first with cached shell fallback
-  if (req.mode === 'navigate') {
+  // Navigation & HTML document requests: Network-first with cached shell fallback
+  const isHtmlRequest =
+    req.mode === 'navigate' ||
+    req.destination === 'document' ||
+    (req.headers.get('accept') && req.headers.get('accept').includes('text/html'));
+
+  if (isHtmlRequest) {
     event.respondWith(
       fetch(req)
         .then((response) => {
-          if (response && response.status === 200) {
+          if (response && response.status === 200 && response.type === 'basic') {
             const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => {});
           }
           return response;
         })
         .catch(async () => {
-          const cached = await caches.match(req);
-          if (cached) return cached;
-          const fallback = await caches.match('/');
-          if (fallback) return fallback;
+          try {
+            const cached = await caches.match(req);
+            if (cached) return cached;
+            const fallback = await caches.match('/');
+            if (fallback) return fallback;
+          } catch (_) {}
           return new Response(
-            '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Apexs ERP - Offline</title><style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f172a;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;text-align:center;padding:1.5rem}h1{font-size:1.5rem;margin-bottom:0.5rem;font-weight:700}.btn{background:#0284c7;color:#fff;border:none;padding:0.65rem 1.4rem;border-radius:8px;font-weight:600;margin-top:1.25rem;cursor:pointer;font-size:0.95rem}</style></head><body><div><div style="font-size:3.5rem;margin-bottom:1rem">📶</div><h1>You are currently offline</h1><p style="color:#94a3b8;font-size:0.92rem;max-width:320px;line-height:1.5;margin:0 auto">Please check your network connection to access the Apexs ERP platform.</p><button class="btn" onclick="window.location.reload()">Retry Connection</button></div></body></html>',
-            { headers: { 'Content-Type': 'text/html' } }
+            '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Apexs ERP - Offline</title><style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f172a;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;text-align:center;padding:1.5rem}h1{font-size:1.5rem;margin-bottom:0.5rem;font-weight:700}.btn{background:#0284c7;color:#fff;border:none;padding:0.65rem 1.4rem;border-radius:8px;font-weight:600;margin-top:1.25rem;cursor:pointer;font-size:0.95rem}</style></head><body><div><div style="font-size:3.5rem;margin-bottom:1rem">&#9888;</div><h1>You are currently offline</h1><p style="color:#94a3b8;font-size:0.92rem;max-width:320px;line-height:1.5;margin:0 auto">Please check your network connection to access the Apexs ERP platform.</p><button class="btn" onclick="window.location.reload()">Retry Connection</button></div></body></html>',
+            { headers: { 'Content-Type': 'text/html' }, status: 200 }
           );
         })
     );
     return;
   }
 
-  // Static assets (images, fonts, scripts) use cache-first / stale-while-revalidate
-  event.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) {
-        fetch(req).then((fresh) => {
-          if (fresh && fresh.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, fresh));
-          }
-        }).catch(() => {});
-        return cached;
-      }
-      return fetch(req).then((response) => {
-        if (response && response.status === 200) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+  // Only intercept same-origin static assets and known CDNs
+  const isCdn = url.hostname === 'cdnjs.cloudflare.com';
+  const isSameOrigin = url.origin === self.location.origin;
+
+  if (isSameOrigin || isCdn) {
+    event.respondWith(
+      caches.match(req).then((cached) => {
+        if (cached) {
+          fetch(req)
+            .then((fresh) => {
+              if (fresh && fresh.status === 200) {
+                caches.open(CACHE_NAME).then((cache) => cache.put(req, fresh)).catch(() => {});
+              }
+            })
+            .catch(() => {});
+          return cached;
         }
-        return response;
-      });
-    })
-  );
+        return fetch(req)
+          .then((response) => {
+            if (response && response.status === 200) {
+              const copy = response.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => {});
+            }
+            return response;
+          })
+          .catch(async () => {
+            const cached = await caches.match(req);
+            if (cached) return cached;
+            return new Response('', { status: 503, statusText: 'Service Unavailable' });
+          });
+      })
+    );
+  }
 });
 `;
 
@@ -144,6 +172,13 @@ export const PWA_CLIENT_JS = `
 // Register Service Worker
 if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
   window.addEventListener('load', () => {
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
+
     navigator.serviceWorker.register('/sw.js').then((reg) => {
       reg.addEventListener('updatefound', () => {
         const newWorker = reg.installing;

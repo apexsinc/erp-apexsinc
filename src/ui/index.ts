@@ -1,5 +1,5 @@
 import { APP_CSS } from './styles';
-import { renderSidebar, renderTopbar, renderModalAndToasts } from './components';
+import { renderSidebar, renderTopbar, renderMobileBottomNav, renderModalAndToasts } from './components';
 import {
   renderLoginView,
   renderDashboardView,
@@ -58,7 +58,7 @@ export function renderAppHtml(
   <link rel="apple-touch-icon" sizes="512x512" href="/assets/icon-512.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     ${APP_CSS}
   </style>
@@ -104,6 +104,9 @@ export function renderAppHtml(
         ${renderAdminView()}
         ${renderSettingsView()}
       </div>
+
+      <!-- FLOATING MOBILE BOTTOM APP NAVBAR -->
+      ${renderMobileBottomNav()}
     </main>
   </div>
 

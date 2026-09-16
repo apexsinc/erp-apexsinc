@@ -406,7 +406,16 @@ function renderInventoryContent(container) {
   renderInventoryTable();
 }
 
-function renderInventoryCategoryTabs() {
+function setInventoryCategoryTab(key) {
+  inventoryCategoryTab = key;
+  inventoryVisibleCount = 50;
+  const strip = document.querySelector('#inventory-category-tabs .category-pills-strip');
+  const prevScroll = strip ? strip.scrollLeft : 0;
+  renderInventoryCategoryTabs(prevScroll, key);
+  renderInventoryTable();
+}
+
+function renderInventoryCategoryTabs(savedScroll = null, activeKey = null) {
   const wrap = document.getElementById('inventory-category-tabs');
   if (!wrap) return;
 
@@ -424,8 +433,14 @@ function renderInventoryCategoryTabs() {
   const pillsHtml = pills.map((p) => {
     const active = inventoryCategoryTab === p.key;
     return \`
-      <button type="button" onclick="inventoryCategoryTab = '\${p.key.replace(/'/g, "\\\\'")}'; inventoryVisibleCount = 50; renderInventoryCategoryTabs(); renderInventoryTable();" style="padding: 0.4rem 0.9rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; border: 1px solid \${active ? 'var(--primary)' : 'var(--border-color)'}; background: \${active ? 'var(--primary)' : '#f8fafc'}; color: \${active ? '#ffffff' : 'var(--text-main)'}; cursor: pointer; transition: var(--transition);">
-        \${p.label} <span style="opacity: 0.75;">(\${p.count})</span>
+      <button
+        type="button"
+        class="category-pill-btn \${active ? 'active' : ''}"
+        data-category-key="\${p.key}"
+        onclick="setInventoryCategoryTab('\${p.key.replace(/'/g, "\\\\'")}')"
+      >
+        <span>\${p.label}</span>
+        <span class="pill-count">\${p.count}</span>
       </button>
     \`;
   }).join('');
@@ -435,6 +450,20 @@ function renderInventoryCategoryTabs() {
       \${pillsHtml}
     </div>
   \`;
+
+  const strip = wrap.querySelector('.category-pills-strip');
+  if (strip) {
+    if (activeKey) {
+      const activeBtn = strip.querySelector('button.active');
+      if (activeBtn && typeof activeBtn.scrollIntoView === 'function') {
+        activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      } else if (savedScroll !== null) {
+        strip.scrollLeft = savedScroll;
+      }
+    } else if (savedScroll !== null) {
+      strip.scrollLeft = savedScroll;
+    }
+  }
 }
 
 function renderInventoryTable(keepScroll = false) {
@@ -479,8 +508,8 @@ function renderInventoryTable(keepScroll = false) {
   rows.forEach((p) => {
     rowsHtml += \`
       <tr>
-        <td style="white-space: nowrap; width: 85px;"><strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: #334155;">\${p.sku}</strong></td>
-        <td style="min-width: 180px;">
+        <td data-label="SKU" class="cell-sku" style="white-space: nowrap; width: 85px;"><strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: #334155;">\${p.sku}</strong></td>
+        <td data-label="Product Name" style="min-width: 180px;">
           <div style="display: flex; align-items: center; gap: 0.75rem;">
             <div style="width: 32px; height: 32px; border-radius: 6px; background: #f8fafc; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #64748b;" title="Product">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -490,30 +519,30 @@ function renderInventoryTable(keepScroll = false) {
               </svg>
             </div>
             <div style="min-width: 0; flex: 1;">
-              <div style="font-weight: 600; color: #0f172a; font-size: 0.88rem; line-height: 1.35; word-break: normal; cursor: pointer;" onclick="openProductHistoryModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}')" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='#0f172a'" title="View stock ledger for \${(p.name || '').replace(/"/g, '&quot;')}">
+              <div style="font-weight: 600; color: #0f172a; font-size: 0.88rem; line-height: 1.35; word-break: normal; cursor: pointer;" onclick="openProductHistoryModal('\${p.id}', '\${(p.name || '').replace(/'/g, "\\\\'")}')" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='#0f172a'" title="View stock ledger for \${(p.name || '').replace(/"/g, '&quot;')}">
                 \${p.name}
               </div>
-              \${p.description && !p.description.startsWith('Section:') ? \`<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;" title="\${(p.description || '').replace(/"/g, '&quot;')}">\${p.description}</div>\` : ''}
+              \${p.description && !p.description.startsWith('Section:') ? '<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;" title="' + (p.description || '').replace(/"/g, '&quot;') + '">' + p.description + '</div>' : ''}
             </div>
           </div>
         </td>
-        <td style="white-space: nowrap;"><span class="badge badge-neutral" style="font-size: 0.74rem;">\${p.category || '—'}</span></td>
-        <td style="white-space: nowrap;">\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.72rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8; font-size: 0.8rem;">Not purchased yet</span>'}</td>
-        <td style="white-space: nowrap;">\${p.sellingPriceCents > 0 ? '<strong style="font-family: monospace; color: #0f172a;">' + formatCurrency(p.sellingPriceCents, p.sellingPriceCurrency) + '</strong>' : '<span style="color: #94a3b8; font-size: 0.8rem;">Not set</span>'}</td>
-        <td style="text-align: center; white-space: nowrap;">
+        <td data-label="Category" style="white-space: nowrap;"><span class="badge badge-neutral" style="font-size: 0.74rem;">\${p.category || '—'}</span></td>
+        <td data-label="Cost Price" style="white-space: nowrap;">\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.72rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8; font-size: 0.8rem;">Not purchased yet</span>'}</td>
+        <td data-label="Selling Price" style="white-space: nowrap;">\${p.sellingPriceCents > 0 ? '<strong style="font-family: monospace; color: #0f172a;">' + formatCurrency(p.sellingPriceCents, p.sellingPriceCurrency) + '</strong>' : '<span style="color: #94a3b8; font-size: 0.8rem;">Not set</span>'}</td>
+        <td data-label="Available Stock" style="text-align: center; white-space: nowrap;">
           <span class="badge \${p.onHandStock > 10 ? 'badge-success' : p.onHandStock > 0 ? 'badge-warning' : 'badge-danger'}" style="font-weight: 600;">
             <span class="badge-dot"></span>
             \${p.onHandStock} \${p.unitOfMeasure}
           </span>
         </td>
-        <td style="text-align: center; white-space: nowrap;">
+        <td data-label="Damaged Stock" style="text-align: center; white-space: nowrap;">
           \${(p.damagedStock || 0) > 0
-            ? \`<span class="badge badge-warning" style="font-weight: 600; cursor: pointer;" onclick="openDamagedStockModal('\${p.id}')" title="Click to manage damaged stock">\${p.damagedStock} \${p.unitOfMeasure}</span>\`
-            : \`<span style="color: #cbd5e1; font-size: 0.8rem;">—</span>\`
+            ? '<span class="badge badge-warning" style="font-weight: 600; cursor: pointer;" onclick="openDamagedStockModal(\\'' + p.id + '\\')" title="Click to manage damaged stock">' + p.damagedStock + ' ' + p.unitOfMeasure + '</span>'
+            : '<span style="color: #cbd5e1; font-size: 0.8rem;">—</span>'
           }
         </td>
-        <td style="text-align: center; white-space: nowrap;">
-          <button class="btn btn-secondary btn-sm" onclick="openProductHistoryModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}')">History</button>
+        <td data-label="Audit" class="td-actions" style="text-align: center; white-space: nowrap;">
+          <button class="btn btn-secondary btn-sm" onclick="openProductHistoryModal('\${p.id}', '\${(p.name || '').replace(/'/g, "\\\\'")}')">History</button>
         </td>
       </tr>
     \`;
@@ -570,6 +599,11 @@ async function openProductHistoryModal(productId, productName) {
     const res = await apiFetch('/api/inventory/products/' + productId);
     const json = await res.json();
     const movements = json.data?.stockMovements || [];
+    const damagedCount = json.data?.damagedStock || 0;
+    const onHandCount = json.data?.onHandStock || 0;
+    const uom = json.data?.unitOfMeasure || 'pcs';
+    const sku = json.data?.sku || 'N/A';
+    const category = json.data?.category || '';
 
     let rowsHtml = '';
     movements.forEach((m) => {
@@ -578,46 +612,118 @@ async function openProductHistoryModal(productId, productName) {
         refDisplay = '<span class="badge badge-danger" style="font-size: 0.72rem;">Scrap / Disposal</span>';
       } else if (m.referenceType === 'RETURN') {
         refDisplay = '<span class="badge badge-warning" style="font-size: 0.72rem;">Vendor RMA</span>';
+      } else if (m.referenceType === 'PURCHASE_ORDER' || m.referenceType === 'PO') {
+        refDisplay = '<span class="badge" style="font-family: monospace; font-size: 0.74rem; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;">PO: ' + escapeHtml(m.referenceId || 'Order') + '</span>';
+      } else if (m.referenceType === 'SALES_ORDER' || m.referenceType === 'SO') {
+        refDisplay = '<span class="badge" style="font-family: monospace; font-size: 0.74rem; background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0;">SO: ' + escapeHtml(m.referenceId || 'Order') + '</span>';
+      } else if (m.referenceType === 'INVOICE') {
+        refDisplay = '<span class="badge" style="font-family: monospace; font-size: 0.74rem; background: #faf5ff; color: #7e22ce; border: 1px solid #f3e8ff;">INV: ' + escapeHtml(m.referenceId || 'Invoice') + '</span>';
+      } else if (m.referenceType === 'ADJUSTMENT') {
+        refDisplay = '<span class="badge badge-neutral" style="font-size: 0.74rem; font-weight: 500;">Adjustment</span>';
       }
+
+      const d = new Date(m.createdAt);
+      const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      const timeStr = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      const typeBg = m.type === 'IN' ? '#dcfce7' : m.type === 'OUT' ? '#fee2e2' : '#fef3c7';
+      const typeColor = m.type === 'IN' ? '#15803d' : m.type === 'OUT' ? '#b91c1c' : '#b45309';
+      const typeBorder = m.type === 'IN' ? '#bbf7d0' : m.type === 'OUT' ? '#fecaca' : '#fde68a';
+      const typeIcon = m.type === 'IN' ? '↑ IN' : m.type === 'OUT' ? '↓ OUT' : '↕ ADJUST';
+
+      const qtyColor = m.type === 'IN' ? '#16a34a' : m.type === 'OUT' ? '#dc2626' : '#d97706';
+      const qtySign = m.type === 'IN' ? '+' : m.type === 'OUT' ? '−' : '';
+
       rowsHtml += \`
-        <tr>
-          <td>\${new Date(m.createdAt).toLocaleDateString()} \${new Date(m.createdAt).toLocaleTimeString()}</td>
-          <td><span class="badge \${m.type === 'IN' ? 'badge-success' : m.type === 'OUT' ? 'badge-danger' : 'badge-warning'}">\${m.type}</span></td>
-          <td><strong>\${m.quantity}</strong></td>
-          <td>\${refDisplay}</td>
-          <td>\${escapeHtml(m.notes || '-')}</td>
+        <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.15s ease;">
+          <td style="white-space: nowrap; width: 175px; padding: 0.65rem 0.85rem;">
+            <div style="font-weight: 600; font-size: 0.82rem; color: #0f172a; line-height: 1.3;">\${dateStr}</div>
+            <div style="font-size: 0.72rem; color: #64748b; font-family: 'JetBrains Mono', monospace; margin-top: 1px;">\${timeStr}</div>
+          </td>
+          <td style="text-align: center; width: 95px; white-space: nowrap; padding: 0.65rem 0.85rem;">
+            <span style="display: inline-flex; align-items: center; justify-content: center; padding: 0.2rem 0.55rem; border-radius: 9999px; font-size: 0.74rem; font-weight: 700; background: \${typeBg}; color: \${typeColor}; border: 1px solid \${typeBorder};">
+              \${typeIcon}
+            </span>
+          </td>
+          <td style="text-align: right; width: 110px; white-space: nowrap; padding: 0.65rem 0.85rem;">
+            <strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; color: \${qtyColor};">
+              \${qtySign}\${Math.abs(m.quantity)}
+            </strong>
+            <span style="font-size: 0.74rem; color: #64748b; margin-left: 2px;">\${escapeHtml(uom)}</span>
+          </td>
+          <td style="width: 150px; white-space: nowrap; padding: 0.65rem 0.85rem;">
+            \${refDisplay}
+          </td>
+          <td style="padding: 0.65rem 0.85rem; font-size: 0.8rem; color: #475569; word-break: break-word;">
+            \${escapeHtml(m.notes || '—')}
+          </td>
         </tr>
       \`;
     });
 
-    const damagedCount = json.data?.damagedStock || 0;
     const body = \`
-      <div style="margin-bottom: 1rem; font-size: 0.85rem; color: #64748b; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; background: #f8fafc; padding: 0.65rem 0.85rem; border-radius: 6px; border: 1px solid #e2e8f0;">
-        <span>Audit movements for <strong>\${escapeHtml(productName)}</strong></span>
-        <span>
-          Available: <strong style="color: #16a34a;">\${json.data.onHandStock}</strong>
-          <span style="color: #cbd5e1; margin: 0 0.4rem;">|</span>
-          Damaged: <strong style="color: \${damagedCount > 0 ? '#d97706' : '#64748b'};">\${damagedCount}</strong>
-        </span>
+      <div style="margin-bottom: 1.15rem; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.85rem 1.15rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.85rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem; min-width: 240px; flex: 1;">
+          <div style="width: 38px; height: 38px; border-radius: 8px; background: #ffffff; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; color: #0284c7; box-shadow: 0 1px 2px rgba(0,0,0,0.04); flex-shrink: 0;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+              <line x1="12" y1="22.08" x2="12" y2="12"></line>
+            </svg>
+          </div>
+          <div>
+            <div style="font-weight: 700; color: #0f172a; font-size: 0.96rem; line-height: 1.3;">\${escapeHtml(productName)}</div>
+            <div style="display: flex; align-items: center; gap: 0.45rem; margin-top: 2px;">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.76rem; font-weight: 600; color: #475569; background: #ffffff; padding: 0.12rem 0.4rem; border-radius: 4px; border: 1px solid #e2e8f0;">SKU: \${escapeHtml(sku)}</span>
+              \${category ? '<span class="badge badge-neutral" style="font-size: 0.72rem;">' + escapeHtml(category) + '</span>' : ''}
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.65rem;">
+          <div style="background: #ffffff; border: 1px solid #bbf7d0; border-radius: 8px; padding: 0.4rem 0.75rem; display: flex; flex-direction: column; align-items: flex-end; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+            <span style="font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #15803d;">Available Stock</span>
+            <span style="font-size: 1.05rem; font-weight: 800; color: #16a34a; font-family: 'JetBrains Mono', monospace; line-height: 1.2;">
+              \${onHandCount} <span style="font-size: 0.74rem; font-weight: 600; color: #15803d;">\${escapeHtml(uom)}</span>
+            </span>
+          </div>
+          <div style="background: #ffffff; border: 1px solid \${damagedCount > 0 ? '#fde68a' : '#e2e8f0'}; border-radius: 8px; padding: 0.4rem 0.75rem; display: flex; flex-direction: column; align-items: flex-end; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+            <span style="font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: \${damagedCount > 0 ? '#b45309' : '#64748b'};">Damaged Stock</span>
+            <span style="font-size: 1.05rem; font-weight: 800; color: \${damagedCount > 0 ? '#d97706' : '#64748b'}; font-family: 'JetBrains Mono', monospace; line-height: 1.2;">
+              \${damagedCount} <span style="font-size: 0.74rem; font-weight: 600; color: \${damagedCount > 0 ? '#b45309' : '#94a3b8'};">\${escapeHtml(uom)}</span>
+            </span>
+          </div>
+        </div>
       </div>
-      <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
-        <table class="data-table">
-          <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 5;">
-            <tr>
-              <th>Timestamp</th>
-              <th>Type</th>
-              <th>Quantity</th>
-              <th>Reference</th>
-              <th>Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            \${rowsHtml || '<tr><td colspan="5" style="text-align: center;">No movements recorded.</td></tr>'}
-          </tbody>
-        </table>
+      <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+        <div style="max-height: 380px; overflow-y: auto;">
+          <table class="data-table" style="width: 100%; border-collapse: collapse; margin: 0;">
+            <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 5; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+              <tr>
+                <th style="width: 175px; padding: 0.65rem 0.85rem; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; text-align: left; border-bottom: 1px solid #e2e8f0;">Timestamp</th>
+                <th style="width: 95px; padding: 0.65rem 0.85rem; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; text-align: center; border-bottom: 1px solid #e2e8f0;">Type</th>
+                <th style="width: 110px; padding: 0.65rem 0.85rem; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; text-align: right; border-bottom: 1px solid #e2e8f0;">Quantity</th>
+                <th style="width: 150px; padding: 0.65rem 0.85rem; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; text-align: left; border-bottom: 1px solid #e2e8f0;">Reference</th>
+                <th style="padding: 0.65rem 0.85rem; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; text-align: left; border-bottom: 1px solid #e2e8f0;">Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              \${rowsHtml || '<tr><td colspan="5" style="text-align: center; color: #94a3b8; padding: 2.5rem 1rem;">No stock movements recorded yet.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
       </div>
     \`;
-    openModal('Stock Movement Audit: ' + productName, body);
+
+    const footer = \`
+      <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+        <span style="font-size: 0.8rem; color: #64748b;">
+          \${movements.length === 1 ? '1 movement entry' : movements.length + ' movement entries'}
+        </span>
+        <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+      </div>
+    \`;
+
+    openModal('Stock Movement Audit: ' + productName, body, footer, 'lg');
   } catch (err) {
     showToast('Error fetching ledger: ' + err.message, 'danger');
   }

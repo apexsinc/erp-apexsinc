@@ -97,7 +97,7 @@ async function loadDashboard() {
           <div class="chart-toolbar">
             <div class="chart-title-group">
               <div class="chart-title-heading">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px; color: var(--primary); flex-shrink: 0;">
                   <path d="M3 3v18h18"></path>
                   <path d="m19 9-5 5-4-4-3 3"></path>
                 </svg>
@@ -120,15 +120,15 @@ async function loadDashboard() {
               <!-- Graph Style Switcher: Line, Bar, Pie -->
               <div class="chart-style-switcher">
                 <button id="btn-chart-style-line" class="chart-style-btn active" onclick="setDashboardChartStyle('line')" title="Line Graph">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; flex-shrink: 0;"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
                   Line Graph
                 </button>
                 <button id="btn-chart-style-bar" class="chart-style-btn" onclick="setDashboardChartStyle('bar')" title="Bar Graph">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line></svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; flex-shrink: 0;"><line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line></svg>
                   Bar Graph
                 </button>
                 <button id="btn-chart-style-pie" class="chart-style-btn" onclick="setDashboardChartStyle('pie')" title="Pie / Donut Graph">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; flex-shrink: 0;"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
                   Pie Graph
                 </button>
               </div>
@@ -136,7 +136,7 @@ async function loadDashboard() {
           </div>
 
           <div class="chart-stage-body">
-            <div class="chart-stage-container">
+            <div class="chart-stage-container" style="position: relative; height: 380px; width: 100%;">
               <canvas id="dashboard-main-chart"></canvas>
             </div>
           </div>
@@ -151,7 +151,7 @@ async function loadDashboard() {
           <div class="secondary-chart-card">
             <div class="secondary-chart-header">
               <div class="secondary-chart-title">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; color: var(--primary); flex-shrink: 0;"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
                 <span>Cash Flow: Inflow vs Outflow</span>
               </div>
               <span class="badge badge-info" style="font-size: 0.7rem; font-weight: 600;">Vouchers</span>
@@ -165,7 +165,7 @@ async function loadDashboard() {
           <div class="secondary-chart-card">
             <div class="secondary-chart-header">
               <div class="secondary-chart-title">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; color: var(--primary); flex-shrink: 0;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
                 <span>Inventory Share by Category</span>
               </div>
               <span class="badge badge-primary" style="font-size: 0.7rem; font-weight: 600;">Inventory</span>
@@ -179,7 +179,7 @@ async function loadDashboard() {
           <div class="secondary-chart-card">
             <div class="secondary-chart-header">
               <div class="secondary-chart-title">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; color: var(--primary); flex-shrink: 0;"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
                 <span>Orders Pipeline: Sales vs Purchasing</span>
               </div>
               <span class="badge badge-warning" style="font-size: 0.7rem; font-weight: 600;">Operations</span>
@@ -193,7 +193,7 @@ async function loadDashboard() {
           <div class="secondary-chart-card">
             <div class="secondary-chart-header">
               <div class="secondary-chart-title">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; color: var(--primary); flex-shrink: 0;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                 <span>Workforce by Department</span>
               </div>
               <span class="badge badge-success" style="font-size: 0.7rem; font-weight: 600;">Staff & HR</span>
@@ -272,9 +272,16 @@ function formatPeso(val) {
 
 function initDashboardVisualizations() {
   if (typeof Chart === 'undefined') {
-    console.warn('Chart.js library is not available in window');
+    if (!window._chartLoadAttempts) window._chartLoadAttempts = 0;
+    if (window._chartLoadAttempts < 20) {
+      window._chartLoadAttempts++;
+      setTimeout(initDashboardVisualizations, 150);
+      return;
+    }
+    console.warn('Chart.js library is not available in window after retries');
     return;
   }
+  window._chartLoadAttempts = 0;
 
   // Set global chart defaults
   Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";

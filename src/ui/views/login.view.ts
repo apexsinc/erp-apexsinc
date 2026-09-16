@@ -230,8 +230,13 @@ function showApp() {
   if (state.user) {
     const nameEl = document.getElementById('admin-display-name');
     const roleEl = document.getElementById('admin-display-role');
+    const mobAvatar = document.getElementById('mobile-avatar-initials');
     if (nameEl) nameEl.innerText = state.user.name;
     if (roleEl) roleEl.innerText = state.user.role;
+    if (mobAvatar && state.user.name) {
+      const parts = state.user.name.trim().split(/\\s+/);
+      mobAvatar.innerText = ((parts[0] ? parts[0][0] : 'A') + (parts[1] ? parts[1][0] : '')).toUpperCase();
+    }
   }
 
   const allowedTabs = applyRolePermissions();

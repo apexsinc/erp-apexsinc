@@ -494,7 +494,7 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
     }
 
     return \`
-      <tr>
+      <tr class="pv-table-row" onclick="if (typeof openVoucherOverviewModal === 'function') openVoucherOverviewModal('\${v.id}')" style="cursor: pointer;" title="Click to view voucher overview">
         <td class="td-voucher-num" data-label="Voucher #">
           <div style="display: flex; align-items: center; gap: 0.45rem;">
             <span style="font-size: 1.05rem; line-height: 1;">🧾</span>
@@ -519,7 +519,7 @@ function renderAccountingContent(container, tbJson, accounts, entries, vouchers,
           \${amountPrefix}\${formatCurrency(v.amountCents, v.currency || 'PHP')}
         </td>
         <td class="td-status" data-label="Status"><span class="badge \${statusBadgeClass}"><span class="badge-dot"></span>\${statusLabel}</span></td>
-        <td class="td-actions" data-label="Actions">
+        <td class="td-actions" data-label="Actions" onclick="event.stopPropagation()">
           <div class="action-btn-group">
             <button type="button" class="icon-btn icon-btn-view has-tooltip" data-tooltip="View Official Slip" onclick="openVoucherSlipModal('\${v.id}')" aria-label="View Official Slip">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8Z"></path><circle cx="12" cy="12" r="3"></circle></svg>

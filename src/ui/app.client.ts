@@ -437,6 +437,32 @@ function switchTab(tabName, updateHistory = true, keepQueryParams = true) {
     }
   });
 
+  document.querySelectorAll('.bottom-nav-item').forEach((item) => {
+    if (item.dataset.tab === tabName) {
+      item.classList.add('active');
+    } else {
+      item.classList.remove('active');
+    }
+  });
+
+  const mobileSub = document.getElementById('mobile-brand-current');
+  const shortTitles = {
+    dashboard: 'Dashboard',
+    directory: 'Directory',
+    inventory: 'Inventory',
+    purchasing: 'Purchasing',
+    inbound: 'Inbound',
+    sales: 'Sales',
+    outbound: 'Deliveries',
+    vouchers: 'Vouchers',
+    accounting: 'Accounting',
+    payroll: 'Payroll',
+    staff: 'Staff',
+    admin: 'Roles',
+    settings: 'Settings',
+  };
+  if (mobileSub) mobileSub.innerText = shortTitles[tabName] || tabName;
+
   const breadcrumb = document.getElementById('active-breadcrumb');
   const tabTitles = {
     dashboard: 'Executive Dashboard',
@@ -486,6 +512,65 @@ function switchTab(tabName, updateHistory = true, keepQueryParams = true) {
   if (tabName === 'staff') loadStaff();
   if (tabName === 'admin') loadAdmin();
   if (tabName === 'settings') loadSettings();
+  scheduleSyncTableDataLabels();
+}
+
+// Universal Mobile Data-Label Synchronizer for Card Layouts
+function syncTableDataLabels(root) {
+  try {
+    const scope = root || document;
+    const tables = scope.querySelectorAll ? scope.querySelectorAll('table.data-table, table.responsive-cascade-table, table.table') : [];
+    tables.forEach((table) => {
+      const ths = Array.from(table.querySelectorAll('thead th'));
+      if (!ths.length) return;
+      const labels = ths.map((th) => (th.innerText || th.textContent || '').trim().replace(/\s*[↑↓↕▲▼]$/, ''));
+      const rows = table.querySelectorAll('tbody tr:not(.empty-row)');
+      rows.forEach((tr) => {
+        const cells = Array.from(tr.children).filter((c) => c.tagName === 'TD');
+        if (cells.length === 1 && cells[0].getAttribute('colspan')) return;
+        cells.forEach((cell, idx) => {
+          if (!cell.getAttribute('data-label') && labels[idx]) {
+            cell.setAttribute('data-label', labels[idx]);
+          }
+        });
+      });
+    });
+  } catch (err) {
+    console.debug('syncTableDataLabels err:', err);
+  }
+}
+
+let __syncTableTimeout = null;
+function scheduleSyncTableDataLabels() {
+  if (__syncTableTimeout) return;
+  __syncTableTimeout = setTimeout(() => {
+    __syncTableTimeout = null;
+    syncTableDataLabels();
+  }, 120);
+}
+
+if (typeof MutationObserver !== 'undefined') {
+  const tableObserver = new MutationObserver((mutations) => {
+    let shouldSync = false;
+    for (const m of mutations) {
+      if (m.type === 'childList' && m.addedNodes && m.addedNodes.length > 0) {
+        shouldSync = true;
+        break;
+      }
+    }
+    if (shouldSync) scheduleSyncTableDataLabels();
+  });
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      const main = document.querySelector('.main-content') || document.body;
+      if (main) tableObserver.observe(main, { childList: true, subtree: true });
+      syncTableDataLabels();
+    });
+  } else {
+    const main = document.querySelector('.main-content') || document.body;
+    if (main) tableObserver.observe(main, { childList: true, subtree: true });
+    syncTableDataLabels();
+  }
 }
 
 // Live Header Clock (Date with Time Seconds)

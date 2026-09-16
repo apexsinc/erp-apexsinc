@@ -266,8 +266,9 @@ function renderDirectoryContent() {
   const tabsHtml = allowed.map((tab) => {
     const active = tab === directoryActiveTab;
     return \`
-      <button type="button" onclick="switchDirectoryTab('\${tab}')" style="padding: 0.5rem 1rem; border-radius: 999px; font-size: 0.82rem; font-weight: 600; border: 1px solid \${active ? 'var(--primary)' : 'var(--border-color)'}; background: \${active ? 'var(--primary)' : '#ffffff'}; color: \${active ? '#ffffff' : 'var(--text-main)'}; cursor: pointer; transition: var(--transition);">
-        \${directoryTabLabel(tab)} <span style="opacity: 0.75;">(\${directoryTabCount(tab)})</span>
+      <button type="button" class="category-pill-btn \${active ? 'active' : ''}" onclick="switchDirectoryTab('\${tab}')">
+        <span>\${directoryTabLabel(tab)}</span>
+        <span class="pill-count">\${directoryTabCount(tab)}</span>
       </button>
     \`;
   }).join('');
@@ -321,7 +322,16 @@ function renderDirectoryContent() {
 }
 
 // Category sub-navigation for Products and Price List tabs
-function renderProductCategoryTabs() {
+function setProductCategoryTab(key) {
+  productsCategoryTab = key;
+  directoryVisibleCount = 50;
+  const strip = document.querySelector('#directory-category-tabs .category-pills-strip');
+  const prevScroll = strip ? strip.scrollLeft : 0;
+  renderProductCategoryTabs(prevScroll, key);
+  renderDirectoryTable();
+}
+
+function renderProductCategoryTabs(savedScroll = null, activeKey = null) {
   const wrap = document.getElementById('directory-category-tabs');
   if (!wrap) return;
 
@@ -336,8 +346,14 @@ function renderProductCategoryTabs() {
   const pillsHtml = pills.map((p) => {
     const active = productsCategoryTab === p.key;
     return \`
-      <button type="button" onclick="productsCategoryTab = '\${p.key.replace(/'/g, "\\\\'")}'; directoryVisibleCount = 50; renderProductCategoryTabs(); renderDirectoryTable();" style="padding: 0.4rem 0.9rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; border: 1px solid \${active ? 'var(--primary)' : 'var(--border-color)'}; background: \${active ? 'var(--primary)' : '#f8fafc'}; color: \${active ? '#ffffff' : 'var(--text-main)'}; cursor: pointer; transition: var(--transition);">
-        \${p.label} <span style="opacity: 0.75;">(\${p.count})</span>
+      <button
+        type="button"
+        class="category-pill-btn \${active ? 'active' : ''}"
+        data-category-key="\${p.key}"
+        onclick="setProductCategoryTab('\${p.key.replace(/'/g, "\\\\'")}')"
+      >
+        <span>\${p.label}</span>
+        <span class="pill-count">\${p.count}</span>
       </button>
     \`;
   }).join('');
@@ -345,9 +361,23 @@ function renderProductCategoryTabs() {
   wrap.innerHTML = \`
     <div class="category-pills-strip" style="border-top: 1px dashed var(--border-color); padding-top: 1rem;">
       \${pillsHtml}
-      \${can('directory', 'create') || can('inventory', 'create') ? '<button type="button" onclick="openAddCategoryModal()" style="padding: 0.4rem 0.9rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; border: 1px dashed var(--border-color); background: transparent; color: #64748b; cursor: pointer; white-space: nowrap; flex-shrink: 0;">+ Add Category</button>' : ''}
+      \${can('directory', 'create') || can('inventory', 'create') ? '<button type="button" class="category-pill-btn" onclick="openAddCategoryModal()" style="border-style: dashed; background: transparent; color: #64748b;">+ Add Category</button>' : ''}
     </div>
   \`;
+
+  const strip = wrap.querySelector('.category-pills-strip');
+  if (strip) {
+    if (activeKey) {
+      const activeBtn = strip.querySelector('button.active');
+      if (activeBtn && typeof activeBtn.scrollIntoView === 'function') {
+        activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      } else if (savedScroll !== null) {
+        strip.scrollLeft = savedScroll;
+      }
+    } else if (savedScroll !== null) {
+      strip.scrollLeft = savedScroll;
+    }
+  }
 }
 
 function getDirectoryFilteredTotal() {
@@ -443,14 +473,14 @@ function renderDirectoryTable(keepScroll = false) {
     </tr></thead>\`;
     tbodyHtml = rows.map((c) => \`
       <tr>
-        <td><strong>\${escapeHtml(c.customerCode)}</strong></td>
-        <td><div style="font-weight: 600; color: var(--text-main);">\${escapeHtml(c.name)}</div></td>
-        <td>
+        <td data-label="Customer Code"><strong>\${escapeHtml(c.customerCode)}</strong></td>
+        <td data-label="Customer Name"><div style="font-weight: 600; color: var(--text-main);">\${escapeHtml(c.name)}</div></td>
+        <td data-label="TIN Number">
           \${c.taxId ? '<span class="badge badge-secondary" style="font-family: monospace; font-size: 0.8rem; letter-spacing: 0.04em; background: #f1f5f9; color: #334155; padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px solid #e2e8f0;">' + escapeHtml(c.taxId) + '</span>' : '<span style="color: #94a3b8;">—</span>'}
         </td>
-        <td>\${c.email ? '<span style="color: var(--text-muted); font-size: 0.85rem;">' + escapeHtml(c.email) + '</span>' : '<span style="color: #94a3b8;">—</span>'}</td>
-        <td><span style="font-size: 0.82rem; color: var(--text-muted);">\${new Date(c.createdAt).toLocaleDateString()}</span></td>
-        <td style="text-align: center;">
+        <td data-label="Email">\${c.email ? '<span style="color: var(--text-muted); font-size: 0.85rem;">' + escapeHtml(c.email) + '</span>' : '<span style="color: #94a3b8;">—</span>'}</td>
+        <td data-label="Added"><span style="font-size: 0.82rem; color: var(--text-muted);">\${new Date(c.createdAt).toLocaleDateString()}</span></td>
+        <td data-label="Actions" class="td-actions" style="text-align: center;">
           <button class="btn btn-secondary btn-sm" onclick="openEditCustomerModal('\${c.id}')" style="padding: 0.25rem 0.5rem; font-size: 0.76rem;" title="Edit Customer & TIN">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
           </button>
@@ -477,12 +507,12 @@ function renderDirectoryTable(keepScroll = false) {
       <th class="sortable-th" style="width: 160px; min-width: 140px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('category')" title="Sort by Category">Category \${directorySortIndicator('category')}</th>
       <th class="sortable-th" style="width: 75px; min-width: 65px; text-align: center; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('unitOfMeasure')" title="Sort by UOM">UOM \${directorySortIndicator('unitOfMeasure')}</th>
       <th class="sortable-th" style="width: 140px; min-width: 130px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('costPriceCents')" title="Sort by Cost Price">Cost Price \${directorySortIndicator('costPriceCents')}</th>
-      <th style="width: 80px; text-align: right; white-space: nowrap;">Actions</th>
+      <th style="width: 110px; text-align: right; white-space: nowrap;">Actions</th>
     </tr></thead>\`;
     tbodyHtml = rows.map((p) => \`
       <tr>
-        <td style="white-space: nowrap;"><strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: #334155;">\${p.sku}</strong></td>
-        <td style="width: 360px; min-width: 340px; max-width: 520px;">
+        <td data-label="SKU" style="white-space: nowrap;"><strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: #334155;">\${p.sku}</strong></td>
+        <td data-label="Product Name" style="width: 360px; min-width: 340px; max-width: 520px;">
           <div style="display: flex; align-items: center; gap: 0.75rem;">
             <div style="width: 32px; height: 32px; border-radius: 6px; background: #f8fafc; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #64748b;" title="Product">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -495,15 +525,18 @@ function renderDirectoryTable(keepScroll = false) {
               <div style="font-weight: 600; color: #0f172a; font-size: 0.88rem; line-height: 1.35; word-break: normal;">
                 \${p.name}
               </div>
-              \${p.description && !p.description.startsWith('Section:') ? \`<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px;" title="\${(p.description || '').replace(/"/g, '&quot;')}">\${p.description}</div>\` : ''}
+              \${p.description && !p.description.startsWith('Section:') ? '<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px;" title="' + (p.description || '').replace(/"/g, '&quot;') + '">' + p.description + '</div>' : ''}
             </div>
           </div>
         </td>
-        <td style="white-space: nowrap;"><span class="badge badge-neutral" style="font-size: 0.74rem;">\${p.category || '—'}</span></td>
-        <td style="text-align: center; color: #64748b; font-size: 0.82rem; white-space: nowrap;">\${p.unitOfMeasure}</td>
-        <td style="white-space: nowrap;">\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.72rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8; font-size: 0.8rem;">Not purchased yet</span>'}</td>
-        <td style="text-align: right; white-space: nowrap;">
+        <td data-label="Category" style="white-space: nowrap;"><span class="badge badge-neutral" style="font-size: 0.74rem;">\${p.category || '—'}</span></td>
+        <td data-label="UOM" style="text-align: center; color: #64748b; font-size: 0.82rem; white-space: nowrap;">\${p.unitOfMeasure}</td>
+        <td data-label="Cost Price" style="white-space: nowrap;">\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.72rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8; font-size: 0.8rem;">Not purchased yet</span>'}</td>
+        <td data-label="Actions" class="td-actions" style="text-align: right; white-space: nowrap;">
           <div style="display: inline-flex; align-items: center; justify-content: flex-end; gap: 0.35rem;">
+            <button class="btn btn-secondary btn-sm" onclick="openChangeCategoryModal('\${p.id}')" style="padding: 0.25rem 0.45rem; line-height: 1; display: inline-flex; align-items: center; justify-content: center;" title="Change Category">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+            </button>
             <button class="btn btn-secondary btn-sm" onclick="openEditProductModal('\${p.id}')" style="padding: 0.25rem 0.45rem; line-height: 1; display: inline-flex; align-items: center; justify-content: center;" title="Edit Product">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
             </button>
@@ -540,8 +573,8 @@ function renderDirectoryTable(keepScroll = false) {
     </tr></thead>\`;
     tbodyHtml = rows.map((p) => \`
       <tr>
-        <td style="white-space: nowrap;"><strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: #334155;">\${p.sku}</strong></td>
-        <td style="width: 360px; min-width: 340px; max-width: 520px;">
+        <td data-label="SKU" style="white-space: nowrap;"><strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: #334155;">\${p.sku}</strong></td>
+        <td data-label="Product Name" style="width: 360px; min-width: 340px; max-width: 520px;">
           <div style="display: flex; align-items: center; gap: 0.75rem;">
             <div style="width: 32px; height: 32px; border-radius: 6px; background: #f8fafc; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #64748b;" title="Product">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -554,14 +587,14 @@ function renderDirectoryTable(keepScroll = false) {
               <div style="font-weight: 600; color: #0f172a; font-size: 0.88rem; line-height: 1.35; word-break: normal;">
                 \${p.name}
               </div>
-              \${p.description && !p.description.startsWith('Section:') ? \`<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px;" title="\${(p.description || '').replace(/"/g, '&quot;')}">\${p.description}</div>\` : ''}
+              \${p.description && !p.description.startsWith('Section:') ? '<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px;" title="' + (p.description || '').replace(/"/g, '&quot;') + '">' + p.description + '</div>' : ''}
             </div>
           </div>
         </td>
-        <td style="white-space: nowrap;"><span class="badge badge-neutral" style="font-size: 0.74rem;">\${p.category || '—'}</span></td>
-        <td style="white-space: nowrap;">\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.72rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8; font-size: 0.8rem;">Not purchased yet</span>'}</td>
-        <td style="white-space: nowrap; font-weight: 700; font-family: monospace; color: #0f172a;">\${p.sellingPriceCents > 0 ? formatCurrency(p.sellingPriceCents, p.sellingPriceCurrency) : '<span style="color: #94a3b8; font-weight: normal; font-size: 0.8rem;">Not set</span>'}</td>
-        <td style="text-align: right; white-space: nowrap;"><button class="btn btn-secondary btn-sm" onclick="openSetPriceModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}', \${p.sellingPriceCents}, '\${p.sellingPriceCurrency}')">Set Price</button></td>
+        <td data-label="Category" style="white-space: nowrap;"><span class="badge badge-neutral" style="font-size: 0.74rem;">\${p.category || '—'}</span></td>
+        <td data-label="Cost Price" style="white-space: nowrap;">\${p.costPriceCents > 0 ? formatCurrency(p.costPriceCents, p.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.72rem;">' + p.costPriceCurrency + '</span>' : '<span style="color: #94a3b8; font-size: 0.8rem;">Not purchased yet</span>'}</td>
+        <td data-label="Selling Price" style="white-space: nowrap; font-weight: 700; font-family: monospace; color: #0f172a;">\${p.sellingPriceCents > 0 ? formatCurrency(p.sellingPriceCents, p.sellingPriceCurrency) : '<span style="color: #94a3b8; font-weight: normal; font-size: 0.8rem;">Not set</span>'}</td>
+        <td data-label="Actions" class="td-actions" style="text-align: right; white-space: nowrap;"><button class="btn btn-secondary btn-sm" onclick="openSetPriceModal('\${p.id}', '\${p.name.replace(/'/g, "\\\\'")}', \${p.sellingPriceCents}, '\${p.sellingPriceCurrency}')">Set Price</button></td>
       </tr>
     \`).join('') || '<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 2rem;">No products found.</td></tr>';
 
@@ -581,10 +614,10 @@ function renderDirectoryTable(keepScroll = false) {
     </tr></thead>\`;
     tbodyHtml = rows.map((v) => \`
       <tr>
-        <td><strong>\${v.vendorCode}</strong></td>
-        <td>\${v.name}</td>
-        <td>\${v.email || '<span style="color: #94a3b8;">—</span>'}</td>
-        <td>\${v.paymentTermsDays} days</td>
+        <td data-label="Vendor Code"><strong>\${v.vendorCode}</strong></td>
+        <td data-label="Vendor Name">\${v.name}</td>
+        <td data-label="Email">\${v.email || '<span style="color: #94a3b8;">—</span>'}</td>
+        <td data-label="Payment Terms">\${v.paymentTermsDays} days</td>
       </tr>
     \`).join('') || '<tr><td colspan="4" style="text-align: center; color: #64748b; padding: 2rem;">No suppliers found.</td></tr>';
   }
@@ -834,13 +867,16 @@ async function submitAddCategory(e) {
 }
 
 function openChangeCategoryModal(productId, name, currentCategory) {
+  const p = (state.products || []).find((item) => item.id === productId);
+  const prodName = name || (p ? p.name : 'Product');
+  const cat = currentCategory !== undefined ? currentCategory : (p ? p.category : null);
   const body = \`
     <form id="form-change-category" onsubmit="submitChangeCategory(event, '\${productId}')">
-      <p style="margin-bottom: 1rem; font-size: 0.85rem; color: #64748b;">Category for <strong>\${name}</strong>.</p>
+      <p style="margin-bottom: 1rem; font-size: 0.85rem; color: #64748b;">Category for <strong>\${escapeHtml(prodName)}</strong>.</p>
       <div class="form-group">
         <label class="form-label">Category *</label>
         <div style="display: flex; gap: 0.5rem;">
-          <select id="cc-category" class="form-select" style="flex: 1;">\${productCategoryOptionsHtml(currentCategory)}</select>
+          <select id="cc-category" class="form-select" style="flex: 1;">\${productCategoryOptionsHtml(cat)}</select>
           <button type="button" class="btn btn-secondary btn-sm" onclick="quickAddCategory('cc-category')">+ New</button>
         </div>
       </div>
@@ -848,20 +884,28 @@ function openChangeCategoryModal(productId, name, currentCategory) {
   \`;
   const footer = \`
     <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-primary" onclick="document.getElementById('form-change-category').requestSubmit()">Save Category</button>
+    <button id="btn-submit-change-category" class="btn btn-primary" onclick="document.getElementById('form-change-category').requestSubmit()">Save Category</button>
   \`;
   openModal('Change Product Category', body, footer);
 }
 
 async function submitChangeCategory(e, productId) {
   e.preventDefault();
-  const payload = { category: document.getElementById('cc-category').value };
+  if (isSubmittingProduct) return;
+
+  const category = document.getElementById('cc-category')?.value;
+  const submitBtn = document.getElementById('btn-submit-change-category');
+  isSubmittingProduct = true;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving...';
+  }
 
   try {
     const res = await apiFetch('/api/inventory/products/' + productId + '/category', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ category }),
     });
     const json = await res.json();
     if (!res.ok || !json.success) throw new Error(json.error || 'Failed to save category');
@@ -872,6 +916,12 @@ async function submitChangeCategory(e, productId) {
     loadDirectory();
   } catch (err) {
     showToast(err.message, 'danger');
+  } finally {
+    isSubmittingProduct = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Save Category';
+    }
   }
 }
 

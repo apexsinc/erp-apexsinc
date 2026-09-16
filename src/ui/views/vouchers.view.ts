@@ -175,20 +175,20 @@ function renderSingleVoucherRow(v, isAdmin) {
   let tagBadgeHtml = '<span style="color: #cbd5e1; font-size: 0.8rem;">—</span>';
   if (tag) {
     const escapedTag = escapeHtml(tag);
-    tagBadgeHtml = '<span class="badge badge-neutral" style="font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.4rem; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 4px; max-width: 95px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: middle;" title="#' + escapedTag + '">#' + escapedTag + '</span>';
+    tagBadgeHtml = '<span class="badge badge-neutral" style="font-size: 0.69rem; font-weight: 500; padding: 0.12rem 0.35rem; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 4px; max-width: 90px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: middle;" title="#' + escapedTag + '">#' + escapedTag + '</span>';
   }
 
   let remarksHtml = '<span style="color: #cbd5e1; font-size: 0.8rem;">—</span>';
   if (v.notes && v.notes.trim()) {
     const escapedNotes = escapeHtml(v.notes.trim());
-    remarksHtml = '<div style="max-width: 105px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.78rem; color: #475569;" title="' + escapedNotes + '">' + escapedNotes + '</div>';
+    remarksHtml = '<div style="max-width: 125px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.78rem; color: #64748b;" title="' + escapedNotes + '">' + escapedNotes + '</div>';
   }
 
-  let statusBadge = '<span class="badge badge-success" style="font-size: 0.7rem; padding: 0.15rem 0.45rem;"><span class="badge-dot"></span>POSTED</span>';
+  let statusBadge = '<span class="badge badge-success" style="font-size: 0.69rem; padding: 0.14rem 0.38rem; font-weight: 600;"><span class="badge-dot"></span>POSTED</span>';
   if (v.status === 'VOID' || v.status === 'DECLINED') {
-    statusBadge = '<span class="badge badge-danger" style="font-size: 0.7rem; padding: 0.15rem 0.45rem;"><span class="badge-dot"></span>VOID</span>';
+    statusBadge = '<span class="badge badge-danger" style="font-size: 0.69rem; padding: 0.14rem 0.38rem; font-weight: 600;"><span class="badge-dot"></span>VOID</span>';
   } else if (v.status === 'DRAFT') {
-    statusBadge = '<span class="badge badge-neutral" style="font-size: 0.7rem; padding: 0.15rem 0.45rem;"><span class="badge-dot"></span>DRAFT</span>';
+    statusBadge = '<span class="badge badge-warning" style="font-size: 0.69rem; padding: 0.14rem 0.38rem; font-weight: 600;"><span class="badge-dot"></span>DRAFT</span>';
   }
 
   const methodMap = {
@@ -204,50 +204,277 @@ function renderSingleVoucherRow(v, isAdmin) {
   const rawMethod = v.paymentMethod || 'BANK_TRANSFER';
   const shortMethod = methodMap[rawMethod] || rawMethod.replace('_', ' ');
 
+  const fileTextSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>';
+  const downloadSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>';
+  const editSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>';
+  const histSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>';
+  const restoreSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>';
+  const voidSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>';
+  const trashSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>';
+
   let actionButtons = '';
-  actionButtons += '<button class="btn btn-secondary btn-sm pv-btn-compact" onclick="openOfficialVoucherSlipModal(&quot;' + v.id + '&quot;)" title="View Official Slip">📄 Slip</button>';
-  actionButtons += '<button class="btn btn-secondary btn-sm pv-btn-compact" onclick="downloadSingleVoucherPdf(&quot;' + v.id + '&quot;)" title="Download PDF Slip">📥 PDF</button>';
-  actionButtons += '<button class="btn btn-secondary btn-sm pv-btn-compact" onclick="openEditVoucherModal(&quot;' + v.id + '&quot;)" title="Edit Details">✏️ Edit</button>';
+  actionButtons += '<button type="button" class="icon-btn icon-btn-view has-tooltip" data-tooltip="View Official Slip" title="View Official Slip" onclick="openOfficialVoucherSlipModal(&quot;' + v.id + '&quot;)" aria-label="View Official Slip">' + fileTextSvg + '</button>';
+  actionButtons += '<button type="button" class="icon-btn icon-btn-pdf has-tooltip" data-tooltip="Download PDF Slip" title="Download PDF Slip" onclick="downloadSingleVoucherPdf(&quot;' + v.id + '&quot;)" aria-label="Download PDF Slip">' + downloadSvg + '</button>';
+  actionButtons += '<button type="button" class="icon-btn icon-btn-edit has-tooltip" data-tooltip="Edit Voucher" title="Edit Voucher" onclick="openEditVoucherModal(&quot;' + v.id + '&quot;)" aria-label="Edit Voucher">' + editSvg + '</button>';
+
   const histCount = v.historyCount || 0;
   const countBadgeClass = histCount > 0 ? 'has-records' : 'zero-records';
-  actionButtons += '<button class="btn btn-secondary btn-sm pv-btn-compact btn-history-badge-container" onclick="openVoucherHistoryModal(&quot;' + v.id + '&quot;)" title="View Revision History & Audit Trail (' + histCount + ' record' + (histCount === 1 ? '' : 's') + ')">📜 Hist<span class="history-count-badge ' + countBadgeClass + '">' + histCount + '</span></button>';
+  const histTooltip = 'Audit History (' + histCount + ')';
+  actionButtons += '<button type="button" class="icon-btn icon-btn-view btn-history-badge-container has-tooltip" data-tooltip="' + histTooltip + '" title="View Revision History & Audit Trail (' + histCount + ' record' + (histCount === 1 ? '' : 's') + ')" onclick="openVoucherHistoryModal(&quot;' + v.id + '&quot;)" aria-label="Audit History">' + histSvg + '<span class="history-count-badge ' + countBadgeClass + '">' + histCount + '</span></button>';
 
   if (v.status === 'VOID' || v.status === 'DECLINED') {
-    actionButtons += '<button class="btn btn-success btn-sm pv-btn-compact" onclick="restoreVoucher(&quot;' + v.id + '&quot;)" title="Restore Voucher">♻️</button>';
+    actionButtons += '<button type="button" class="icon-btn icon-btn-restore has-tooltip" data-tooltip="Restore Voucher" title="Restore Voucher" onclick="restoreVoucher(&quot;' + v.id + '&quot;)" aria-label="Restore Voucher">' + restoreSvg + '</button>';
   } else {
-    actionButtons += '<button class="btn btn-warning btn-sm pv-btn-compact" onclick="declineVoucher(&quot;' + v.id + '&quot;)" title="Void / Decline">🚫</button>';
+    actionButtons += '<button type="button" class="icon-btn icon-btn-decline has-tooltip" data-tooltip="Void Voucher" title="Void / Decline Voucher" onclick="declineVoucher(&quot;' + v.id + '&quot;)" aria-label="Void Voucher">' + voidSvg + '</button>';
   }
 
   if (isAdmin) {
-    actionButtons += '<button class="btn btn-danger btn-sm pv-btn-compact" onclick="deleteVoucherPermanent(&quot;' + v.id + '&quot;)" title="Delete Permanently">🗑️</button>';
+    actionButtons += '<button type="button" class="icon-btn icon-btn-delete has-tooltip" data-tooltip="Delete Voucher" title="Delete Permanently" onclick="deleteVoucherPermanent(&quot;' + v.id + '&quot;)" aria-label="Delete Permanently">' + trashSvg + '</button>';
   }
 
   const recipientName = escapeHtml(v.recipient || v.recipientName || '—');
 
   return (
-    '<tr>' +
-    '<td class="td-voucher-num" data-label="Voucher #">' +
-    '<div style="display: flex; align-items: center; gap: 0.35rem;">' +
-    '<span style="font-size: 0.95rem; line-height: 1;">🧾</span>' +
-    '<strong style="font-family: monospace; color: var(--primary); font-size: 0.88rem;">' + v.voucherNumber + '</strong>' +
-    '</div>' +
-    '<div class="pv-card-amount" style="font-weight: 800; color: #dc2626; font-family: monospace; font-size: 0.95rem; white-space: nowrap;">- ' + formatCurrency(v.amountCents || 0, v.currency || 'PHP') + '</div>' +
+    '<tr class="pv-table-row" onclick="openVoucherOverviewModal(&quot;' + v.id + '&quot;)" title="Click to view voucher overview">' +
+    '<td class="td-voucher-num" data-label="Voucher #" style="white-space: nowrap;">' +
+    '<a href="javascript:void(0)" class="pv-num-link" onclick="openVoucherOverviewModal(&quot;' + v.id + '&quot;)" style="font-family: var(--font-mono, monospace); color: var(--primary, #2563eb); font-size: 0.82rem; font-weight: 600; letter-spacing: -0.01em; text-decoration: none;" title="Click to view voucher overview">' + v.voucherNumber + '</a>' +
+    '<div class="pv-card-amount" style="font-weight: 700; color: #dc2626; font-family: var(--font-mono, monospace); font-size: 0.84rem; white-space: nowrap;">- ' + formatCurrency(v.amountCents || 0, v.currency || 'PHP') + '</div>' +
     '</td>' +
-    '<td class="td-date" data-label="Date" style="white-space: nowrap; font-size: 0.8rem; color: #334155; font-weight: 500;">' + formattedDate + '</td>' +
+    '<td class="td-date" data-label="Date" style="white-space: nowrap; font-size: 0.80rem; color: #475569; font-weight: 500;">' + formattedDate + '</td>' +
     '<td class="td-recipient" data-label="Payee / Recipient">' +
-    '<div style="max-width: 135px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 0.3rem;" title="' + recipientName + '">' +
-    '<span style="color: #64748b; font-size: 0.8rem; flex-shrink: 0;">🏢</span>' +
-    '<strong style="color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem;">' + recipientName + '</strong>' +
+    '<div style="max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="' + recipientName + '">' +
+    '<strong style="color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem; font-weight: 600;">' + recipientName + '</strong>' +
     '</div>' +
     '</td>' +
-    '<td class="td-tag" data-label="Tag / Category">' + tagBadgeHtml + '</td>' +
+    '<td class="td-tag" data-label="Tag / Category" style="white-space: nowrap;">' + tagBadgeHtml + '</td>' +
     '<td class="td-remarks" data-label="Remarks">' + remarksHtml + '</td>' +
-    '<td class="td-method" data-label="Payment Method"><span class="badge badge-neutral" style="font-size: 0.72rem; padding: 0.15rem 0.4rem; white-space: nowrap;" title="' + escapeHtml(rawMethod) + '">' + escapeHtml(shortMethod) + '</span></td>' +
-    '<td class="td-amount" data-label="Total Amount" style="text-align: right; font-weight: 700; color: #dc2626; font-family: monospace; font-size: 0.84rem; white-space: nowrap;">- ' + formatCurrency(v.amountCents || 0, v.currency || 'PHP') + '</td>' +
-    '<td class="td-status" data-label="Status">' + statusBadge + '</td>' +
-    '<td class="td-actions" data-label="Actions"><div class="pv-actions-group">' + actionButtons + '</div></td>' +
+    '<td class="td-method" data-label="Method" style="text-align: center; white-space: nowrap;"><span class="badge" style="font-size: 0.69rem; font-weight: 600; padding: 0.12rem 0.35rem; white-space: nowrap; background: #f8fafc; color: #334155; border: 1px solid #cbd5e1; border-radius: 4px;" title="' + escapeHtml(rawMethod) + '">' + escapeHtml(shortMethod) + '</span></td>' +
+    '<td class="td-amount" data-label="Total Amount" style="text-align: right; font-weight: 700; color: #dc2626; font-family: var(--font-mono, monospace); font-size: 0.84rem; white-space: nowrap; letter-spacing: -0.01em;">- ' + formatCurrency(v.amountCents || 0, v.currency || 'PHP') + '</td>' +
+    '<td class="td-status" data-label="Status" style="text-align: center; white-space: nowrap;">' + statusBadge + '</td>' +
+    '<td class="td-actions" data-label="Actions" style="text-align: right; white-space: nowrap;" onclick="event.stopPropagation()"><div class="pv-actions-group">' + actionButtons + '</div></td>' +
     '</tr>'
   );
+}
+
+function openVoucherOverviewModal(voucherId) {
+  const v = (typeof cachedPVList !== 'undefined' ? cachedPVList.find((x) => x.id === voucherId) : null) ||
+            (typeof cachedVouchers !== 'undefined' ? cachedVouchers.find((x) => x.id === voucherId) : null);
+  if (!v) {
+    if (typeof showToast === 'function') showToast('Payment voucher not found', 'warning');
+    return;
+  }
+
+  const rawDate = v.voucherDate || v.createdAt;
+  let formattedDate = '—';
+  if (rawDate) {
+    const d = new Date(rawDate);
+    if (!isNaN(d.getTime())) {
+      formattedDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+  }
+
+  let tag = v.tag || v.referenceType || '';
+  if (tag === 'MANUAL') tag = '';
+  else if (tag === 'PURCHASE_ORDER') tag = 'PO Procurement';
+  else if (tag === 'PAYROLL_RUN') tag = 'Payroll';
+
+  let tagBadgeHtml = '<span style="color: #94a3b8; font-size: 0.8rem;">—</span>';
+  if (tag) {
+    const escapedTag = escapeHtml(tag);
+    tagBadgeHtml = '<span class="badge badge-neutral" style="font-size: 0.72rem; font-weight: 500; padding: 0.15rem 0.45rem; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 4px;">#' + escapedTag + '</span>';
+  }
+
+  let statusBadge = '<span class="badge badge-success" style="font-size: 0.72rem; padding: 0.16rem 0.45rem; font-weight: 600;"><span class="badge-dot"></span>POSTED</span>';
+  if (v.status === 'VOID' || v.status === 'DECLINED') {
+    statusBadge = '<span class="badge badge-danger" style="font-size: 0.72rem; padding: 0.16rem 0.45rem; font-weight: 600;"><span class="badge-dot"></span>VOID</span>';
+  } else if (v.status === 'DRAFT') {
+    statusBadge = '<span class="badge badge-warning" style="font-size: 0.72rem; padding: 0.16rem 0.45rem; font-weight: 600;"><span class="badge-dot"></span>DRAFT</span>';
+  }
+
+  const methodMap = {
+    'BANK_TRANSFER': 'Bank Transfer',
+    'CHECK': 'Check Payment',
+    'CASH': 'Cash Payment',
+    'CREDIT_CARD': 'Credit Card',
+    'DEBIT_CARD': 'Debit Card',
+    'ONLINE': 'Online Clearing',
+    'MANUAL': 'Manual',
+    'JOURNAL': 'Journal Entry'
+  };
+  const rawMethod = v.paymentMethod || 'BANK_TRANSFER';
+  const fullMethod = methodMap[rawMethod] || rawMethod.replace(/_/g, ' ');
+
+  let items = v.items || [];
+  if (typeof items === 'string') {
+    try { items = JSON.parse(items); } catch (_) { items = []; }
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    items = [{
+      invoiceNo: v.referenceId || '',
+      description: v.notes || (v.recipient ? (v.recipient + ' disbursement') : 'Disbursement'),
+      amountCents: v.amountCents || 0
+    }];
+  }
+
+  const defaultSign = (window.cachedVoucherSettings && window.cachedVoucherSettings['vouchers.signatories']) || {};
+  let sig = v.signatories;
+  if (typeof sig === 'string') {
+    try { sig = JSON.parse(sig); } catch (_) { sig = {}; }
+  }
+  sig = sig || {};
+  const preparedBy = sig.preparedBy || defaultSign.preparedBy || 'Administrator';
+  const certifiedBy = sig.certifiedBy || defaultSign.certifiedBy || 'Joy/Admin';
+  const approvedBy = sig.approvedBy || defaultSign.approvedBy || 'Kenneth Brown/CEO';
+  const receivedBy = sig.receivedBy || defaultSign.receivedBy || (v.recipient || 'Signature over printed name');
+
+  const recipientName = escapeHtml(v.recipient || v.recipientName || '—');
+  const currency = v.currency || 'PHP';
+
+  let itemRowsHtml = '';
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const amtCents = it.amountCents !== undefined ? it.amountCents : Math.round((it.amount || 0) * 100);
+    itemRowsHtml +=
+      '<tr style="border-bottom: 1px solid #f1f5f9;">' +
+      '<td style="padding: 0.55rem 0.75rem; text-align: center; color: #94a3b8; font-size: 0.78rem; font-family: var(--font-mono, monospace);">' + (i + 1) + '</td>' +
+      '<td style="padding: 0.55rem 0.75rem; color: #334155; font-size: 0.80rem; font-family: var(--font-mono, monospace); font-weight: 500;">' + (it.invoiceNo ? escapeHtml(it.invoiceNo) : '<span style="color: #cbd5e1;">—</span>') + '</td>' +
+      '<td style="padding: 0.55rem 0.75rem; color: #0f172a; font-size: 0.82rem; font-weight: 500;">' + escapeHtml(it.description || '—') + '</td>' +
+      '<td style="padding: 0.55rem 0.75rem; text-align: right; color: #0f172a; font-size: 0.82rem; font-family: var(--font-mono, monospace); font-weight: 600;">' + formatCurrency(amtCents, currency) + '</td>' +
+      '</tr>';
+  }
+
+  const histCount = v.historyCount || 0;
+  const countBadgeClass = histCount > 0 ? 'has-records' : 'zero-records';
+
+  const fileTextSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>';
+  const downloadSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>';
+  const editSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>';
+  const histSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>';
+
+  const isReceipt = v.voucherType === 'RECEIPT';
+  const amountPrefix = isReceipt ? '+ ' : (v.voucherType === 'PAYMENT' ? '- ' : '');
+  const amountColor = isReceipt ? '#059669' : (v.voucherType === 'PAYMENT' ? '#dc2626' : '#2563eb');
+  const amountCardLabel = isReceipt ? 'Total Received' : (v.voucherType === 'PAYMENT' ? 'Total Disbursed' : 'Voucher Amount');
+  const partyCardLabel = isReceipt ? 'Payer / Customer' : 'Payee / Recipient';
+  const partyTypeSubtext = escapeHtml(v.recipientType || (isReceipt ? 'Customer' : 'Vendor / Payee'));
+
+  const modalBody =
+    '<div class="pv-overview-container" style="display: flex; flex-direction: column; gap: 1rem;">' +
+
+    '<!-- HEADER STRIP -->' +
+    '<div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.85rem 1.15rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">' +
+    '<div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">' +
+    '<div style="font-family: var(--font-mono, monospace); font-size: 1.15rem; font-weight: 700; color: #1e293b; letter-spacing: -0.02em;">' + escapeHtml(v.voucherNumber) + '</div>' +
+    statusBadge +
+    tagBadgeHtml +
+    '</div>' +
+    '<div style="display: flex; align-items: center; gap: 1rem; font-size: 0.82rem; color: #64748b;">' +
+    '<div><span style="color: #94a3b8; font-weight: 500;">Voucher Date:</span> <strong style="color: #334155; margin-left: 0.25rem;">' + formattedDate + '</strong></div>' +
+    '<div><span style="color: #94a3b8; font-weight: 500;">Method:</span> <strong style="color: #334155; margin-left: 0.25rem;">' + escapeHtml(fullMethod) + '</strong></div>' +
+    '</div>' +
+    '</div>' +
+
+    '<!-- 4 KPI SUMMARY CARDS -->' +
+    '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.75rem;">' +
+    '<div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.85rem 1rem;">' +
+    '<div style="font-size: 0.70rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; margin-bottom: 0.25rem;">' + amountCardLabel + '</div>' +
+    '<div style="font-size: 1.2rem; font-weight: 800; font-family: var(--font-mono, monospace); color: ' + amountColor + '; letter-spacing: -0.02em;">' + amountPrefix + formatCurrency(v.amountCents || 0, currency) + '</div>' +
+    '<div style="font-size: 0.72rem; color: #94a3b8; margin-top: 0.2rem;">' + currency + ' ' + (isReceipt ? 'Collection' : 'Disbursement') + '</div>' +
+    '</div>' +
+    '<div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.85rem 1rem;">' +
+    '<div style="font-size: 0.70rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; margin-bottom: 0.25rem;">' + partyCardLabel + '</div>' +
+    '<div style="font-size: 0.95rem; font-weight: 700; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="' + recipientName + '">' + recipientName + '</div>' +
+    '<div style="font-size: 0.72rem; color: #94a3b8; margin-top: 0.2rem;">' + partyTypeSubtext + '</div>' +
+    '</div>' +
+    '<div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.85rem 1rem;">' +
+    '<div style="font-size: 0.70rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; margin-bottom: 0.25rem;">Disbursement Method</div>' +
+    '<div style="font-size: 0.95rem; font-weight: 700; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + escapeHtml(fullMethod) + '</div>' +
+    '<div style="font-size: 0.72rem; color: #94a3b8; margin-top: 0.2rem;">' + (v.referenceId ? ('Ref: ' + escapeHtml(v.referenceId)) : 'Standard Settlement') + '</div>' +
+    '</div>' +
+    '<div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.85rem 1rem;">' +
+    '<div style="font-size: 0.70rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; margin-bottom: 0.25rem;">Particulars Breakdown</div>' +
+    '<div style="font-size: 1.2rem; font-weight: 800; font-family: var(--font-mono, monospace); color: #2563eb; letter-spacing: -0.02em;">' + items.length + ' ' + (items.length === 1 ? 'Line' : 'Lines') + '</div>' +
+    '<div style="font-size: 0.72rem; color: #94a3b8; margin-top: 0.2rem;">' + histCount + ' Audit Record' + (histCount === 1 ? '' : 's') + '</div>' +
+    '</div>' +
+    '</div>' +
+
+    '<!-- REMARKS PANEL -->' +
+    '<div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.8rem 1rem;">' +
+    '<div style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; margin-bottom: 0.35rem;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 13px; height: 13px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>' +
+    '<span>Disbursement Purpose & Remarks</span>' +
+    '</div>' +
+    '<div style="font-size: 0.84rem; color: #1e293b; line-height: 1.5; word-break: break-word;">' +
+    (v.notes && v.notes.trim() ? escapeHtml(v.notes.trim()) : '<span style="color: #94a3b8; font-style: italic;">No specific remarks recorded for this voucher.</span>') +
+    '</div>' +
+    '</div>' +
+
+    '<!-- ITEMIZED TABLE -->' +
+    '<div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">' +
+    '<div style="background: #f8fafc; padding: 0.6rem 1rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">' +
+    '<div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #475569;">Itemized Particulars</div>' +
+    '<div style="font-size: 0.74rem; color: #64748b; font-weight: 500;">Currency: <strong style="color: #0f172a;">' + currency + '</strong></div>' +
+    '</div>' +
+    '<div class="table-responsive" style="margin: 0;">' +
+    '<table style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">' +
+    '<thead>' +
+    '<tr style="background: #ffffff; border-bottom: 1px solid #e2e8f0;">' +
+    '<th style="padding: 0.5rem 0.75rem; text-align: center; width: 40px; font-weight: 700; color: #64748b; font-size: 0.70rem; text-transform: uppercase;">#</th>' +
+    '<th style="padding: 0.5rem 0.75rem; text-align: left; width: 140px; font-weight: 700; color: #64748b; font-size: 0.70rem; text-transform: uppercase;">Invoice / Ref #</th>' +
+    '<th style="padding: 0.5rem 0.75rem; text-align: left; font-weight: 700; color: #64748b; font-size: 0.70rem; text-transform: uppercase;">Description / Particulars</th>' +
+    '<th style="padding: 0.5rem 0.75rem; text-align: right; width: 140px; font-weight: 700; color: #64748b; font-size: 0.70rem; text-transform: uppercase;">Amount</th>' +
+    '</tr>' +
+    '</thead>' +
+    '<tbody>' +
+    itemRowsHtml +
+    '</tbody>' +
+    '<tfoot>' +
+    '<tr style="background: #f8fafc; border-top: 2px solid #e2e8f0; font-weight: 700;">' +
+    '<td colspan="3" style="padding: 0.65rem 0.75rem; text-align: right; color: #475569; font-size: 0.80rem; text-transform: uppercase; letter-spacing: 0.03em;">Total:</td>' +
+    '<td style="padding: 0.65rem 0.75rem; text-align: right; font-family: var(--font-mono, monospace); font-size: 0.92rem; color: ' + amountColor + ';">' + amountPrefix + formatCurrency(v.amountCents || 0, currency) + '</td>' +
+    '</tr>' +
+    '</tfoot>' +
+    '</table>' +
+    '</div>' +
+    '</div>' +
+
+    '<!-- SIGNATORIES STATUS -->' +
+    '<div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">' +
+    '<div style="background: #f8fafc; padding: 0.55rem 1rem; border-bottom: 1px solid #e2e8f0; font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #475569;">Official Signatories</div>' +
+    '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); background: #ffffff;">' +
+    '<div style="padding: 0.75rem; border-right: 1px solid #f1f5f9; text-align: center;">' +
+    '<div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 0.2rem;">Prepared By</div>' +
+    '<div style="font-size: 0.82rem; font-weight: 600; color: #0f172a; word-break: break-word;">' + escapeHtml(preparedBy) + '</div>' +
+    '</div>' +
+    '<div style="padding: 0.75rem; border-right: 1px solid #f1f5f9; text-align: center;">' +
+    '<div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 0.2rem;">Certified Correct</div>' +
+    '<div style="font-size: 0.82rem; font-weight: 600; color: #0f172a; word-break: break-word;">' + escapeHtml(certifiedBy) + '</div>' +
+    '</div>' +
+    '<div style="padding: 0.75rem; border-right: 1px solid #f1f5f9; text-align: center;">' +
+    '<div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 0.2rem;">Approved By</div>' +
+    '<div style="font-size: 0.82rem; font-weight: 600; color: #0f172a; word-break: break-word;">' + escapeHtml(approvedBy) + '</div>' +
+    '</div>' +
+    '<div style="padding: 0.75rem; text-align: center;">' +
+    '<div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 0.2rem;">Received By</div>' +
+    '<div style="font-size: 0.82rem; font-weight: 600; color: #0f172a; word-break: break-word;">' + escapeHtml(receivedBy) + '</div>' +
+    '</div>' +
+    '</div>' +
+    '</div>' +
+
+    '</div>';
+
+  const modalFooter =
+    '<div style="display: flex; align-items: center; justify-content: space-between; width: 100%; flex-wrap: wrap; gap: 0.5rem;">' +
+    '<div style="display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;">' +
+    '<button type="button" class="btn btn-secondary" onclick="openOfficialVoucherSlipModal(&quot;' + v.id + '&quot;)" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.80rem; font-weight: 600; padding: 0.42rem 0.75rem;">' + fileTextSvg + '<span>Official Slip</span></button>' +
+    '<button type="button" class="btn btn-secondary" onclick="downloadSingleVoucherPdf(&quot;' + v.id + '&quot;)" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.80rem; font-weight: 600; padding: 0.42rem 0.75rem;">' + downloadSvg + '<span>Download PDF</span></button>' +
+    '<button type="button" class="btn btn-secondary" onclick="openEditVoucherModal(&quot;' + v.id + '&quot;)" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.80rem; font-weight: 600; padding: 0.42rem 0.75rem;">' + editSvg + '<span>Edit Voucher</span></button>' +
+    '<button type="button" class="btn btn-secondary btn-history-badge-container" onclick="openVoucherHistoryModal(&quot;' + v.id + '&quot;)" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.80rem; font-weight: 600; padding: 0.42rem 0.75rem;">' + histSvg + '<span>Audit History</span><span class="history-count-badge ' + countBadgeClass + '">' + histCount + '</span></button>' +
+    '</div>' +
+    '<button type="button" class="btn btn-primary" onclick="closeModal()" style="font-size: 0.80rem; font-weight: 600; padding: 0.42rem 1.15rem;">Close</button>' +
+    '</div>';
+
+  openModal('Payment Voucher Overview — ' + v.voucherNumber, modalBody, modalFooter, 'lg');
 }
 
 function handlePvSearch(query) {
@@ -357,7 +584,8 @@ function handlePvToggleSummaryCards(forceVal) {
 
   const toggleBtn = document.getElementById('pv-toggle-summary-btn');
   if (toggleBtn) {
-    toggleBtn.innerHTML = pvShowSummaryCards ? '👁️ Hide Cards' : '📊 Show Cards';
+    const iconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>';
+    toggleBtn.innerHTML = iconSvg + '<span>' + (pvShowSummaryCards ? 'Hide Cards' : 'Show Cards') + '</span>';
     toggleBtn.title = pvShowSummaryCards ? 'Hide summary metric cards' : 'Show summary metric cards';
   }
 
@@ -543,7 +771,9 @@ async function exportFilteredVouchersZip() {
 
   const modalBody =
     '<div style="padding: 1.25rem 0.5rem; text-align: center;">' +
-    '<div style="font-size: 2.4rem; margin-bottom: 0.65rem;">📦</div>' +
+    '<div style="width: 48px; height: 48px; border-radius: 50%; background: #eff6ff; color: #2563eb; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 0.75rem; border: 1px solid #dbeafe;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 24px; height: 24px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>' +
+    '</div>' +
     '<h3 style="margin-bottom: 0.35rem; font-size: 1.15rem; color: #1e293b; font-weight: 700;">Packaging Voucher PDF Archive</h3>' +
     '<p style="color: #64748b; font-size: 0.88rem; margin-bottom: 1.25rem; line-height: 1.45;">' +
     'Generating <strong>' + total + '</strong> individual official PDF slip(s) and packaging them into a ZIP file with CSV summaries...' +
@@ -644,46 +874,52 @@ function openVoucherExportModal() {
     '<!-- OPTION 1: ZIP ARCHIVE OF PDF SLIPS -->' +
     '<div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">' +
     '<div style="flex: 1; min-width: 240px;">' +
-    '<div style="font-weight: 700; font-size: 0.95rem; color: #0f172a; margin-bottom: 0.25rem; display: flex; align-items: center; gap: 0.4rem;">' +
-    '<span>📦 Export All to ZIP Archive (Individual PDFs + CSV)</span>' +
+    '<div style="font-weight: 700; font-size: 0.95rem; color: #0f172a; margin-bottom: 0.25rem; display: flex; align-items: center; gap: 0.5rem;">' +
+    '<span style="width: 28px; height: 28px; border-radius: 6px; background: #eff6ff; color: #2563eb; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg></span>' +
+    '<span>Export All to ZIP Archive (Individual PDFs + CSV)</span>' +
     '</div>' +
-    '<div style="font-size: 0.8rem; color: #64748b; line-height: 1.4;">' +
+    '<div style="font-size: 0.8rem; color: #64748b; line-height: 1.4; padding-left: 2.25rem;">' +
     'Generates a separate official PDF slip for every voucher (half-bond paper format with signatories) bundled into a single compressed .zip file with CSV ledgers.' +
     '</div>' +
     '</div>' +
-    '<button type="button" class="btn btn-primary btn-sm" onclick="closeModal(); exportFilteredVouchersZip();" style="display: flex; align-items: center; gap: 0.35rem; padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: 600; white-space: nowrap;">' +
-    '📦 Download ZIP' +
+    '<button type="button" class="btn btn-primary btn-sm" onclick="closeModal(); exportFilteredVouchersZip();" style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: 600; white-space: nowrap;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>' +
+    '<span>Download ZIP</span>' +
     '</button>' +
     '</div>' +
 
     '<!-- OPTION 2: ITEMIZED LEDGER CSV -->' +
     '<div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">' +
     '<div style="flex: 1; min-width: 240px;">' +
-    '<div style="font-weight: 700; font-size: 0.95rem; color: #0f172a; margin-bottom: 0.25rem; display: flex; align-items: center; gap: 0.4rem;">' +
-    '<span>📋 Itemized Ledger CSV (All Breakdown Lines)</span>' +
+    '<div style="font-weight: 700; font-size: 0.95rem; color: #0f172a; margin-bottom: 0.25rem; display: flex; align-items: center; gap: 0.5rem;">' +
+    '<span style="width: 28px; height: 28px; border-radius: 6px; background: #f0fdf4; color: #16a34a; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg></span>' +
+    '<span>Itemized Ledger CSV (All Breakdown Lines)</span>' +
     '<span class="badge badge-success" style="font-size: 0.7rem; margin-left: 0.35rem;">Recommended</span>' +
     '</div>' +
-    '<div style="font-size: 0.8rem; color: #64748b; line-height: 1.4;">' +
+    '<div style="font-size: 0.8rem; color: #64748b; line-height: 1.4; padding-left: 2.25rem;">' +
     'Each row represents a specific breakdown line item with Invoice #, Account Description, and Amount. Best for Excel auditing, Pivot Tables, and financial reconciliations.' +
     '</div>' +
     '</div>' +
-    '<button type="button" class="btn btn-secondary btn-sm" onclick="closeModal(); exportItemizedVouchersCsv();" style="display: flex; align-items: center; gap: 0.35rem; padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: 600; white-space: nowrap;">' +
-    '📋 Download CSV' +
+    '<button type="button" class="btn btn-secondary btn-sm" onclick="closeModal(); exportItemizedVouchersCsv();" style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: 600; white-space: nowrap;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>' +
+    '<span>Download CSV</span>' +
     '</button>' +
     '</div>' +
 
     '<!-- OPTION 3: SUMMARY CSV -->' +
     '<div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">' +
     '<div style="flex: 1; min-width: 240px;">' +
-    '<div style="font-weight: 700; font-size: 0.95rem; color: #0f172a; margin-bottom: 0.25rem; display: flex; align-items: center; gap: 0.4rem;">' +
-    '<span>📊 Summary CSV (1 Row per Voucher)</span>' +
+    '<div style="font-weight: 700; font-size: 0.95rem; color: #0f172a; margin-bottom: 0.25rem; display: flex; align-items: center; gap: 0.5rem;">' +
+    '<span style="width: 28px; height: 28px; border-radius: 6px; background: #f8fafc; color: #475569; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid #e2e8f0;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg></span>' +
+    '<span>Summary CSV (1 Row per Voucher)</span>' +
     '</div>' +
-    '<div style="font-size: 0.8rem; color: #64748b; line-height: 1.4;">' +
+    '<div style="font-size: 0.8rem; color: #64748b; line-height: 1.4; padding-left: 2.25rem;">' +
     'High-level summary where each voucher is exactly one row with total amounts, line counts, payment method, remarks, and signatories.' +
     '</div>' +
     '</div>' +
-    '<button type="button" class="btn btn-secondary btn-sm" onclick="closeModal(); exportSummaryVouchersCsv();" style="display: flex; align-items: center; gap: 0.35rem; padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: 600; white-space: nowrap;">' +
-    '📊 Download CSV' +
+    '<button type="button" class="btn btn-secondary btn-sm" onclick="closeModal(); exportSummaryVouchersCsv();" style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: 600; white-space: nowrap;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>' +
+    '<span>Download CSV</span>' +
     '</button>' +
     '</div>' +
 
@@ -705,7 +941,9 @@ function openVoucherImportModal() {
     'Import vouchers via <strong>Itemized Ledger CSV</strong> or <strong>Summary CSV</strong>. The ERP system will validate rows, create payment vouchers, and post the double-entry transactions to the General Ledger.' +
     '</div>' +
     '<div style="background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 8px; padding: 1.5rem; text-align: center; margin-bottom: 1.25rem;">' +
-    '<div style="font-size: 2rem; margin-bottom: 0.5rem;">📄</div>' +
+    '<div style="width: 48px; height: 48px; border-radius: 50%; background: #eff6ff; color: #2563eb; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 0.65rem; border: 1px solid #dbeafe;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 22px; height: 22px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>' +
+    '</div><br/>' +
     '<label style="display: inline-block; cursor: pointer; background: var(--primary, #0284c7); color: #ffffff; padding: 0.5rem 1.15rem; border-radius: 6px; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.5rem;">' +
     'Choose CSV File' +
     '<input type="file" id="voucher-csv-input" accept=".csv" style="display: none;" onchange="handleVoucherCsvSelected(this)" />' +
@@ -719,7 +957,7 @@ function openVoucherImportModal() {
     '</div>';
 
   const footer =
-    '<button type="button" id="btn-submit-voucher-import" class="btn btn-primary" onclick="submitVoucherCsvImport()" disabled>📤 Import Vouchers</button>' +
+    '<button type="button" id="btn-submit-voucher-import" class="btn btn-primary" onclick="submitVoucherCsvImport()" disabled style="display: inline-flex; align-items: center; gap: 0.4rem;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg><span>Import Vouchers</span></button>' +
     '<button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>';
 
   openModal('Import Payment Vouchers', body, footer, 'lg');
@@ -933,90 +1171,134 @@ function renderVouchersContent(container, vouchers) {
   const pvViewClass = pvActiveViewMode === 'cards' ? ' view-mode-cards' : (pvActiveViewMode === 'table' ? ' view-mode-table' : '');
 
   container.innerHTML =
-    '<div class="card" style="margin-bottom: 1.25rem; border: none; box-shadow: var(--shadow-sm);">' +
-    '<div style="padding: 1.25rem 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; border-bottom: 1px solid var(--border-color);">' +
-    '<div>' +
-    '<h2 style="font-size: 1.25rem; font-weight: 800; color: #0f172a; margin-bottom: 0.2rem; display: flex; align-items: center; gap: 0.5rem;">' +
-    '<span>🧾 Vouchers</span>' +
-    '</h2>' +
-    '<p style="font-size: 0.84rem; color: #64748b; margin-bottom: 0;">' +
-    'Manage and issue official corporate payment vouchers, vendor disbursements, and payout slips.' +
-    '</p>' +
+    '<div class="card pv-card" style="margin-bottom: 1.25rem; border: none; box-shadow: var(--shadow-sm);">' +
+    '<div class="pv-header" style="padding: 1.15rem 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; border-bottom: 1px solid var(--border-color);">' +
+    '<div style="display: flex; align-items: center; gap: 0.75rem;">' +
+    '<div style="width: 38px; height: 38px; border-radius: 8px; background: #eff6ff; color: #2563eb; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #dbeafe; flex-shrink: 0;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 20px; height: 20px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>' +
     '</div>' +
-    '<div style="display: flex; gap: 0.65rem; align-items: center; flex-wrap: wrap;">' +
-    '<button type="button" id="pv-toggle-summary-btn" class="btn btn-secondary btn-sm" onclick="handlePvToggleSummaryCards()" style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; padding: 0.45rem 0.85rem;" title="' + (pvShowSummaryCards ? 'Hide summary metric cards' : 'Show summary metric cards') + '">' +
-    (pvShowSummaryCards ? '👁️ Hide Cards' : '📊 Show Cards') +
+    '<div>' +
+    '<div style="display: flex; align-items: center; gap: 0.5rem;">' +
+    '<h2 style="font-size: 1.25rem; font-weight: 800; color: #0f172a; margin: 0; letter-spacing: -0.02em;">Payment Vouchers</h2>' +
+    '<span style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; background: #f1f5f9; color: #475569; padding: 0.15rem 0.45rem; border-radius: 4px; border: 1px solid #e2e8f0;">DISBURSEMENTS</span>' +
+    '</div>' +
+    '<p style="font-size: 0.82rem; color: #64748b; margin: 2px 0 0 0;">Manage and issue official corporate payment vouchers, vendor disbursements, and payout slips.</p>' +
+    '</div>' +
+    '</div>' +
+
+    '<div class="pv-header-actions" style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">' +
+    '<button type="button" id="pv-toggle-summary-btn" class="btn btn-secondary btn-sm" onclick="handlePvToggleSummaryCards()" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; font-weight: 600; padding: 0.42rem 0.75rem;" title="' + (pvShowSummaryCards ? 'Hide summary metric cards' : 'Show summary metric cards') + '">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>' +
+    '<span>' + (pvShowSummaryCards ? 'Hide Cards' : 'Show Cards') + '</span>' +
     '</button>' +
-    '<button type="button" class="btn btn-secondary btn-sm" onclick="openVoucherExportModal()" style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; padding: 0.45rem 0.85rem;">' +
-    '📥 Export Options' +
+    '<button type="button" class="btn btn-secondary btn-sm" onclick="openVoucherExportModal()" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; font-weight: 600; padding: 0.42rem 0.75rem;" title="Export Vouchers">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>' +
+    '<span>Export Options</span>' +
     '</button>' +
-    '<button type="button" class="btn btn-secondary btn-sm" onclick="exportFilteredVouchersZip()" title="Download ZIP with individual PDFs" style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; padding: 0.45rem 0.85rem;">' +
-    '📦 Export ZIP (PDFs)' +
+    '<button type="button" class="btn btn-secondary btn-sm" onclick="exportFilteredVouchersZip()" title="Download ZIP with individual PDFs" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; font-weight: 600; padding: 0.42rem 0.75rem;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>' +
+    '<span>Export ZIP</span>' +
     '</button>' +
-    '<button type="button" class="btn btn-secondary btn-sm" onclick="openVoucherImportModal()" title="Import Vouchers from CSV" style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; padding: 0.45rem 0.85rem;">' +
-    '📤 Import CSV' +
+    '<button type="button" class="btn btn-secondary btn-sm" onclick="openVoucherImportModal()" title="Import Vouchers from CSV" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; font-weight: 600; padding: 0.42rem 0.75rem;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>' +
+    '<span>Import CSV</span>' +
     '</button>' +
-    '<button type="button" class="btn btn-primary btn-sm" onclick="openNewPaymentVoucherModal()" style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.84rem; padding: 0.45rem 0.95rem;">' +
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 15px; height: 15px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>' +
-    '+ Create Voucher' +
+    '<button type="button" class="btn btn-primary btn-sm" onclick="openNewPaymentVoucherModal()" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.84rem; font-weight: 600; padding: 0.45rem 0.95rem;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 15px; height: 15px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>' +
+    '<span>+ Create Voucher</span>' +
     '</button>' +
     '</div>' +
     '</div>' +
 
     '<!-- KPI METRIC CARDS -->' +
-    '<div id="pv-kpi-container" class="pv-kpi-grid" style="display: ' + (pvShowSummaryCards ? 'grid' : 'none') + '; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; padding: 1.25rem 1.5rem; background: #f8fafc; border-bottom: 1px solid var(--border-color);">' +
-    '<div class="pv-kpi-item" style="background: #ffffff; padding: 1rem 1.15rem; border-radius: 8px; border: 1px solid #e2e8f0;">' +
-    '<div style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em;">Total Disbursed (YTD)</div>' +
-    '<div id="pv-kpi-total-disbursed" style="font-size: 1.35rem; font-weight: 800; color: #dc2626; margin-top: 0.25rem; font-family: monospace;">' + formatCurrency(totalDisbursedCents, 'PHP') + '</div>' +
-    '<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Active posted disbursements</div>' +
+    '<div id="pv-kpi-container" class="pv-kpi-grid" style="display: ' + (pvShowSummaryCards ? 'grid' : 'none') + '; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; padding: 1.25rem 1.5rem; background: #f8fafc; border-bottom: 1px solid var(--border-color);">' +
+    '<div class="pv-kpi-item" style="background: #ffffff; padding: 1.1rem 1.25rem; border-radius: 8px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">' +
+    '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">' +
+    '<span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.05em;">Total Disbursed (YTD)</span>' +
+    '<div style="width: 26px; height: 26px; border-radius: 6px; background: #fef2f2; color: #dc2626; display: flex; align-items: center; justify-content: center;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>' +
     '</div>' +
-    '<div class="pv-kpi-item" style="background: #ffffff; padding: 1rem 1.15rem; border-radius: 8px; border: 1px solid #e2e8f0;">' +
-    '<div style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em;">Posted Vouchers</div>' +
-    '<div id="pv-kpi-posted-count" style="font-size: 1.35rem; font-weight: 800; color: #059669; margin-top: 0.25rem; font-family: monospace;">' + postedCount + '</div>' +
-    '<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Official recorded vouchers</div>' +
     '</div>' +
-    '<div class="pv-kpi-item" style="background: #ffffff; padding: 1rem 1.15rem; border-radius: 8px; border: 1px solid #e2e8f0;">' +
-    '<div style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em;">Draft / Pending</div>' +
-    '<div id="pv-kpi-draft-count" style="font-size: 1.35rem; font-weight: 800; color: #d97706; margin-top: 0.25rem; font-family: monospace;">' + draftCount + '</div>' +
-    '<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Awaiting certification</div>' +
+    '<div id="pv-kpi-total-disbursed" style="font-size: 1.35rem; font-weight: 800; color: #dc2626; font-family: var(--font-mono, monospace); letter-spacing: -0.02em;">' + formatCurrency(totalDisbursedCents, 'PHP') + '</div>' +
+    '<div style="font-size: 0.74rem; color: #64748b; margin-top: 4px;">Active posted disbursements</div>' +
     '</div>' +
-    '<div class="pv-kpi-item" style="background: #ffffff; padding: 1rem 1.15rem; border-radius: 8px; border: 1px solid #e2e8f0;">' +
-    '<div style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em;">Voided / Cancelled</div>' +
-    '<div id="pv-kpi-voided-count" style="font-size: 1.35rem; font-weight: 800; color: #64748b; margin-top: 0.25rem; font-family: monospace;">' + voidedCount + '</div>' +
-    '<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Reversed from ledger</div>' +
+
+    '<div class="pv-kpi-item" style="background: #ffffff; padding: 1.1rem 1.25rem; border-radius: 8px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">' +
+    '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">' +
+    '<span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.05em;">Posted Vouchers</span>' +
+    '<div style="width: 26px; height: 26px; border-radius: 6px; background: #f0fdf4; color: #16a34a; display: flex; align-items: center; justify-content: center;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>' +
+    '</div>' +
+    '</div>' +
+    '<div id="pv-kpi-posted-count" style="font-size: 1.35rem; font-weight: 800; color: #059669; font-family: var(--font-mono, monospace); letter-spacing: -0.02em;">' + postedCount + '</div>' +
+    '<div style="font-size: 0.74rem; color: #64748b; margin-top: 4px;">Official recorded vouchers</div>' +
+    '</div>' +
+
+    '<div class="pv-kpi-item" style="background: #ffffff; padding: 1.1rem 1.25rem; border-radius: 8px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">' +
+    '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">' +
+    '<span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.05em;">Draft / Pending</span>' +
+    '<div style="width: 26px; height: 26px; border-radius: 6px; background: #fffbeb; color: #d97706; display: flex; align-items: center; justify-content: center;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>' +
+    '</div>' +
+    '</div>' +
+    '<div id="pv-kpi-draft-count" style="font-size: 1.35rem; font-weight: 800; color: #d97706; font-family: var(--font-mono, monospace); letter-spacing: -0.02em;">' + draftCount + '</div>' +
+    '<div style="font-size: 0.74rem; color: #64748b; margin-top: 4px;">Awaiting certification</div>' +
+    '</div>' +
+
+    '<div class="pv-kpi-item" style="background: #ffffff; padding: 1.1rem 1.25rem; border-radius: 8px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">' +
+    '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">' +
+    '<span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.05em;">Voided / Cancelled</span>' +
+    '<div style="width: 26px; height: 26px; border-radius: 6px; background: #f1f5f9; color: #64748b; display: flex; align-items: center; justify-content: center;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>' +
+    '</div>' +
+    '</div>' +
+    '<div id="pv-kpi-voided-count" style="font-size: 1.35rem; font-weight: 800; color: #64748b; font-family: var(--font-mono, monospace); letter-spacing: -0.02em;">' + voidedCount + '</div>' +
+    '<div style="font-size: 0.74rem; color: #64748b; margin-top: 4px;">Reversed from ledger</div>' +
     '</div>' +
     '</div>' +
 
     '<!-- FILTER & SEARCH BAR -->' +
-    '<div style="padding: 0.85rem 1.5rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">' +
-    '<div style="display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap; flex: 1;">' +
-    '<div style="flex: 1; max-width: 340px; min-width: 200px;">' +
-    '<input id="pv-search-input" type="text" class="form-input" style="padding: 0.45rem 0.75rem; font-size: 0.82rem;" placeholder="Search voucher #, payee, remarks..." value="' + escapeHtml(pvSearchQuery) + '" oninput="handlePvSearch(this.value)" />' +
+    '<div class="pv-filter-bar" style="padding: 0.85rem 1.5rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">' +
+    '<div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; flex: 1;">' +
+    '<div style="flex: 1; max-width: 340px; min-width: 220px; position: relative;">' +
+    '<span style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; display: flex; align-items: center;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 15px; height: 15px;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>' +
+    '</span>' +
+    '<input id="pv-search-input" type="text" class="form-input" style="padding: 0.45rem 0.75rem 0.45rem 2.25rem; font-size: 0.82rem; border-radius: 6px;" placeholder="Search voucher #, payee, remarks..." value="' + escapeHtml(pvSearchQuery) + '" oninput="handlePvSearch(this.value)" />' +
     '</div>' +
+
     '<div style="display: flex; align-items: center; gap: 0.45rem;">' +
-    '<label style="font-size: 0.8rem; font-weight: 700; color: #475569; white-space: nowrap;">📅 Year:</label>' +
-    '<select class="form-select" style="padding: 0.42rem 0.75rem; font-size: 0.82rem; font-weight: 600; min-width: 140px; border-radius: 6px;" onchange="handlePvYearFilter(this.value)">' +
+    '<label style="font-size: 0.8rem; font-weight: 700; color: #475569; white-space: nowrap; display: inline-flex; align-items: center; gap: 0.35rem;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; color: #64748b;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>' +
+    '<span>Year:</span>' +
+    '</label>' +
+    '<select class="form-select" style="padding: 0.42rem 0.75rem; font-size: 0.82rem; font-weight: 600; min-width: 120px; border-radius: 6px;" onchange="handlePvYearFilter(this.value)">' +
     yearFilterOptions +
     '</select>' +
     '</div>' +
-    '<div class="btn-view-mode-group" title="Switch table display layout">' +
-    '<button type="button" class="btn-view-mode' + (pvActiveViewMode === 'table' ? ' active' : '') + '" data-mode="table" onclick="handlePvActiveViewMode(&quot;table&quot;)" title="Compact Table View">' +
-    '☰ Table' +
+
+    '<div class="btn-view-mode-group" title="Switch display view mode">' +
+    '<button type="button" class="btn-view-mode' + (pvActiveViewMode === 'table' ? ' active' : '') + '" data-mode="table" onclick="handlePvActiveViewMode(&quot;table&quot;)" title="Compact Table View" style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; font-weight: 600;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 13px; height: 13px;"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>' +
+    '<span>Table</span>' +
     '</button>' +
-    '<button type="button" class="btn-view-mode' + (pvActiveViewMode === 'cards' ? ' active' : '') + '" data-mode="cards" onclick="handlePvActiveViewMode(&quot;cards&quot;)" title="Cascade Wrap Cards View">' +
-    '⊞ Wrap Cards' +
+    '<button type="button" class="btn-view-mode' + (pvActiveViewMode === 'cards' ? ' active' : '') + '" data-mode="cards" onclick="handlePvActiveViewMode(&quot;cards&quot;)" title="Card Grid View" style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; font-weight: 600;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 13px; height: 13px;"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>' +
+    '<span>Cards</span>' +
     '</button>' +
-    '<button type="button" class="btn-view-mode" onclick="loadVouchers()" title="Reload Vouchers" aria-label="Reload Vouchers" style="display: inline-flex; align-items: center; justify-content: center; padding: 0.35rem 0.6rem; font-size: 0.85rem;">' +
-    '🔄' +
+    '<button type="button" class="btn-view-mode" onclick="loadVouchers()" title="Reload Vouchers" aria-label="Reload Vouchers" style="display: inline-flex; align-items: center; justify-content: center; padding: 0.35rem 0.55rem; color: #475569;">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 13px; height: 13px;"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>' +
     '</button>' +
     '</div>' +
-    '<label style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; font-weight: 600; color: #475569; cursor: pointer; user-select: none; padding: 0.35rem 0.65rem; border-radius: 6px; background: #f1f5f9; border: 1px solid #e2e8f0;" title="Show or hide summary metric cards">' +
-    '<input type="checkbox" id="pv-show-cards-checkbox" style="cursor: pointer; width: 15px; height: 15px; accent-color: var(--primary); margin: 0;" onchange="handlePvToggleSummaryCards(this.checked)"' + (pvShowSummaryCards ? ' checked' : '') + ' />' +
+
+    '<label style="display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.8rem; font-weight: 600; color: #475569; cursor: pointer; user-select: none; padding: 0.38rem 0.65rem; border-radius: 6px; background: #f8fafc; border: 1px solid #e2e8f0;" title="Show or hide summary metric cards">' +
+    '<input type="checkbox" id="pv-show-cards-checkbox" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--primary); margin: 0;" onchange="handlePvToggleSummaryCards(this.checked)"' + (pvShowSummaryCards ? ' checked' : '') + ' />' +
     '<span>Summary Cards</span>' +
     '</label>' +
     '</div>' +
-    '<div id="pv-header-count" style="font-size: 0.8rem; color: #64748b;">' +
-    'Showing <strong>' + filtered.length + '</strong> voucher(s)' +
+
+    '<div id="pv-header-count" style="font-size: 0.8rem; color: #64748b; font-weight: 500;">' +
+    'Showing <strong style="color: #0f172a; font-family: var(--font-mono, monospace);">' + filtered.length + '</strong> voucher(s)' +
     '</div>' +
     '</div>' +
 
@@ -1025,15 +1307,15 @@ function renderVouchersContent(container, vouchers) {
     '<table id="pv-data-table" class="data-table responsive-cascade-table pv-compact-table' + pvViewClass + '">' +
     '<thead>' +
     '<tr>' +
-    '<th>Voucher #</th>' +
-    '<th>Date</th>' +
-    '<th>Payee / Recipient</th>' +
-    '<th>Tag / Category</th>' +
-    '<th>Remarks</th>' +
-    '<th>Method</th>' +
-    '<th style="text-align: right;">Total Amount</th>' +
-    '<th>Status</th>' +
-    '<th style="text-align: right;" class="th-actions">Actions</th>' +
+    '<th style="width: 95px; white-space: nowrap;">Voucher #</th>' +
+    '<th style="width: 88px; white-space: nowrap;">Date</th>' +
+    '<th style="min-width: 120px;">Payee / Recipient</th>' +
+    '<th style="width: 95px; white-space: nowrap;">Tag / Category</th>' +
+    '<th style="min-width: 100px;">Remarks</th>' +
+    '<th style="width: 65px; text-align: center; white-space: nowrap;">Method</th>' +
+    '<th style="width: 110px; text-align: right; white-space: nowrap;">Total Amount</th>' +
+    '<th style="width: 75px; text-align: center; white-space: nowrap;">Status</th>' +
+    '<th style="width: 170px; text-align: right; white-space: nowrap;" class="th-actions">Actions</th>' +
     '</tr>' +
     '</thead>' +
     '<tbody id="pv-table-body">' +
@@ -1049,4 +1331,5 @@ window.handlePvActiveViewMode = handlePvActiveViewMode;
 window.handlePvSearch = handlePvSearch;
 window.handlePvYearFilter = handlePvYearFilter;
 window.handlePvToggleSummaryCards = handlePvToggleSummaryCards;
+window.openVoucherOverviewModal = openVoucherOverviewModal;
 `;

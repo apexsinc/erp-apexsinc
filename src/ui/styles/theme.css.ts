@@ -1,6 +1,7 @@
 export const THEME_CSS = `
 :root {
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, Menlo, Monaco, monospace;
   
   /* Refined Corporate Sapphire & Slate Blue Palette */
   --primary: #1d4ed8;
