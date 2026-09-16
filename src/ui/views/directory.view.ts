@@ -138,20 +138,22 @@ function directoryAllowedTabs() {
   const tabs = [];
   if (myModules.includes('sales')) tabs.push('customers');
   if (myModules.includes('inventory')) tabs.push('products');
+  if (myModules.includes('inventory') || myModules.includes('sales')) tabs.push('services');
   if (myModules.includes('inventory')) tabs.push('pricelist');
   if (myModules.includes('purchasing')) tabs.push('suppliers');
   return tabs;
 }
 
 function directoryTabLabel(tab) {
-  return { customers: 'Customers', products: 'Products', pricelist: 'Price List', suppliers: 'Suppliers' }[tab] || tab;
+  return { customers: 'Customers', products: 'Products', services: 'Services', pricelist: 'Price List', suppliers: 'Suppliers' }[tab] || tab;
 }
 
 function directoryTabCount(tab) {
-  if (tab === 'customers') return state.customers.length;
-  if (tab === 'products') return state.products.length;
-  if (tab === 'pricelist') return state.products.length;
-  if (tab === 'suppliers') return state.vendors.length;
+  if (tab === 'customers') return (state.customers || []).length;
+  if (tab === 'products') return (state.products || []).filter((p) => !p.type || p.type === 'PRODUCT').length;
+  if (tab === 'services') return (state.services || []).length;
+  if (tab === 'pricelist') return (state.products || []).length;
+  if (tab === 'suppliers') return (state.vendors || []).length;
   return 0;
 }
 
@@ -171,8 +173,11 @@ async function loadDirectory() {
     if (allowed.includes('customers')) {
       fetches.push(apiFetch('/api/sales/customers').then((r) => r.json()).then((j) => { state.customers = j.data || []; }));
     }
-    if (allowed.includes('products') || allowed.includes('pricelist')) {
-      fetches.push(apiFetch('/api/inventory/products').then((r) => r.json()).then((j) => { state.products = j.data || []; }));
+    if (allowed.includes('products') || allowed.includes('pricelist') || allowed.includes('services')) {
+      fetches.push(apiFetch('/api/inventory/products').then((r) => r.json()).then((j) => {
+        state.products = j.data || [];
+        state.services = (state.products || []).filter((p) => p.type === 'SERVICE');
+      }));
       fetches.push(apiFetch('/api/inventory/categories').then((r) => r.json()).then((j) => { state.productCategories = j.data || []; }));
     }
     if (allowed.includes('suppliers')) {
@@ -193,6 +198,7 @@ function switchDirectoryTab(tab) {
   directoryVisibleCount = 50;
   if (tab === 'customers') directorySortField = 'name';
   else if (tab === 'products') directorySortField = 'sku';
+  else if (tab === 'services') directorySortField = 'sku';
   else if (tab === 'pricelist') directorySortField = 'name';
   else if (tab === 'suppliers') directorySortField = 'name';
   directorySortOrder = 'asc';
@@ -278,6 +284,7 @@ function renderDirectoryContent() {
     ? {
         customers: '<div style="display: flex; gap: 0.5rem;"><button class="btn btn-secondary btn-sm" onclick="openImportCustomersModal()" style="display: inline-flex; align-items: center; gap: 0.35rem;"><span style="font-size: 0.95rem;">📥</span> Import Excel</button><button class="btn btn-primary btn-sm" onclick="openNewCustomerModal()">+ Add Customer</button></div>',
         products: '<div style="display: flex; gap: 0.5rem;"><button class="btn btn-secondary btn-sm" onclick="openImportPricelistModal()" style="display: inline-flex; align-items: center; gap: 0.35rem;"><span style="font-size: 0.95rem;">📥</span> Import Excel</button><button class="btn btn-primary btn-sm" onclick="openNewProductModal()">+ Add Product</button></div>',
+        services: '<div style="display: flex; gap: 0.5rem;"><button class="btn btn-secondary btn-sm" onclick="openImportServicesModal()" style="display: inline-flex; align-items: center; gap: 0.35rem;"><span style="font-size: 0.95rem;">📥</span> Import Excel</button><button class="btn btn-primary btn-sm" onclick="openNewServiceModal()">+ Add Service</button></div>',
         pricelist: '<div style="display: flex; gap: 0.5rem;"><button class="btn btn-secondary btn-sm" onclick="openImportPricelistModal()" style="display: inline-flex; align-items: center; gap: 0.35rem;"><span style="font-size: 0.95rem;">📥</span> Import Pricelist</button></div>',
         suppliers: '<button class="btn btn-primary btn-sm" onclick="openNewVendorModal()">Add Supplier</button>',
       }[directoryActiveTab] || ''
@@ -290,7 +297,7 @@ function renderDirectoryContent() {
         <div class="panel-actions">\${addButton}</div>
       </div>
       <p class="directory-panel-inner" style="padding: 0 1.35rem 1rem; font-size: 0.85rem; color: #64748b;">
-        The single source of truth for customers, products, and suppliers — referenced by Purchasing, Inbound, and Sales, but managed here.
+        The single source of truth for customers, products, services, and suppliers — referenced by Purchasing, Inbound, and Sales & Invoicing, but managed here.
       </p>
       <div class="directory-panel-inner" style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0 1.35rem 1rem; flex-wrap: wrap;">
         <div class="category-pills-strip" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">\${tabsHtml}</div>
@@ -313,11 +320,11 @@ function renderDirectoryContent() {
           >✕</button>
         </div>
       </div>
-      \${(directoryActiveTab === 'products' || directoryActiveTab === 'pricelist') ? '<div id="directory-category-tabs" class="directory-panel-inner" style="padding: 0 1.35rem 1rem;"></div>' : ''}
+      \${(directoryActiveTab === 'products' || directoryActiveTab === 'pricelist' || directoryActiveTab === 'services') ? '<div id="directory-category-tabs" class="directory-panel-inner" style="padding: 0 1.35rem 1rem;"></div>' : ''}
       <div id="directory-table-wrap" class="directory-panel-inner" style="padding: 0 1.35rem 0.5rem;"></div>
     </div>
   \`;
-  if (directoryActiveTab === 'products' || directoryActiveTab === 'pricelist') renderProductCategoryTabs();
+  if (directoryActiveTab === 'products' || directoryActiveTab === 'pricelist' || directoryActiveTab === 'services') renderProductCategoryTabs();
   renderDirectoryTable();
 }
 
@@ -335,12 +342,35 @@ function renderProductCategoryTabs(savedScroll = null, activeKey = null) {
   const wrap = document.getElementById('directory-category-tabs');
   if (!wrap) return;
 
-  const countFor = (catName) => state.products.filter((p) => p.category === catName).length;
-  const labelPrefix = directoryActiveTab === 'pricelist' ? 'All Items' : 'All Products';
+  const isServices = directoryActiveTab === 'services';
+  const countFor = (catName) => {
+    if (isServices) {
+      return (state.services || []).filter((s) => s.category === catName).length;
+    }
+    return (state.products || []).filter((p) => {
+      if (directoryActiveTab === 'products' && p.type === 'SERVICE') return false;
+      return p.category === catName;
+    }).length;
+  };
+  const labelPrefix = directoryActiveTab === 'pricelist' ? 'All Items' : (isServices ? 'All Services' : 'All Products');
+  const totalCount = isServices
+    ? (state.services || []).length
+    : (directoryActiveTab === 'products'
+      ? (state.products || []).filter((p) => !p.type || p.type === 'PRODUCT').length
+      : (state.products || []).length);
+
+  let categoryItems = [];
+  if (isServices) {
+    const serviceCats = new Set((state.services || []).map((s) => s.category).filter(Boolean));
+    ['Installation', 'Maintenance', 'Calibration', 'Consulting', 'Engineering', 'Technical Support', 'Training', 'Services'].forEach((c) => serviceCats.add(c));
+    categoryItems = Array.from(serviceCats).sort().map((c) => ({ key: c, label: c, count: countFor(c) }));
+  } else {
+    categoryItems = (state.productCategories || []).map((c) => ({ key: c.name, label: c.name, count: countFor(c.name) }));
+  }
 
   const pills = [
-    { key: 'all', label: labelPrefix, count: state.products.length },
-    ...state.productCategories.map((c) => ({ key: c.name, label: c.name, count: countFor(c.name) })),
+    { key: 'all', label: labelPrefix, count: totalCount },
+    ...categoryItems,
   ];
 
   const pillsHtml = pills.map((p) => {
@@ -385,7 +415,22 @@ function getDirectoryFilteredTotal() {
   if (directoryActiveTab === 'customers') {
     return state.customers.filter((c) => !q || c.name.toLowerCase().includes(q) || c.customerCode.toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q) || (c.taxId || '').toLowerCase().includes(q)).length;
   }
-  if (directoryActiveTab === 'products' || directoryActiveTab === 'pricelist') {
+  if (directoryActiveTab === 'products') {
+    return state.products.filter((p) => {
+      if (p.type === 'SERVICE') return false;
+      const matchesQuery = !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
+      const matchesCategory = productsCategoryTab === 'all' || p.category === productsCategoryTab;
+      return matchesQuery && matchesCategory;
+    }).length;
+  }
+  if (directoryActiveTab === 'services') {
+    return (state.services || []).filter((s) => {
+      const matchesQuery = !q || (s.name || '').toLowerCase().includes(q) || (s.sku || '').toLowerCase().includes(q) || (s.description || '').toLowerCase().includes(q);
+      const matchesCategory = productsCategoryTab === 'all' || s.category === productsCategoryTab;
+      return matchesQuery && matchesCategory;
+    }).length;
+  }
+  if (directoryActiveTab === 'pricelist') {
     return state.products.filter((p) => {
       const matchesQuery = !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
       const matchesCategory = productsCategoryTab === 'all' || p.category === productsCategoryTab;
@@ -492,6 +537,7 @@ function renderDirectoryTable(keepScroll = false) {
       productsCategoryTab = 'all';
     }
     const filteredRows = state.products.filter((p) => {
+      if (p.type === 'SERVICE') return false;
       const matchesQuery = !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
       const matchesCategory = productsCategoryTab === 'all' || p.category === productsCategoryTab;
       return matchesQuery && matchesCategory;
@@ -549,6 +595,65 @@ function renderDirectoryTable(keepScroll = false) {
     \`).join('') || '<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 2rem;">No products found.</td></tr>';
 
     footerSubtext = '<p style="padding: 0.75rem 0 1rem; font-size: 0.78rem; color: #94a3b8;">Selling prices are managed on the Price List tab. Stock levels and movement history live in Inventory & Stock.</p>';
+  } else if (directoryActiveTab === 'services') {
+    const servicesList = state.services || [];
+    const filteredRows = servicesList.filter((s) => {
+      const matchesQuery = !q || (s.name || '').toLowerCase().includes(q) || (s.sku || '').toLowerCase().includes(q) || (s.description || '').toLowerCase().includes(q);
+      const matchesCategory = productsCategoryTab === 'all' || s.category === productsCategoryTab;
+      return matchesQuery && matchesCategory;
+    });
+    const allRows = sortDirectoryRows(filteredRows);
+    allRowsCount = allRows.length;
+    const rows = allRows.slice(0, directoryVisibleCount);
+    visibleRowsCount = rows.length;
+
+    tableHeaderHtml = \`<thead><tr>
+      <th class="sortable-th" style="width: 130px; min-width: 110px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('sku')" title="Sort by Service Code">Service Code \${directorySortIndicator('sku')}</th>
+      <th class="sortable-th" style="width: 360px; min-width: 320px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('name')" title="Sort by Name">Service Name \${directorySortIndicator('name')}</th>
+      <th class="sortable-th" style="width: 160px; min-width: 140px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('category')" title="Sort by Category">Category \${directorySortIndicator('category')}</th>
+      <th class="sortable-th" style="width: 110px; min-width: 90px; text-align: center; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('unitOfMeasure')" title="Sort by Billing Unit">Billing Unit \${directorySortIndicator('unitOfMeasure')}</th>
+      <th class="sortable-th" style="width: 140px; min-width: 130px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('costPriceCents')" title="Sort by Cost">Cost Rate \${directorySortIndicator('costPriceCents')}</th>
+      <th class="sortable-th" style="width: 160px; min-width: 140px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('sellingPriceCents')" title="Sort by Standard Rate">Standard Rate \${directorySortIndicator('sellingPriceCents')}</th>
+      <th style="width: 120px; text-align: right; white-space: nowrap;">Actions</th>
+    </tr></thead>\`;
+
+    tbodyHtml = rows.map((s) => \`
+      <tr>
+        <td data-label="Service Code" style="white-space: nowrap;"><strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: #0284c7;">\${escapeHtml(s.sku)}</strong></td>
+        <td data-label="Service Name" style="width: 360px; min-width: 320px; max-width: 520px;">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div style="width: 32px; height: 32px; border-radius: 6px; background: #f0fdf4; border: 1px solid #bbf7d0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #16a34a;" title="Service">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+              </svg>
+            </div>
+            <div style="min-width: 0; flex: 1;">
+              <div style="font-weight: 600; color: #0f172a; font-size: 0.88rem; line-height: 1.35; word-break: normal;">
+                \${escapeHtml(s.name)}
+              </div>
+              \${s.description ? '<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px;" title="' + escapeHtml(s.description) + '">' + escapeHtml(s.description) + '</div>' : ''}
+            </div>
+          </div>
+        </td>
+        <td data-label="Category" style="white-space: nowrap;"><span class="badge badge-neutral" style="font-size: 0.74rem;">\${escapeHtml(s.category || 'Services')}</span></td>
+        <td data-label="Billing Unit" style="text-align: center; color: #64748b; font-size: 0.82rem; white-space: nowrap;">per \${escapeHtml(s.unitOfMeasure || 'unit')}</td>
+        <td data-label="Cost Rate" style="white-space: nowrap;">\${s.costPriceCents > 0 ? formatCurrency(s.costPriceCents, s.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.72rem;">' + s.costPriceCurrency + '</span>' : '<span style="color: #94a3b8; font-size: 0.8rem;">—</span>'}</td>
+        <td data-label="Standard Rate" style="white-space: nowrap; font-weight: 700; font-family: monospace; color: #0f172a;">\${s.sellingPriceCents > 0 ? formatCurrency(s.sellingPriceCents, s.sellingPriceCurrency) + ' <span style="color: #64748b; font-size: 0.74rem; font-weight: normal;">/' + escapeHtml(s.unitOfMeasure || 'unit') + '</span>' : '<span style="color: #94a3b8; font-weight: normal; font-size: 0.8rem;">Rate not set</span>'}</td>
+        <td data-label="Actions" class="td-actions" style="text-align: right; white-space: nowrap;">
+          <div style="display: inline-flex; align-items: center; justify-content: flex-end; gap: 0.35rem;">
+            <button class="btn btn-secondary btn-sm" onclick="openSetPriceModal('\${s.id}', '\${escapeHtml(s.name).replace(/'/g, "\\\\'")}', \${s.sellingPriceCents || 0}, '\${s.sellingPriceCurrency || 'PHP'}')" style="padding: 0.25rem 0.45rem; line-height: 1;" title="Set Standard Rate">Rate</button>
+            <button class="btn btn-secondary btn-sm" onclick="openEditServiceModal('\${s.id}')" style="padding: 0.25rem 0.45rem; line-height: 1; display: inline-flex; align-items: center; justify-content: center;" title="Edit Service">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="deleteService('\${s.id}')" style="padding: 0.25rem 0.45rem; line-height: 1; display: inline-flex; align-items: center; justify-content: center; color: #ef4444;" title="Delete Service">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </td>
+      </tr>
+    \`).join('') || '<tr><td colspan="7" style="text-align: center; color: #64748b; padding: 2rem;">No services found. Click "+ Add Service" to create one.</td></tr>';
+
+    footerSubtext = '<p style="padding: 0.75rem 0 1rem; font-size: 0.78rem; color: #94a3b8;">Services are billable non-stock items used in Sales & Invoicing. They do not require warehouse inventory or delivery receipts.</p>';
   } else if (directoryActiveTab === 'pricelist') {
     if (productsCategoryTab !== 'all' && !state.productCategories.some((c) => c.name === productsCategoryTab)) {
       productsCategoryTab = 'all';
@@ -576,18 +681,15 @@ function renderDirectoryTable(keepScroll = false) {
         <td data-label="SKU" style="white-space: nowrap;"><strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: #334155;">\${p.sku}</strong></td>
         <td data-label="Product Name" style="width: 360px; min-width: 340px; max-width: 520px;">
           <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <div style="width: 32px; height: 32px; border-radius: 6px; background: #f8fafc; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #64748b;" title="Product">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                <line x1="12" y1="22.08" x2="12" y2="12"></line>
-              </svg>
+            <div style="width: 32px; height: 32px; border-radius: 6px; background: \${p.type === 'SERVICE' ? '#f0fdf4' : '#f8fafc'}; border: 1px solid \${p.type === 'SERVICE' ? '#bbf7d0' : '#e2e8f0'}; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: \${p.type === 'SERVICE' ? '#16a34a' : '#64748b'};" title="\${p.type === 'SERVICE' ? 'Service' : 'Product'}">
+              \${p.type === 'SERVICE' ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>' : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>'}
             </div>
             <div style="min-width: 0; flex: 1;">
-              <div style="font-weight: 600; color: #0f172a; font-size: 0.88rem; line-height: 1.35; word-break: normal;">
-                \${p.name}
+              <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                <span style="font-weight: 600; color: #0f172a; font-size: 0.88rem; line-height: 1.35; word-break: normal;">\${escapeHtml(p.name)}</span>
+                \${p.type === 'SERVICE' ? '<span class="badge" style="background: #f0fdf4; color: #16a34a; font-size: 0.65rem; padding: 0.1rem 0.35rem; border: 1px solid #bbf7d0;">Service</span>' : ''}
               </div>
-              \${p.description && !p.description.startsWith('Section:') ? '<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px;" title="' + (p.description || '').replace(/"/g, '&quot;') + '">' + p.description + '</div>' : ''}
+              \${p.description && !p.description.startsWith('Section:') ? '<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px;" title="' + (p.description || '').replace(/"/g, '&quot;') + '">' + escapeHtml(p.description) + '</div>' : ''}
             </div>
           </div>
         </td>
@@ -1190,6 +1292,367 @@ async function submitSetPrice(e, productId) {
   } catch (err) {
     showToast(err.message, 'danger');
   }
+}
+
+// ---- Service Management (Create, Edit, Delete, Import) ----
+
+let isSubmittingService = false;
+
+function serviceCategoryOptionsHtml(selectedName) {
+  const defaultCats = ['Services', 'Installation', 'Maintenance', 'Calibration', 'Consulting', 'Engineering', 'Technical Support', 'Training', 'Repair', 'Other'];
+  const allCats = new Set(defaultCats);
+  (state.services || []).forEach((s) => { if (s.category) allCats.add(s.category); });
+  (state.productCategories || []).forEach((c) => { if (c.name) allCats.add(c.name); });
+  return Array.from(allCats)
+    .sort()
+    .map((c) => \`<option value="\${escapeHtml(c)}" \${c === selectedName ? 'selected' : ''}>\${escapeHtml(c)}</option>\`)
+    .join('');
+}
+
+function openNewServiceModal() {
+  const existingCodes = (state.services || []).map((s) => s.sku || '');
+  let nextCode = 'SRV-001';
+  if (existingCodes.length > 0) {
+    nextCode = generateNextSequence(existingCodes[0], 'SRV-');
+  }
+
+  const body = \`
+    <form id="form-new-service" onsubmit="submitNewService(event)">
+      <div class="form-group">
+        <label class="form-label">Service Code *</label>
+        <input type="text" id="ns-sku" class="form-input" value="\${escapeHtml(nextCode)}" placeholder="e.g. SRV-001 or SVC-MAINT" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Service Name *</label>
+        <input type="text" id="ns-name" class="form-input" placeholder="e.g. On-Site Installation & Calibration" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category *</label>
+        <div style="display: flex; gap: 0.5rem;">
+          <select id="ns-category" class="form-select" style="flex: 1;" required>\${serviceCategoryOptionsHtml('Services')}</select>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="quickAddCategory('ns-category')">+ New</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Billing Unit *</label>
+          <select id="ns-uom" class="form-select" required>
+            <option value="project" selected>project</option>
+            <option value="hour">hour (hr)</option>
+            <option value="day">day</option>
+            <option value="session">session</option>
+            <option value="visit">visit</option>
+            <option value="month">month (mo)</option>
+            <option value="job">job</option>
+            <option value="lot">lot</option>
+            <option value="unit">unit</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Currency *</label>
+          <select id="ns-currency" class="form-select" required>
+            <option value="PHP" selected>PHP (₱)</option>
+            <option value="USD">USD ($)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Standard Rate / Selling Price *</label>
+          <input type="number" id="ns-selling-price" class="form-input" step="0.01" min="0" placeholder="0.00" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Base Cost Rate (Optional)</label>
+          <input type="number" id="ns-cost-price" class="form-input" step="0.01" min="0" placeholder="0.00" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description (Optional)</label>
+        <textarea id="ns-description" class="form-input" rows="2" placeholder="Scope of service, deliverables, or specifications"></textarea>
+      </div>
+      <p style="margin: -0.25rem 0 0; font-size: 0.78rem; color: #94a3b8;">
+        Services are non-stock billable items referenced in Sales & Invoicing. They do not affect physical warehouse inventory.
+      </p>
+    </form>
+  \`;
+  const footer = \`
+    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button id="btn-submit-new-service" class="btn btn-primary" onclick="document.getElementById('form-new-service').requestSubmit()">Save Service</button>
+  \`;
+  openModal('Add New Service', body, footer);
+}
+
+async function submitNewService(e) {
+  e.preventDefault();
+  if (isSubmittingService) return;
+
+  const sku = (document.getElementById('ns-sku')?.value || '').trim();
+  const name = (document.getElementById('ns-name')?.value || '').trim();
+  const category = (document.getElementById('ns-category')?.value || '').trim();
+  const unitOfMeasure = (document.getElementById('ns-uom')?.value || 'unit').trim();
+  const currency = document.getElementById('ns-currency')?.value || 'PHP';
+  const sellingPriceVal = parseFloat(document.getElementById('ns-selling-price')?.value || '0');
+  const costPriceVal = parseFloat(document.getElementById('ns-cost-price')?.value || '0');
+  const description = (document.getElementById('ns-description')?.value || '').trim();
+
+  if (!sku || !name) {
+    showToast('Service Code and Name are required', 'warning');
+    return;
+  }
+
+  const submitBtn = document.getElementById('btn-submit-new-service');
+  isSubmittingService = true;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving...';
+  }
+
+  try {
+    const res = await apiFetch('/api/directory/services', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sku,
+        name,
+        category: category || 'Services',
+        unitOfMeasure: unitOfMeasure || 'unit',
+        sellingPriceCents: Math.round(sellingPriceVal * 100),
+        sellingPriceCurrency: currency,
+        costPriceCents: Math.round(costPriceVal * 100),
+        costPriceCurrency: currency,
+        description: description || undefined,
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to save service');
+
+    closeModal();
+    showToast('Service ' + json.data.name + ' created', 'success');
+    directoryActiveTab = 'services';
+    loadDirectory();
+  } catch (err) {
+    showToast(err.message, 'danger');
+  } finally {
+    isSubmittingService = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Save Service';
+    }
+  }
+}
+
+function openEditServiceModal(serviceId) {
+  const s = (state.services || []).find((item) => item.id === serviceId) ||
+            (state.products || []).find((item) => item.id === serviceId);
+  if (!s) {
+    showToast('Service not found', 'danger');
+    return;
+  }
+
+  const body = \`
+    <form id="form-edit-service" onsubmit="submitEditService(event, '\${s.id}')">
+      <div class="form-group">
+        <label class="form-label">Service Code *</label>
+        <input type="text" id="es-sku" class="form-input" value="\${escapeHtml(s.sku || '')}" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Service Name *</label>
+        <input type="text" id="es-name" class="form-input" value="\${escapeHtml(s.name || '')}" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category *</label>
+        <div style="display: flex; gap: 0.5rem;">
+          <select id="es-category" class="form-select" style="flex: 1;" required>\${serviceCategoryOptionsHtml(s.category)}</select>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="quickAddCategory('es-category')">+ New</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Billing Unit *</label>
+          <select id="es-uom" class="form-select" required>
+            <option value="project" \${s.unitOfMeasure === 'project' ? 'selected' : ''}>project</option>
+            <option value="hour" \${s.unitOfMeasure === 'hour' ? 'selected' : ''}>hour (hr)</option>
+            <option value="day" \${s.unitOfMeasure === 'day' ? 'selected' : ''}>day</option>
+            <option value="session" \${s.unitOfMeasure === 'session' ? 'selected' : ''}>session</option>
+            <option value="visit" \${s.unitOfMeasure === 'visit' ? 'selected' : ''}>visit</option>
+            <option value="month" \${s.unitOfMeasure === 'month' ? 'selected' : ''}>month (mo)</option>
+            <option value="job" \${s.unitOfMeasure === 'job' ? 'selected' : ''}>job</option>
+            <option value="lot" \${s.unitOfMeasure === 'lot' ? 'selected' : ''}>lot</option>
+            <option value="unit" \${s.unitOfMeasure === 'unit' ? 'selected' : ''}>unit</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Currency *</label>
+          <select id="es-currency" class="form-select" required>
+            <option value="PHP" \${s.sellingPriceCurrency === 'PHP' ? 'selected' : ''}>PHP (₱)</option>
+            <option value="USD" \${s.sellingPriceCurrency === 'USD' ? 'selected' : ''}>USD ($)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Standard Rate / Selling Price *</label>
+          <input type="number" id="es-selling-price" class="form-input" step="0.01" min="0" value="\${((s.sellingPriceCents || 0) / 100).toFixed(2)}" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Base Cost Rate</label>
+          <input type="number" id="es-cost-price" class="form-input" step="0.01" min="0" value="\${s.costPriceCents ? ((s.costPriceCents / 100).toFixed(2)) : ''}" placeholder="0.00" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description (Optional)</label>
+        <textarea id="es-description" class="form-input" rows="2" placeholder="Scope of service, deliverables, or specifications">\${escapeHtml(s.description || '')}</textarea>
+      </div>
+    </form>
+  \`;
+  const footer = \`
+    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button id="btn-submit-edit-service" class="btn btn-primary" onclick="document.getElementById('form-edit-service').requestSubmit()">Save Changes</button>
+  \`;
+  openModal('Edit Service', body, footer);
+}
+
+async function submitEditService(e, serviceId) {
+  e.preventDefault();
+  if (isSubmittingService) return;
+
+  const sku = (document.getElementById('es-sku')?.value || '').trim();
+  const name = (document.getElementById('es-name')?.value || '').trim();
+  const category = (document.getElementById('es-category')?.value || '').trim();
+  const unitOfMeasure = (document.getElementById('es-uom')?.value || 'unit').trim();
+  const currency = document.getElementById('es-currency')?.value || 'PHP';
+  const sellingPriceVal = parseFloat(document.getElementById('es-selling-price')?.value || '0');
+  const costPriceVal = parseFloat(document.getElementById('es-cost-price')?.value || '0');
+  const description = (document.getElementById('es-description')?.value || '').trim();
+
+  if (!sku || !name) {
+    showToast('Service Code and Name are required', 'warning');
+    return;
+  }
+
+  const submitBtn = document.getElementById('btn-submit-edit-service');
+  isSubmittingService = true;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving...';
+  }
+
+  try {
+    const res = await apiFetch('/api/directory/services/' + serviceId, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sku,
+        name,
+        category: category || 'Services',
+        unitOfMeasure: unitOfMeasure || 'unit',
+        sellingPriceCents: Math.round(sellingPriceVal * 100),
+        sellingPriceCurrency: currency,
+        costPriceCents: Math.round(costPriceVal * 100),
+        costPriceCurrency: currency,
+        description: description || null,
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to update service');
+
+    closeModal();
+    showToast('Service ' + json.data.name + ' updated', 'success');
+    loadDirectory();
+  } catch (err) {
+    showToast(err.message, 'danger');
+  } finally {
+    isSubmittingService = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Save Changes';
+    }
+  }
+}
+
+async function deleteService(serviceId) {
+  const s = (state.services || []).find((item) => item.id === serviceId) ||
+            (state.products || []).find((item) => item.id === serviceId);
+  const name = s ? s.name : 'this service';
+  if (!confirm('Are you sure you want to delete "' + name + '"?')) return;
+
+  try {
+    const res = await apiFetch('/api/directory/services/' + serviceId, { method: 'DELETE' });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Failed to delete service');
+
+    showToast(json.message || 'Service deleted', 'success');
+    loadDirectory();
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
+}
+
+function openImportServicesModal() {
+  const body = \`
+    <div style="font-size: 0.85rem; color: #475569; margin-bottom: 1rem;">
+      Paste tabular data from Excel/CSV (columns: <strong>Code, Name, Category, Billing Unit, Standard Rate, Currency, Cost Rate, Description</strong>).
+    </div>
+    <div class="form-group">
+      <textarea id="import-services-raw" class="form-input" rows="8" placeholder="SRV-001&#9;Preventive Maintenance&#9;Maintenance&#9;visit&#9;5000&#9;PHP&#9;2000&#9;Quarterly inspection&#10;SRV-002&#9;Sensor Calibration&#9;Calibration&#9;unit&#9;12000&#9;PHP&#9;4000&#9;Precision sensor calibration"></textarea>
+    </div>
+    <div style="font-size: 0.76rem; color: #94a3b8;">
+      Tip: Tab-separated or comma-separated rows will be parsed automatically.
+    </div>
+  \`;
+  const footer = \`
+    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="processServicesImport()">Import Services</button>
+  \`;
+  openModal('Import Services', body, footer);
+}
+
+async function processServicesImport() {
+  const raw = (document.getElementById('import-services-raw')?.value || '').trim();
+  if (!raw) {
+    showToast('Please paste data to import', 'warning');
+    return;
+  }
+  const lines = raw.split('\\n').map((l) => l.trim()).filter(Boolean);
+  let imported = 0;
+  for (const line of lines) {
+    const parts = line.includes('\\t') ? line.split('\\t') : line.split(',');
+    if (parts.length < 2) continue;
+    const sku = parts[0]?.trim();
+    const name = parts[1]?.trim();
+    const category = parts[2]?.trim() || 'Services';
+    const unitOfMeasure = parts[3]?.trim() || 'project';
+    const rate = parseFloat(parts[4]?.trim() || '0');
+    const currency = parts[5]?.trim()?.toUpperCase() === 'USD' ? 'USD' : 'PHP';
+    const cost = parseFloat(parts[6]?.trim() || '0');
+    const description = parts[7]?.trim() || '';
+
+    if (!sku || !name) continue;
+    try {
+      await apiFetch('/api/directory/services', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sku,
+          name,
+          category,
+          unitOfMeasure,
+          sellingPriceCents: Math.round(rate * 100),
+          sellingPriceCurrency: currency,
+          costPriceCents: Math.round(cost * 100),
+          costPriceCurrency: currency,
+          description: description || undefined,
+        }),
+      });
+      imported++;
+    } catch (e) {
+      console.warn('Import line failed:', line, e);
+    }
+  }
+  closeModal();
+  showToast('Successfully imported ' + imported + ' service(s)', 'success');
+  directoryActiveTab = 'services';
+  loadDirectory();
 }
 
 // ---- Create Supplier (moved from Purchasing) ----

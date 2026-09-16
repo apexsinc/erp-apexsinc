@@ -1,0 +1,1 @@
+ALTER TABLE `products` ADD COLUMN `type` text DEFAULT 'PRODUCT' NOT NULL;

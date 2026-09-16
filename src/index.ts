@@ -1,9 +1,32 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { eq, desc, asc, like, and, ne, sql } from 'drizzle-orm';
+import { eq, desc, asc, like, and, ne, sql, inArray, or } from 'drizzle-orm';
 import { createDbClient, type Database } from './db/client';
 import * as schema from './db/schema';
+
+let productsTypeColumnChecked = false;
+export async function ensureProductsTypeColumn(db: Database): Promise<void> {
+  if (productsTypeColumnChecked) return;
+  try {
+    const { sql } = await import('drizzle-orm');
+    await db.run(sql`ALTER TABLE products ADD COLUMN type text DEFAULT 'PRODUCT' NOT NULL`);
+  } catch { }
+  productsTypeColumnChecked = true;
+}
+let salesItemsNotesColumnChecked = false;
+export async function ensureSalesItemsNotesColumn(db: Database): Promise<void> {
+  if (salesItemsNotesColumnChecked) return;
+  try {
+    const { sql } = await import('drizzle-orm');
+    await db.run(sql`ALTER TABLE sales_order_items ADD COLUMN notes text`);
+  } catch { }
+  try {
+    const { sql } = await import('drizzle-orm');
+    await db.run(sql`ALTER TABLE invoice_items ADD COLUMN notes text`);
+  } catch { }
+  salesItemsNotesColumnChecked = true;
+}
 import { renderAppHtml, renderPurchaseOrderPrintHtml } from './ui';
 import { authMiddleware, requireAdmin, requireModule } from './middleware/auth';
 import { hashPassword, verifyPasswordLegacyAware } from './lib/password';
@@ -109,7 +132,27 @@ app.use('/api/settings/*', authMiddleware, async (c, next) => {
 });
 app.use('/api/settings', authMiddleware, requireModule('settings'));
 app.use('/api/dashboard/*', authMiddleware, requireModule('dashboard'));
-app.use('/api/directory/*', authMiddleware, requireModule('directory'));
+app.use('/api/directory/*', authMiddleware, async (c, next) => {
+  if (c.req.path.startsWith('/api/directory/services')) {
+    const user = c.get('authUser');
+    if (!user) return c.json({ success: false, error: 'Authentication required' }, 401);
+    if (isAdminRole(user.role)) return await next();
+    const db = createDbClient(c.env.DB);
+    let action: CrudAction = 'read';
+    const method = c.req.method.toUpperCase();
+    if (method === 'POST') action = 'create';
+    else if (method === 'PUT' || method === 'PATCH') action = 'update';
+    else if (method === 'DELETE') action = 'delete';
+    const allowed = (await canUserPerformAction(db, user, 'directory', action)) ||
+                    (await canUserPerformAction(db, user, 'inventory', action)) ||
+                    (await canUserPerformAction(db, user, 'sales', action));
+    if (!allowed) {
+      return c.json({ success: false, error: `Access Denied: You do not have permission to ${action.toUpperCase()} in the directory/services module` }, 403);
+    }
+    return await next();
+  }
+  return requireModule('directory')(c, next);
+});
 app.use('/api/inventory/*', authMiddleware, requireModule('inventory'));
 app.use('/api/purchasing/*', authMiddleware, async (c, next) => {
   if (c.req.method === 'GET' && c.req.path === '/api/purchasing/vendors') {
@@ -189,8 +232,8 @@ async function servePurchaseOrderPrint(c: any) {
   const altPoNumber = poIdOrNumber.includes('APX-26-0010')
     ? 'APX-26-00010'
     : poIdOrNumber.includes('APX-26-00010')
-    ? 'APX-26-0010'
-    : poIdOrNumber;
+      ? 'APX-26-0010'
+      : poIdOrNumber;
 
   const po = await db.query.purchaseOrders.findFirst({
     where: (poTable, { eq, or }) =>
@@ -429,9 +472,9 @@ app.post('/api/setup/seed', async (c) => {
     const token = (c.req.header('Authorization') || '').replace('Bearer ', '');
     const session = token
       ? await db.query.sessions.findFirst({
-          where: eq(schema.sessions.token, token),
-          with: { user: true },
-        })
+        where: eq(schema.sessions.token, token),
+        with: { user: true },
+      })
       : null;
     const sessionValid = session && session.expiresAt > new Date().toISOString();
     if (!sessionValid || !session.user?.isActive || !isAdminRole(session.user.role)) {
@@ -515,10 +558,10 @@ async function attachDeliveryReceipts<T extends { id: string; soNumber?: string 
   const soIds = orders.map((o) => o.id);
   const receipts = soIds.length
     ? await db.query.deliveryReceipts.findMany({
-        where: (dr, { inArray }) => inArray(dr.salesOrderId, soIds),
-        with: { items: { with: { product: true } } },
-        orderBy: (dr, { desc }) => [desc(dr.createdAt)],
-      })
+      where: (dr, { inArray }) => inArray(dr.salesOrderId, soIds),
+      with: { items: { with: { product: true } } },
+      orderBy: (dr, { desc }) => [desc(dr.createdAt)],
+    })
     : [];
 
   const bySoId = new Map<string, typeof receipts>();
@@ -613,18 +656,29 @@ app.post(
       sku: z.string().min(1),
       name: z.string().min(1),
       category: z.string().min(1),
+      type: z.enum(['PRODUCT', 'SERVICE']).optional().default('PRODUCT'),
       unitOfMeasure: z.string().optional().default('pcs'),
       description: z.string().optional(),
+      sellingPriceCents: z.number().int().nonnegative().optional(),
+      sellingPriceCurrency: z.enum(['USD', 'PHP']).optional(),
+      costPriceCents: z.number().int().nonnegative().optional(),
+      costPriceCurrency: z.enum(['USD', 'PHP']).optional(),
     })
   ),
   async (c) => {
     const db = createDbClient(c.env.DB);
+    await ensureProductsTypeColumn(db);
     const body = c.req.valid('json');
 
-    const category = await db.query.productCategories.findFirst({
+    let category = await db.query.productCategories.findFirst({
       where: eq(schema.productCategories.name, body.category),
     });
-    if (!category) return c.json({ success: false, error: 'Unknown category' }, 400);
+    if (!category) {
+      await db.insert(schema.productCategories).values({
+        id: crypto.randomUUID(),
+        name: body.category,
+      });
+    }
 
     const existingSku = await db.query.products.findFirst({
       where: eq(schema.products.sku, body.sku.toUpperCase()),
@@ -639,8 +693,13 @@ app.post(
       sku: body.sku.toUpperCase(),
       name: body.name,
       category: body.category,
+      type: body.type || 'PRODUCT',
       unitOfMeasure: body.unitOfMeasure || 'pcs',
       description: body.description,
+      sellingPriceCents: body.sellingPriceCents !== undefined ? body.sellingPriceCents : 0,
+      sellingPriceCurrency: body.sellingPriceCurrency || 'PHP',
+      costPriceCents: body.costPriceCents !== undefined ? body.costPriceCents : 0,
+      costPriceCurrency: body.costPriceCurrency || 'PHP',
     });
 
     const created = await db.query.products.findFirst({
@@ -816,15 +875,33 @@ app.post(
 // GET /api/inventory/products - List products with real-time stock levels
 app.get('/api/inventory/products', async (c) => {
   const db = createDbClient(c.env.DB);
+  await ensureProductsTypeColumn(db);
+  const typeFilter = c.req.query('type')?.toUpperCase();
+
   const allProducts = await db.query.products.findMany({
     orderBy: [desc(schema.products.createdAt)],
   });
 
+  const filteredProducts = typeFilter
+    ? allProducts.filter((p) => (p.type || 'PRODUCT') === typeFilter)
+    : allProducts;
+
   const productsWithStock = await Promise.all(
-    allProducts.map(async (prod) => {
+    filteredProducts.map(async (prod) => {
+      if (prod.type === 'SERVICE') {
+        return {
+          ...prod,
+          type: 'SERVICE' as const,
+          onHandStock: 0,
+          damagedStock: 0,
+          inventoryValuationCents: 0,
+          damagedValuationCents: 0,
+        };
+      }
       const stock = await getProductStockBalance(db, prod.id);
       return {
         ...prod,
+        type: (prod.type || 'PRODUCT') as 'PRODUCT' | 'SERVICE',
         onHandStock: stock,
         damagedStock: prod.damagedStock || 0,
         inventoryValuationCents: stock * prod.costPriceCents,
@@ -1052,6 +1129,185 @@ app.delete('/api/inventory/products/:id', async (c) => {
   await db.delete(schema.products).where(eq(schema.products.id, id));
 
   return c.json({ success: true, message: `Product "${product.name}" (${product.sku}) deleted successfully` });
+});
+
+// ==========================================
+// BUSINESS DIRECTORY: SERVICES API
+// ==========================================
+
+// GET /api/directory/services - List all active services
+app.get('/api/directory/services', async (c) => {
+  const db = createDbClient(c.env.DB);
+  await ensureProductsTypeColumn(db);
+
+  const services = await db.query.products.findMany({
+    where: eq(schema.products.type, 'SERVICE'),
+    orderBy: [desc(schema.products.createdAt)],
+  });
+
+  return c.json({ success: true, count: services.length, data: services });
+});
+
+// POST /api/directory/services - Create a new service in Business Directory
+app.post(
+  '/api/directory/services',
+  zValidator(
+    'json',
+    z.object({
+      sku: z.string().min(1),
+      name: z.string().min(1),
+      category: z.string().min(1).default('Services'),
+      unitOfMeasure: z.string().optional().default('unit'),
+      description: z.string().optional(),
+      sellingPriceCents: z.number().int().nonnegative().optional().default(0),
+      sellingPriceCurrency: z.enum(['USD', 'PHP']).optional().default('PHP'),
+      costPriceCents: z.number().int().nonnegative().optional().default(0),
+      costPriceCurrency: z.enum(['USD', 'PHP']).optional().default('PHP'),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    await ensureProductsTypeColumn(db);
+    const body = c.req.valid('json');
+
+    const skuUpper = body.sku.trim().toUpperCase();
+    const existingSku = await db.query.products.findFirst({
+      where: eq(schema.products.sku, skuUpper),
+    });
+    if (existingSku) {
+      return c.json({ success: false, error: `Service or Product with code "${skuUpper}" already exists` }, 409);
+    }
+
+    const catName = body.category.trim() || 'Services';
+    let cat = await db.query.productCategories.findFirst({
+      where: eq(schema.productCategories.name, catName),
+    });
+    if (!cat) {
+      await db.insert(schema.productCategories).values({
+        id: crypto.randomUUID(),
+        name: catName,
+      });
+    }
+
+    const serviceId = crypto.randomUUID();
+    await db.insert(schema.products).values({
+      id: serviceId,
+      sku: skuUpper,
+      name: body.name.trim(),
+      category: catName,
+      type: 'SERVICE',
+      unitOfMeasure: body.unitOfMeasure?.trim() || 'unit',
+      description: body.description?.trim() || null,
+      sellingPriceCents: body.sellingPriceCents ?? 0,
+      sellingPriceCurrency: body.sellingPriceCurrency || 'PHP',
+      costPriceCents: body.costPriceCents ?? 0,
+      costPriceCurrency: body.costPriceCurrency || 'PHP',
+    });
+
+    const created = await db.query.products.findFirst({
+      where: eq(schema.products.id, serviceId),
+    });
+
+    return c.json({ success: true, data: created }, 201);
+  }
+);
+
+// PATCH /api/directory/services/:id - Update a service
+app.patch(
+  '/api/directory/services/:id',
+  zValidator(
+    'json',
+    z.object({
+      sku: z.string().min(1).optional(),
+      name: z.string().min(1).optional(),
+      category: z.string().min(1).optional(),
+      unitOfMeasure: z.string().optional(),
+      description: z.string().optional().nullable(),
+      sellingPriceCents: z.number().int().nonnegative().optional(),
+      sellingPriceCurrency: z.enum(['USD', 'PHP']).optional(),
+      costPriceCents: z.number().int().nonnegative().optional(),
+      costPriceCurrency: z.enum(['USD', 'PHP']).optional(),
+      isActive: z.boolean().optional(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    await ensureProductsTypeColumn(db);
+    const id = c.req.param('id');
+    const body = c.req.valid('json');
+
+    const service = await db.query.products.findFirst({ where: eq(schema.products.id, id) });
+    if (!service) return c.json({ success: false, error: 'Service not found' }, 404);
+
+    if (body.sku && body.sku.trim().toUpperCase() !== service.sku.toUpperCase()) {
+      const existingSku = await db.query.products.findFirst({
+        where: eq(schema.products.sku, body.sku.trim().toUpperCase()),
+      });
+      if (existingSku) {
+        return c.json({ success: false, error: `Item with code "${body.sku.trim().toUpperCase()}" already exists` }, 409);
+      }
+    }
+
+    if (body.category) {
+      const catName = body.category.trim();
+      const cat = await db.query.productCategories.findFirst({
+        where: eq(schema.productCategories.name, catName),
+      });
+      if (!cat) {
+        await db.insert(schema.productCategories).values({
+          id: crypto.randomUUID(),
+          name: catName,
+        });
+      }
+    }
+
+    const updateData: Partial<typeof schema.products.$inferInsert> = {
+      updatedAt: new Date().toISOString(),
+    };
+    if (body.sku !== undefined) updateData.sku = body.sku.trim().toUpperCase();
+    if (body.name !== undefined) updateData.name = body.name.trim();
+    if (body.category !== undefined) updateData.category = body.category.trim();
+    if (body.unitOfMeasure !== undefined) updateData.unitOfMeasure = body.unitOfMeasure.trim() || 'unit';
+    if (body.description !== undefined) updateData.description = body.description ? body.description.trim() : null;
+    if (body.sellingPriceCents !== undefined) updateData.sellingPriceCents = body.sellingPriceCents;
+    if (body.sellingPriceCurrency !== undefined) updateData.sellingPriceCurrency = body.sellingPriceCurrency;
+    if (body.costPriceCents !== undefined) updateData.costPriceCents = body.costPriceCents;
+    if (body.costPriceCurrency !== undefined) updateData.costPriceCurrency = body.costPriceCurrency;
+    if (body.isActive !== undefined) updateData.isActive = body.isActive;
+
+    await db.update(schema.products).set(updateData).where(eq(schema.products.id, id));
+
+    const updated = await db.query.products.findFirst({ where: eq(schema.products.id, id) });
+    return c.json({ success: true, data: updated });
+  }
+);
+
+// DELETE /api/directory/services/:id - Delete a service
+app.delete('/api/directory/services/:id', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const id = c.req.param('id');
+
+  const service = await db.query.products.findFirst({ where: eq(schema.products.id, id) });
+  if (!service) return c.json({ success: false, error: 'Service not found' }, 404);
+
+  // Check if service is used in sales orders
+  const soItem = await db.query.salesOrderItems.findFirst({
+    where: eq(schema.salesOrderItems.productId, id),
+  });
+  if (soItem) {
+    return c.json({ success: false, error: 'Cannot delete service because it has sales order history' }, 400);
+  }
+
+  // Check if service is used in invoice items
+  const invItem = await db.query.invoiceItems.findFirst({
+    where: eq(schema.invoiceItems.productId, id),
+  });
+  if (invItem) {
+    return c.json({ success: false, error: 'Cannot delete service because it has invoice history' }, 400);
+  }
+
+  await db.delete(schema.products).where(eq(schema.products.id, id));
+  return c.json({ success: true, message: `Service "${service.name}" (${service.sku}) deleted successfully` });
 });
 
 // POST /api/inventory/movements - Stock Adjustment
@@ -1446,8 +1702,8 @@ app.get('/api/purchasing/orders/:id', async (c) => {
   const altPoNumber = idOrNumber.includes('APX-26-0010')
     ? 'APX-26-00010'
     : idOrNumber.includes('APX-26-00010')
-    ? 'APX-26-0010'
-    : idOrNumber;
+      ? 'APX-26-0010'
+      : idOrNumber;
 
   const po = await db.query.purchaseOrders.findFirst({
     where: (poTable, { eq, or }) =>
@@ -1993,12 +2249,15 @@ app.post(
           productId: z.string().uuid(),
           quantity: z.number().int().positive(),
           unitPriceCents: z.number().int().nonnegative(),
+          notes: z.string().optional(),
         })
       ).min(1),
     })
   ),
   async (c) => {
     const db = createDbClient(c.env.DB);
+    await ensureProductsTypeColumn(db);
+    await ensureSalesItemsNotesColumn(db);
     const body = c.req.valid('json');
 
     const opsSetting = await db.query.systemSettings.findFirst({
@@ -2009,7 +2268,7 @@ app.post(
       try {
         const conf = JSON.parse(opsSetting.value);
         prefix = conf.siPrefix || conf.soPrefix || 'SI-';
-      } catch {}
+      } catch { }
     }
 
     const requestedNumber = (body.siNumber || body.soNumber)?.trim();
@@ -2037,26 +2296,38 @@ app.post(
     const soId = crypto.randomUUID();
     const totalAmountCents = body.items.reduce((acc, it) => acc + it.quantity * it.unitPriceCents, 0);
 
+    const itemProductIds = body.items.map((i) => i.productId);
+    const itemProducts = await db.query.products.findMany({
+      where: inArray(schema.products.id, itemProductIds),
+    });
+    const productMap = new Map(itemProducts.map((p) => [p.id, p]));
+
+    const allAreServices = body.items.length > 0 && body.items.every((it) => productMap.get(it.productId)?.type === 'SERVICE');
+    const soStatus = allAreServices ? 'FULFILLED' : 'CONFIRMED';
+
     const soInsert = db.insert(schema.salesOrders).values({
       id: soId,
       soNumber,
       customerId: body.customerId,
-      status: 'CONFIRMED',
+      status: soStatus,
       currency: body.currency,
       totalAmountCents,
       notes: body.notes,
     });
 
-    const itemInserts = body.items.map((item) =>
-      db.insert(schema.salesOrderItems).values({
+    const itemInserts = body.items.map((item) => {
+      const isService = productMap.get(item.productId)?.type === 'SERVICE';
+      return db.insert(schema.salesOrderItems).values({
         id: crypto.randomUUID(),
         salesOrderId: soId,
         productId: item.productId,
         quantity: item.quantity,
+        quantityShipped: isService ? item.quantity : 0,
         unitPriceCents: item.unitPriceCents,
         subtotalCents: item.quantity * item.unitPriceCents,
-      })
-    );
+        notes: item.notes || null,
+      });
+    });
 
     // Sales Invoice IS the Invoice: Create the unified invoice record with the exact same SI number
     const invoiceId = crypto.randomUUID();
@@ -2081,6 +2352,7 @@ app.post(
         quantity: item.quantity,
         unitPriceCents: item.unitPriceCents,
         subtotalCents: item.quantity * item.unitPriceCents,
+        notes: item.notes || null,
       })
     );
 
@@ -2121,10 +2393,10 @@ app.post(
 
     const responseData = createdSO
       ? {
-          ...createdSO,
-          soNumber: createdSO.soNumber ? createdSO.soNumber.replace(/^SO-/i, 'SI-') : createdSO.soNumber,
-          siNumber: createdSO.soNumber ? createdSO.soNumber.replace(/^SO-/i, 'SI-') : createdSO.soNumber,
-        }
+        ...createdSO,
+        soNumber: createdSO.soNumber ? createdSO.soNumber.replace(/^SO-/i, 'SI-') : createdSO.soNumber,
+        siNumber: createdSO.soNumber ? createdSO.soNumber.replace(/^SO-/i, 'SI-') : createdSO.soNumber,
+      }
       : createdSO;
     return c.json({ success: true, data: responseData }, 201);
   }
@@ -2133,11 +2405,255 @@ app.post(
 // GET /api/sales/orders - List Sales Orders
 app.get('/api/sales/orders', async (c) => {
   const db = createDbClient(c.env.DB);
+  await ensureSalesItemsNotesColumn(db);
   const orders = await db.query.salesOrders.findMany({
     orderBy: [desc(schema.salesOrders.createdAt)],
     with: { customer: true, items: { with: { product: true } }, invoices: true },
   });
   return c.json({ success: true, data: await attachDeliveryReceipts(db, orders) });
+});
+
+// PUT /api/sales/orders/:id - Update Sales Order & Linked Invoice
+app.put(
+  '/api/sales/orders/:id',
+  zValidator(
+    'json',
+    z.object({
+      customerId: z.string().uuid().optional(),
+      siNumber: z.string().trim().min(1).max(64).optional(),
+      soNumber: z.string().trim().min(1).max(64).optional(),
+      currency: z.enum(['USD', 'PHP']).optional(),
+      status: z.enum(['DRAFT', 'CONFIRMED', 'PACKED', 'PARTIALLY_FULFILLED', 'FULFILLED', 'CANCELLED']).optional(),
+      notes: z.string().optional(),
+      items: z.array(
+        z.object({
+          productId: z.string().uuid(),
+          quantity: z.number().int().positive(),
+          unitPriceCents: z.number().int().nonnegative(),
+          notes: z.string().optional(),
+        })
+      ).min(1).optional(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    await ensureSalesItemsNotesColumn(db);
+    const soId = c.req.param('id');
+    const body = c.req.valid('json');
+
+    const existing = await db.query.salesOrders.findFirst({
+      where: (soTable, { eq, or }) => or(eq(soTable.id, soId), eq(soTable.soNumber, soId)),
+      with: { items: true, invoices: true },
+    });
+    if (!existing) return c.json({ success: false, error: 'Sales Invoice not found' }, 404);
+
+    const targetId = existing.id;
+    const requestedNumber = (body.siNumber || body.soNumber)?.trim();
+    if (requestedNumber && requestedNumber !== existing.soNumber) {
+      const clash = await db.query.salesOrders.findFirst({
+        where: and(eq(schema.salesOrders.soNumber, requestedNumber), ne(schema.salesOrders.id, targetId)),
+      });
+      if (clash) {
+        return c.json({ success: false, error: 'SI number "' + requestedNumber + '" is already in use' }, 409);
+      }
+    }
+
+    const updatedSoNumber = requestedNumber || existing.soNumber;
+    const updatedCustomerId = body.customerId || existing.customerId;
+    const updatedCurrency = body.currency || existing.currency;
+
+    let totalAmountCents = existing.totalAmountCents;
+    if (body.items) {
+      totalAmountCents = body.items.reduce((acc, it) => acc + it.quantity * it.unitPriceCents, 0);
+    }
+
+    let updatedStatus = body.status || existing.status;
+    let productMap = new Map<string, any>();
+    if (body.items) {
+      const itemProductIds = body.items.map((i) => i.productId);
+      const itemProducts = await db.query.products.findMany({
+        where: inArray(schema.products.id, itemProductIds),
+      });
+      productMap = new Map(itemProducts.map((p) => [p.id, p]));
+
+      const allAreServices = body.items.length > 0 && body.items.every((it) => productMap.get(it.productId)?.type === 'SERVICE');
+      if (allAreServices && updatedStatus === 'CONFIRMED') {
+        updatedStatus = 'FULFILLED';
+      }
+    }
+
+    const now = new Date().toISOString();
+    await db
+      .update(schema.salesOrders)
+      .set({
+        soNumber: updatedSoNumber,
+        customerId: updatedCustomerId,
+        currency: updatedCurrency,
+        status: updatedStatus,
+        totalAmountCents,
+        notes: body.notes !== undefined ? body.notes : existing.notes,
+        updatedAt: now,
+      })
+      .where(eq(schema.salesOrders.id, targetId));
+
+    if (body.items) {
+      const existingShippedMap = new Map(existing.items.map((it) => [it.productId, it.quantityShipped]));
+
+      await db.delete(schema.salesOrderItems).where(eq(schema.salesOrderItems.salesOrderId, targetId));
+
+      const itemInserts = body.items.map((item) => {
+        const isService = productMap.get(item.productId)?.type === 'SERVICE';
+        const priorShipped = existingShippedMap.get(item.productId) || 0;
+        const qtyShipped = isService ? item.quantity : Math.min(priorShipped, item.quantity);
+        return db.insert(schema.salesOrderItems).values({
+          id: crypto.randomUUID(),
+          salesOrderId: targetId,
+          productId: item.productId,
+          quantity: item.quantity,
+          quantityShipped: qtyShipped,
+          unitPriceCents: item.unitPriceCents,
+          subtotalCents: item.quantity * item.unitPriceCents,
+          notes: item.notes || null,
+        });
+      });
+
+      await db.batch(itemInserts as any);
+
+      const linkedInvoices = existing.invoices || [];
+      for (const inv of linkedInvoices) {
+        await db
+          .update(schema.invoices)
+          .set({
+            invoiceNumber: updatedSoNumber,
+            customerId: updatedCustomerId,
+            currency: updatedCurrency,
+            totalAmountCents,
+            notes: body.notes !== undefined ? body.notes : inv.notes,
+            updatedAt: now,
+          })
+          .where(eq(schema.invoices.id, inv.id));
+
+        await db.delete(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, inv.id));
+        const invItemInserts = body.items.map((item) =>
+          db.insert(schema.invoiceItems).values({
+            id: crypto.randomUUID(),
+            invoiceId: inv.id,
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPriceCents: item.unitPriceCents,
+            subtotalCents: item.quantity * item.unitPriceCents,
+            notes: item.notes || null,
+          })
+        );
+        await db.batch(invItemInserts as any);
+      }
+
+      if (totalAmountCents !== existing.totalAmountCents) {
+        try {
+          const jes = await db.query.journalEntries.findMany({
+            where: or(
+              like(schema.journalEntries.description, '%Sales Invoice ' + existing.soNumber + '%'),
+              like(schema.journalEntries.description, '%Sales Invoice ' + updatedSoNumber + '%')
+            ),
+          });
+          for (const je of jes) {
+            if (je.debitCents > 0) {
+              await db.update(schema.journalEntries).set({
+                debitCents: totalAmountCents,
+                description: 'Accounts Receivable for Sales Invoice ' + updatedSoNumber,
+              }).where(eq(schema.journalEntries.id, je.id));
+            } else if (je.creditCents > 0) {
+              await db.update(schema.journalEntries).set({
+                creditCents: totalAmountCents,
+                description: 'Sales Revenue for Sales Invoice ' + updatedSoNumber,
+              }).where(eq(schema.journalEntries.id, je.id));
+            }
+          }
+        } catch (e) {
+          console.error('Error syncing journal entries for sales order update:', e);
+        }
+      }
+    }
+
+    const updatedSO = await db.query.salesOrders.findFirst({
+      where: eq(schema.salesOrders.id, targetId),
+      with: { customer: true, items: { with: { product: true } }, invoices: true },
+    });
+
+    const responseData = updatedSO
+      ? {
+        ...updatedSO,
+        soNumber: updatedSO.soNumber ? updatedSO.soNumber.replace(/^SO-/i, 'SI-') : updatedSO.soNumber,
+        siNumber: updatedSO.soNumber ? updatedSO.soNumber.replace(/^SO-/i, 'SI-') : updatedSO.soNumber,
+      }
+      : updatedSO;
+
+    return c.json({ success: true, data: responseData });
+  }
+);
+
+// DELETE /api/sales/orders/:id - Delete Sales Order & Linked Invoice
+app.delete('/api/sales/orders/:id', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const soId = c.req.param('id');
+
+  const existing = await db.query.salesOrders.findFirst({
+    where: (soTable, { eq, or }) => or(eq(soTable.id, soId), eq(soTable.soNumber, soId)),
+    with: { items: true, invoices: { with: { items: true } } },
+  });
+  if (!existing) return c.json({ success: false, error: 'Sales Invoice not found' }, 404);
+
+  const targetId = existing.id;
+  const soNumber = existing.soNumber;
+
+  // 1. Safety check: Active Delivery Receipts
+  const drs = await db.query.deliveryReceipts.findMany({
+    where: eq(schema.deliveryReceipts.salesOrderId, targetId),
+  });
+  if (drs.length > 0) {
+    return c.json({
+      success: false,
+      error: 'Cannot delete Sales Invoice ' + soNumber + ' because it has ' + drs.length + ' active Delivery Receipt(s). Please void or delete the deliveries in Outbound first.',
+    }, 400);
+  }
+
+  // 2. Safety check: Payment Receipts (RV) or Paid Invoices
+  const hasPayments = (existing.invoices || []).some(
+    (inv) => inv.paidAmountCents > 0 || inv.status === 'PAID' || inv.status === 'PARTIALLY_PAID'
+  );
+  if (hasPayments) {
+    return c.json({
+      success: false,
+      error: 'Cannot delete Sales Invoice ' + soNumber + ' because payments have already been collected against it. Please reverse or remove customer payment receipts first.',
+    }, 400);
+  }
+
+  // 3. Delete double-entry journal entries for this invoice if any
+  try {
+    await db.delete(schema.journalEntries).where(
+      or(
+        like(schema.journalEntries.description, '%Sales Invoice ' + soNumber + '%'),
+        like(schema.journalEntries.description, '%Sales Invoice ' + soNumber.replace(/^SO-/i, 'SI-') + '%')
+      )
+    );
+  } catch (e) {
+    console.error('Error cleaning up journal entries for sales order:', e);
+  }
+
+  // 4. Delete linked invoice items and invoices
+  const invoiceIds = (existing.invoices || []).map((inv) => inv.id);
+  for (const invId of invoiceIds) {
+    await db.delete(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, invId));
+    await db.delete(schema.invoices).where(eq(schema.invoices.id, invId));
+  }
+
+  // 5. Delete sales order items
+  await db.delete(schema.salesOrderItems).where(eq(schema.salesOrderItems.salesOrderId, targetId));
+
+  // 6. Delete sales order
+  await db.delete(schema.salesOrders).where(eq(schema.salesOrders.id, targetId));
+
+  return c.json({ success: true, message: 'Sales Invoice ' + soNumber + ' deleted successfully' });
 });
 
 // POST /api/sales/invoices/:id/receipt - Customer Payment Receipt
@@ -2459,9 +2975,9 @@ app.get('/api/outbound/receipts', async (c) => {
     const inv = dr.invoice;
     const mappedInv = inv
       ? {
-          ...inv,
-          invoiceNumber: num || (inv.invoiceNumber ? inv.invoiceNumber.replace(/^SO-/i, 'SI-').replace(/^INV-/i, 'SI-') : num),
-        }
+        ...inv,
+        invoiceNumber: num || (inv.invoiceNumber ? inv.invoiceNumber.replace(/^SO-/i, 'SI-').replace(/^INV-/i, 'SI-') : num),
+      }
       : (num ? { id: dr.invoiceId || dr.id, invoiceNumber: num, status: 'ISSUED' } : null);
     return {
       ...dr,
@@ -2568,7 +3084,7 @@ async function executeDeliveryReceipt(
       try {
         const conf = JSON.parse(opsSetting.value);
         if (conf.drPrefix) prefix = conf.drPrefix;
-      } catch {}
+      } catch { }
     }
     const lastDR = await db.query.deliveryReceipts.findFirst({
       orderBy: [desc(schema.deliveryReceipts.createdAt)],
@@ -2587,10 +3103,10 @@ async function executeDeliveryReceipt(
 
   try {
     await db.run(sql`ALTER TABLE delivery_receipts ADD COLUMN status text NOT NULL DEFAULT 'IN_TRANSIT'`);
-  } catch {}
+  } catch { }
   try {
     await db.run(sql`ALTER TABLE delivery_receipts ADD COLUMN arrived_at text`);
-  } catch {}
+  } catch { }
 
   const drInsert = db.insert(schema.deliveryReceipts).values({
     id: deliveryReceiptId,
@@ -2620,19 +3136,21 @@ async function executeDeliveryReceipt(
       })
     );
 
-    // Decrement inventory via stock movement
-    batchStatements.push(
-      db.insert(schema.stockMovements).values({
-        id: crypto.randomUUID(),
-        productId: soItem.productId,
-        type: 'OUT',
-        quantity: shipItem.quantityShipped,
-        unitCostCents: soItem.product.costPriceCents,
-        referenceType: 'SO_DELIVERY',
-        referenceId: drNumber,
-        notes: 'Delivery for ' + so.soNumber,
-      })
-    );
+    // Decrement inventory via stock movement only for physical products
+    if (soItem.product?.type !== 'SERVICE') {
+      batchStatements.push(
+        db.insert(schema.stockMovements).values({
+          id: crypto.randomUUID(),
+          productId: soItem.productId,
+          type: 'OUT',
+          quantity: shipItem.quantityShipped,
+          unitCostCents: soItem.product.costPriceCents,
+          referenceType: 'SO_DELIVERY',
+          referenceId: drNumber,
+          notes: 'Delivery for ' + so.soNumber,
+        })
+      );
+    }
 
     // Update SO Item quantity delivered
     const updatedQty = soItem.quantityShipped + shipItem.quantityShipped;
@@ -2645,7 +3163,10 @@ async function executeDeliveryReceipt(
   // A SO is only fully FULFILLED once every line item's delivered quantity meets its
   // ordered quantity; otherwise it's PARTIALLY_FULFILLED so the remainder still shows
   // up in Delivery Receipts.
-  const isFullyDelivered = so.items.every((item) => (updatedQtyByItemId.get(item.id) ?? item.quantityShipped) >= item.quantity);
+  const isFullyDelivered = so.items.every((item) => {
+    if (item.product?.type === 'SERVICE') return true;
+    return (updatedQtyByItemId.get(item.id) ?? item.quantityShipped) >= item.quantity;
+  });
   batchStatements.push(
     db
       .update(schema.salesOrders)
@@ -2915,12 +3436,12 @@ app.get('/api/accounting/vouchers', async (c) => {
       let parsedItems = [];
       try {
         if (pv.items) parsedItems = JSON.parse(pv.items);
-      } catch {}
+      } catch { }
 
       let parsedSignatories = null;
       try {
         if (pv.signatories) parsedSignatories = JSON.parse(pv.signatories);
-      } catch {}
+      } catch { }
 
       let tag: string | null = pv.referenceType;
       let cleanNotes = pv.notes || '';

@@ -172,7 +172,7 @@ async function loadInventory() {
     inventorySearchQuery = (typeof getUrlParam === 'function' ? getUrlParam('search') : '') || '';
 
     const [productsRes, categoriesRes] = await Promise.all([
-      apiFetch('/api/inventory/products'),
+      apiFetch('/api/inventory/products?type=PRODUCT'),
       apiFetch('/api/inventory/categories'),
     ]);
     const productsJson = await productsRes.json();
@@ -279,7 +279,7 @@ function sortInventoryRows(rows) {
 }
 
 function getInventoryFilteredTotal() {
-  let list = state.products || [];
+  let list = (state.products || []).filter((p) => p.type !== 'SERVICE');
   if (inventoryCategoryTab === 'in_stock') {
     list = list.filter((p) => (p.onHandStock || 0) > 0);
   } else if (inventoryCategoryTab === 'damaged') {
@@ -343,7 +343,7 @@ function scrollInventoryToTop() {
 
 function exportInventoryCsv() {
   const headers = ['SKU', 'Product Name', 'Category', 'UOM', 'Cost Price', 'Selling Price', 'Available Stock', 'Damaged Stock'];
-  const rows = (state.products || []).map((p) => [
+  const rows = (state.products || []).filter((p) => p.type !== 'SERVICE').map((p) => [
     p.sku,
     p.name,
     p.category || 'General',
@@ -419,12 +419,12 @@ function renderInventoryCategoryTabs(savedScroll = null, activeKey = null) {
   const wrap = document.getElementById('inventory-category-tabs');
   if (!wrap) return;
 
-  const countFor = (catName) => (state.products || []).filter((p) => p.category === catName).length;
-  const inStockCount = (state.products || []).filter((p) => (p.onHandStock || 0) > 0).length;
-  const damagedCount = (state.products || []).filter((p) => (p.damagedStock || 0) > 0).length;
+  const countFor = (catName) => (state.products || []).filter((p) => p.type !== 'SERVICE' && p.category === catName).length;
+  const inStockCount = (state.products || []).filter((p) => p.type !== 'SERVICE' && (p.onHandStock || 0) > 0).length;
+  const damagedCount = (state.products || []).filter((p) => p.type !== 'SERVICE' && (p.damagedStock || 0) > 0).length;
 
   const pills = [
-    { key: 'all', label: 'All Products', count: (state.products || []).length },
+    { key: 'all', label: 'All Products', count: (state.products || []).filter((p) => p.type !== 'SERVICE').length },
     { key: 'in_stock', label: 'In Stock', count: inStockCount },
     { key: 'damaged', label: 'Damaged / Quarantine', count: damagedCount },
     ...(state.productCategories || []).map((c) => ({ key: c.name, label: c.name, count: countFor(c.name) })),
@@ -480,7 +480,7 @@ function renderInventoryTable(keepScroll = false) {
     inventoryCategoryTab = 'all';
   }
 
-  let filteredProducts = state.products || [];
+  let filteredProducts = (state.products || []).filter((p) => p.type !== 'SERVICE');
   if (inventoryCategoryTab === 'in_stock') {
     filteredProducts = filteredProducts.filter((p) => (p.onHandStock || 0) > 0);
   } else if (inventoryCategoryTab === 'damaged') {

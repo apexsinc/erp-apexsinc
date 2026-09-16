@@ -76,6 +76,7 @@ export const salesOrderItems = sqliteTable('sales_order_items', {
   quantityShipped: integer('quantity_shipped').notNull().default(0),
   unitPriceCents: integer('unit_price_cents').notNull(),
   subtotalCents: integer('subtotal_cents').notNull(),
+  notes: text('notes'),
 });
 
 /**
@@ -128,6 +129,7 @@ export const invoiceItems = sqliteTable('invoice_items', {
   quantity: integer('quantity').notNull(),
   unitPriceCents: integer('unit_price_cents').notNull(),
   subtotalCents: integer('subtotal_cents').notNull(),
+  notes: text('notes'),
 });
 
 export const customersRelations = relations(customers, ({ many }) => ({

@@ -99,8 +99,11 @@ function renderOutboundContent(container) {
     });
   }
 
-  // Filter Pending Orders
-  const pendingOrders = allOrders.filter((so) => so.status !== 'FULFILLED');
+  // Filter Pending Orders (only orders with deliverable physical products)
+  const pendingOrders = allOrders.filter((so) => {
+    if (so.status === 'FULFILLED' || so.status === 'CANCELLED' || so.status === 'DRAFT') return false;
+    return (so.items || []).some((i) => i.product?.type !== 'SERVICE' && (i.quantity - i.quantityShipped) > 0);
+  });
   let filteredPending = pendingOrders;
   if (outboundSearchQuery) {
     filteredPending = filteredPending.filter((so) => {
@@ -288,7 +291,7 @@ function renderOutboundContent(container) {
 function openCreateDeliveryReceiptModal(preselectedSoId) {
   const eligibleOrders = (state.outboundOrders || []).filter((so) => {
     if (so.status === 'CANCELLED' || so.status === 'DRAFT' || so.status === 'FULFILLED') return false;
-    const hasRemaining = (so.items || []).some((i) => (i.quantity - i.quantityShipped) > 0);
+    const hasRemaining = (so.items || []).some((i) => i.product?.type !== 'SERVICE' && (i.quantity - i.quantityShipped) > 0);
     return hasRemaining;
   });
 
@@ -399,13 +402,16 @@ function handleDeliveryReceiptSoChange() {
   if (!tbody) return;
 
   tbody.innerHTML = (so.items || []).map((item) => {
-    const remaining = item.quantity - item.quantityShipped;
-    const onHand = outboundOnHandStock(item.productId);
-    const maxDeliverable = Math.max(0, Math.min(remaining, onHand));
-    const isCompleted = remaining <= 0;
+    const isService = item.product?.type === 'SERVICE';
+    const remaining = isService ? 0 : (item.quantity - item.quantityShipped);
+    const onHand = isService ? 0 : outboundOnHandStock(item.productId);
+    const maxDeliverable = isService ? 0 : Math.max(0, Math.min(remaining, onHand));
+    const isCompleted = isService || remaining <= 0;
 
     let inputHtml = '';
-    if (isCompleted) {
+    if (isService) {
+      inputHtml = '<span class="badge badge-success" style="font-size: 0.72rem;">✓ Service (N/A)</span>';
+    } else if (isCompleted) {
       inputHtml = '<span class="badge badge-success" style="font-size: 0.72rem;">Delivered</span>';
     } else if (onHand <= 0) {
       inputHtml = '<span class="badge badge-danger" style="font-size: 0.72rem;">Out of Stock</span>';

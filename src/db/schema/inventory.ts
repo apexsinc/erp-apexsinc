@@ -35,6 +35,7 @@ export const products = sqliteTable('products', {
   sellingPriceCents: integer('selling_price_cents').notNull().default(0),
   sellingPriceCurrency: text('selling_price_currency', { enum: ['USD', 'PHP'] }).notNull().default('USD'),
   damagedStock: integer('damaged_stock').notNull().default(0),
+  type: text('type', { enum: ['PRODUCT', 'SERVICE'] }).notNull().default('PRODUCT'),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at')
     .notNull()

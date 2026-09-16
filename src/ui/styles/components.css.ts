@@ -3199,5 +3199,43 @@ body {
     overscroll-behavior-y: contain;
   }
 }
+
+/* ========================================================================== */
+/* AUTOCOMPLETE ITEM COMBOBOX                                                 */
+/* ========================================================================== */
+.product-combobox-container {
+  position: relative;
+  width: 100%;
+}
+.product-combobox-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 1050;
+  background: #ffffff;
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+  max-height: 280px;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+.product-combobox-item {
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+.product-combobox-item:last-child {
+  border-bottom: none;
+}
+.product-combobox-item:hover,
+.product-combobox-item.active {
+  background-color: #f1f5f9;
+}
+.product-combobox-item.selected {
+  background-color: #f0fdf4;
+}
 `;
 

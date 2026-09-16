@@ -22,6 +22,7 @@ const state = {
   user: null,
   activeTab: 'dashboard',
   products: [],
+  services: [],
   productCategories: [],
   vendors: [],
   purchaseOrders: [],
