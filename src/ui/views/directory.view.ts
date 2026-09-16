@@ -361,9 +361,8 @@ function renderProductCategoryTabs(savedScroll = null, activeKey = null) {
 
   let categoryItems = [];
   if (isServices) {
-    const serviceCats = new Set((state.services || []).map((s) => s.category).filter(Boolean));
-    ['Installation', 'Maintenance', 'Calibration', 'Consulting', 'Engineering', 'Technical Support', 'Training', 'Services'].forEach((c) => serviceCats.add(c));
-    categoryItems = Array.from(serviceCats).sort().map((c) => ({ key: c, label: c, count: countFor(c) }));
+    // Services do not use category filter pills
+    categoryItems = [];
   } else {
     categoryItems = (state.productCategories || []).map((c) => ({ key: c.name, label: c.name, count: countFor(c.name) }));
   }
@@ -391,7 +390,7 @@ function renderProductCategoryTabs(savedScroll = null, activeKey = null) {
   wrap.innerHTML = \`
     <div class="category-pills-strip" style="border-top: 1px dashed var(--border-color); padding-top: 1rem;">
       \${pillsHtml}
-      \${can('directory', 'create') || can('inventory', 'create') ? '<button type="button" class="category-pill-btn" onclick="openAddCategoryModal()" style="border-style: dashed; background: transparent; color: #64748b;">+ Add Category</button>' : ''}
+      \${!isServices && (can('directory', 'create') || can('inventory', 'create')) ? '<button type="button" class="category-pill-btn" onclick="openAddCategoryModal()" style="border-style: dashed; background: transparent; color: #64748b;">+ Add Category</button>' : ''}
     </div>
   \`;
 
@@ -609,10 +608,7 @@ function renderDirectoryTable(keepScroll = false) {
 
     tableHeaderHtml = \`<thead><tr>
       <th class="sortable-th" style="width: 130px; min-width: 110px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('sku')" title="Sort by Service Code">Service Code \${directorySortIndicator('sku')}</th>
-      <th class="sortable-th" style="width: 360px; min-width: 320px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('name')" title="Sort by Name">Service Name \${directorySortIndicator('name')}</th>
-      <th class="sortable-th" style="width: 160px; min-width: 140px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('category')" title="Sort by Category">Category \${directorySortIndicator('category')}</th>
-      <th class="sortable-th" style="width: 110px; min-width: 90px; text-align: center; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('unitOfMeasure')" title="Sort by Billing Unit">Billing Unit \${directorySortIndicator('unitOfMeasure')}</th>
-      <th class="sortable-th" style="width: 140px; min-width: 130px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('costPriceCents')" title="Sort by Cost">Cost Rate \${directorySortIndicator('costPriceCents')}</th>
+      <th class="sortable-th" style="min-width: 320px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('name')" title="Sort by Name">Service Name \${directorySortIndicator('name')}</th>
       <th class="sortable-th" style="width: 160px; min-width: 140px; white-space: nowrap; cursor: pointer; user-select: none;" onclick="setDirectorySort('sellingPriceCents')" title="Sort by Standard Rate">Standard Rate \${directorySortIndicator('sellingPriceCents')}</th>
       <th style="width: 120px; text-align: right; white-space: nowrap;">Actions</th>
     </tr></thead>\`;
@@ -631,14 +627,10 @@ function renderDirectoryTable(keepScroll = false) {
               <div style="font-weight: 600; color: #0f172a; font-size: 0.88rem; line-height: 1.35; word-break: normal;">
                 \${escapeHtml(s.name)}
               </div>
-              \${s.description ? '<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px;" title="' + escapeHtml(s.description) + '">' + escapeHtml(s.description) + '</div>' : ''}
             </div>
           </div>
         </td>
-        <td data-label="Category" style="white-space: nowrap;"><span class="badge badge-neutral" style="font-size: 0.74rem;">\${escapeHtml(s.category || 'Services')}</span></td>
-        <td data-label="Billing Unit" style="text-align: center; color: #64748b; font-size: 0.82rem; white-space: nowrap;">per \${escapeHtml(s.unitOfMeasure || 'unit')}</td>
-        <td data-label="Cost Rate" style="white-space: nowrap;">\${s.costPriceCents > 0 ? formatCurrency(s.costPriceCents, s.costPriceCurrency) + ' <span style="color: #94a3b8; font-size: 0.72rem;">' + s.costPriceCurrency + '</span>' : '<span style="color: #94a3b8; font-size: 0.8rem;">—</span>'}</td>
-        <td data-label="Standard Rate" style="white-space: nowrap; font-weight: 700; font-family: monospace; color: #0f172a;">\${s.sellingPriceCents > 0 ? formatCurrency(s.sellingPriceCents, s.sellingPriceCurrency) + ' <span style="color: #64748b; font-size: 0.74rem; font-weight: normal;">/' + escapeHtml(s.unitOfMeasure || 'unit') + '</span>' : '<span style="color: #94a3b8; font-weight: normal; font-size: 0.8rem;">Rate not set</span>'}</td>
+        <td data-label="Standard Rate" style="white-space: nowrap; font-weight: 700; font-family: monospace; color: #0f172a;">\${s.sellingPriceCents > 0 ? formatCurrency(s.sellingPriceCents, s.sellingPriceCurrency) : '<span style="color: #94a3b8; font-weight: normal; font-size: 0.8rem;">Rate not set</span>'}</td>
         <td data-label="Actions" class="td-actions" style="text-align: right; white-space: nowrap;">
           <div style="display: inline-flex; align-items: center; justify-content: flex-end; gap: 0.35rem;">
             <button class="btn btn-secondary btn-sm" onclick="openSetPriceModal('\${s.id}', '\${escapeHtml(s.name).replace(/'/g, "\\\\'")}', \${s.sellingPriceCents || 0}, '\${s.sellingPriceCurrency || 'PHP'}')" style="padding: 0.25rem 0.45rem; line-height: 1;" title="Set Standard Rate">Rate</button>
@@ -651,7 +643,7 @@ function renderDirectoryTable(keepScroll = false) {
           </div>
         </td>
       </tr>
-    \`).join('') || '<tr><td colspan="7" style="text-align: center; color: #64748b; padding: 2rem;">No services found. Click "+ Add Service" to create one.</td></tr>';
+    \`).join('') || '<tr><td colspan="4" style="text-align: center; color: #64748b; padding: 2rem;">No services found. Click "+ Add Service" to create one.</td></tr>';
 
     footerSubtext = '<p style="padding: 0.75rem 0 1rem; font-size: 0.78rem; color: #94a3b8;">Services are billable non-stock items used in Sales & Invoicing. They do not require warehouse inventory or delivery receipts.</p>';
   } else if (directoryActiveTab === 'pricelist') {
@@ -1326,27 +1318,10 @@ function openNewServiceModal() {
         <label class="form-label">Service Name *</label>
         <input type="text" id="ns-name" class="form-input" placeholder="e.g. On-Site Installation & Calibration" required />
       </div>
-      <div class="form-group">
-        <label class="form-label">Category *</label>
-        <div style="display: flex; gap: 0.5rem;">
-          <select id="ns-category" class="form-select" style="flex: 1;" required>\${serviceCategoryOptionsHtml('Services')}</select>
-          <button type="button" class="btn btn-secondary btn-sm" onclick="quickAddCategory('ns-category')">+ New</button>
-        </div>
-      </div>
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Billing Unit *</label>
-          <select id="ns-uom" class="form-select" required>
-            <option value="project" selected>project</option>
-            <option value="hour">hour (hr)</option>
-            <option value="day">day</option>
-            <option value="session">session</option>
-            <option value="visit">visit</option>
-            <option value="month">month (mo)</option>
-            <option value="job">job</option>
-            <option value="lot">lot</option>
-            <option value="unit">unit</option>
-          </select>
+          <label class="form-label">Standard Rate / Selling Price *</label>
+          <input type="number" id="ns-selling-price" class="form-input" step="0.01" min="0" placeholder="0.00" required />
         </div>
         <div class="form-group">
           <label class="form-label">Currency *</label>
@@ -1356,22 +1331,8 @@ function openNewServiceModal() {
           </select>
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Standard Rate / Selling Price *</label>
-          <input type="number" id="ns-selling-price" class="form-input" step="0.01" min="0" placeholder="0.00" required />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Base Cost Rate (Optional)</label>
-          <input type="number" id="ns-cost-price" class="form-input" step="0.01" min="0" placeholder="0.00" />
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Description (Optional)</label>
-        <textarea id="ns-description" class="form-input" rows="2" placeholder="Scope of service, deliverables, or specifications"></textarea>
-      </div>
-      <p style="margin: -0.25rem 0 0; font-size: 0.78rem; color: #94a3b8;">
-        Services are non-stock billable items referenced in Sales & Invoicing. They do not affect physical warehouse inventory.
+      <p style="margin: 0.5rem 0 0; font-size: 0.78rem; color: #94a3b8;">
+        Services are non-stock billable items referenced in Sales &amp; Invoicing. They do not affect physical warehouse inventory.
       </p>
     </form>
   \`;
@@ -1388,12 +1349,8 @@ async function submitNewService(e) {
 
   const sku = (document.getElementById('ns-sku')?.value || '').trim();
   const name = (document.getElementById('ns-name')?.value || '').trim();
-  const category = (document.getElementById('ns-category')?.value || '').trim();
-  const unitOfMeasure = (document.getElementById('ns-uom')?.value || 'unit').trim();
   const currency = document.getElementById('ns-currency')?.value || 'PHP';
   const sellingPriceVal = parseFloat(document.getElementById('ns-selling-price')?.value || '0');
-  const costPriceVal = parseFloat(document.getElementById('ns-cost-price')?.value || '0');
-  const description = (document.getElementById('ns-description')?.value || '').trim();
 
   if (!sku || !name) {
     showToast('Service Code and Name are required', 'warning');
@@ -1414,13 +1371,8 @@ async function submitNewService(e) {
       body: JSON.stringify({
         sku,
         name,
-        category: category || 'Services',
-        unitOfMeasure: unitOfMeasure || 'unit',
         sellingPriceCents: Math.round(sellingPriceVal * 100),
         sellingPriceCurrency: currency,
-        costPriceCents: Math.round(costPriceVal * 100),
-        costPriceCurrency: currency,
-        description: description || undefined,
       }),
     });
     const json = await res.json();
@@ -1459,27 +1411,10 @@ function openEditServiceModal(serviceId) {
         <label class="form-label">Service Name *</label>
         <input type="text" id="es-name" class="form-input" value="\${escapeHtml(s.name || '')}" required />
       </div>
-      <div class="form-group">
-        <label class="form-label">Category *</label>
-        <div style="display: flex; gap: 0.5rem;">
-          <select id="es-category" class="form-select" style="flex: 1;" required>\${serviceCategoryOptionsHtml(s.category)}</select>
-          <button type="button" class="btn btn-secondary btn-sm" onclick="quickAddCategory('es-category')">+ New</button>
-        </div>
-      </div>
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Billing Unit *</label>
-          <select id="es-uom" class="form-select" required>
-            <option value="project" \${s.unitOfMeasure === 'project' ? 'selected' : ''}>project</option>
-            <option value="hour" \${s.unitOfMeasure === 'hour' ? 'selected' : ''}>hour (hr)</option>
-            <option value="day" \${s.unitOfMeasure === 'day' ? 'selected' : ''}>day</option>
-            <option value="session" \${s.unitOfMeasure === 'session' ? 'selected' : ''}>session</option>
-            <option value="visit" \${s.unitOfMeasure === 'visit' ? 'selected' : ''}>visit</option>
-            <option value="month" \${s.unitOfMeasure === 'month' ? 'selected' : ''}>month (mo)</option>
-            <option value="job" \${s.unitOfMeasure === 'job' ? 'selected' : ''}>job</option>
-            <option value="lot" \${s.unitOfMeasure === 'lot' ? 'selected' : ''}>lot</option>
-            <option value="unit" \${s.unitOfMeasure === 'unit' ? 'selected' : ''}>unit</option>
-          </select>
+          <label class="form-label">Standard Rate / Selling Price *</label>
+          <input type="number" id="es-selling-price" class="form-input" step="0.01" min="0" value="\${((s.sellingPriceCents || 0) / 100).toFixed(2)}" required />
         </div>
         <div class="form-group">
           <label class="form-label">Currency *</label>
@@ -1488,20 +1423,6 @@ function openEditServiceModal(serviceId) {
             <option value="USD" \${s.sellingPriceCurrency === 'USD' ? 'selected' : ''}>USD ($)</option>
           </select>
         </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Standard Rate / Selling Price *</label>
-          <input type="number" id="es-selling-price" class="form-input" step="0.01" min="0" value="\${((s.sellingPriceCents || 0) / 100).toFixed(2)}" required />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Base Cost Rate</label>
-          <input type="number" id="es-cost-price" class="form-input" step="0.01" min="0" value="\${s.costPriceCents ? ((s.costPriceCents / 100).toFixed(2)) : ''}" placeholder="0.00" />
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Description (Optional)</label>
-        <textarea id="es-description" class="form-input" rows="2" placeholder="Scope of service, deliverables, or specifications">\${escapeHtml(s.description || '')}</textarea>
       </div>
     </form>
   \`;
@@ -1518,12 +1439,8 @@ async function submitEditService(e, serviceId) {
 
   const sku = (document.getElementById('es-sku')?.value || '').trim();
   const name = (document.getElementById('es-name')?.value || '').trim();
-  const category = (document.getElementById('es-category')?.value || '').trim();
-  const unitOfMeasure = (document.getElementById('es-uom')?.value || 'unit').trim();
   const currency = document.getElementById('es-currency')?.value || 'PHP';
   const sellingPriceVal = parseFloat(document.getElementById('es-selling-price')?.value || '0');
-  const costPriceVal = parseFloat(document.getElementById('es-cost-price')?.value || '0');
-  const description = (document.getElementById('es-description')?.value || '').trim();
 
   if (!sku || !name) {
     showToast('Service Code and Name are required', 'warning');
@@ -1544,13 +1461,8 @@ async function submitEditService(e, serviceId) {
       body: JSON.stringify({
         sku,
         name,
-        category: category || 'Services',
-        unitOfMeasure: unitOfMeasure || 'unit',
         sellingPriceCents: Math.round(sellingPriceVal * 100),
         sellingPriceCurrency: currency,
-        costPriceCents: Math.round(costPriceVal * 100),
-        costPriceCurrency: currency,
-        description: description || null,
       }),
     });
     const json = await res.json();

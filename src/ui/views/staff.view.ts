@@ -74,24 +74,24 @@ function renderStaffContent(container) {
 
     empRows +=
       '<tr>' +
-      '<td><strong style="font-family: monospace; color: var(--primary);">' + emp.employeeCode + '</strong></td>' +
-      '<td>' +
+      '<td data-label="Code"><strong style="font-family: monospace; color: var(--primary);">' + emp.employeeCode + '</strong></td>' +
+      '<td data-label="Employee">' +
       '<div style="font-weight: 600; color: #1e293b;">' + emp.firstName + ' ' + emp.lastName + '</div>' +
       '<div style="font-size: 0.76rem; color: #64748b;">' + emp.email + (emp.phone ? ' • ' + emp.phone : '') + '</div>' +
       (hasUser ? '<div style="margin-top: 0.2rem;"><span class="badge badge-primary" style="font-size: 0.65rem; padding: 0.1rem 0.35rem;">🔐 ' + emp.user.role + ' Account</span></div>' : '') +
       '</td>' +
-      '<td>' +
+      '<td data-label="Dept / Position">' +
       '<div style="font-weight: 500;">' + (emp.department || '—') + '</div>' +
       '<div style="font-size: 0.76rem; color: #64748b;">' + (emp.position || '—') + '</div>' +
       '</td>' +
-      '<td style="font-size: 0.82rem; color: #475569;">' + (emp.hireDate ? emp.hireDate.slice(0, 10) : '—') + '</td>' +
-      '<td>' + formatCurrency(salary?.baseSalaryCents) + '</td>' +
-      '<td>' + formatCurrency(salary?.allowancesCents) + '</td>' +
-      '<td>' + formatCurrency(salary?.deductionsCents) + '</td>' +
-      '<td><strong style="color: #0f766e;">' + formatCurrency(salary?.netSalaryCents) + '</strong></td>' +
-      '<td><span class="badge ' + statusClass + '"><span class="badge-dot"></span>' + (emp.status || 'ACTIVE') + '</span></td>' +
-      '<td style="text-align: right; white-space: nowrap;">' +
-      '<div style="display: inline-flex; gap: 0.35rem; justify-content: flex-end;">' +
+      '<td data-label="Hire Date" style="font-size: 0.82rem; color: #475569;">' + (emp.hireDate ? emp.hireDate.slice(0, 10) : '—') + '</td>' +
+      '<td data-label="Base Salary">' + formatCurrency(salary?.baseSalaryCents) + '</td>' +
+      '<td data-label="Allowances">' + formatCurrency(salary?.allowancesCents) + '</td>' +
+      '<td data-label="Deductions">' + formatCurrency(salary?.deductionsCents) + '</td>' +
+      '<td data-label="Net Pay"><strong style="color: #0f766e;">' + formatCurrency(salary?.netSalaryCents) + '</strong></td>' +
+      '<td data-label="Status"><span class="badge ' + statusClass + '"><span class="badge-dot"></span>' + (emp.status || 'ACTIVE') + '</span></td>' +
+      '<td class="td-actions" style="text-align: right; white-space: nowrap;">' +
+      '<div style="display: inline-flex; gap: 0.35rem; justify-content: flex-end; flex-wrap: wrap;">' +
       '<button type="button" class="btn btn-secondary btn-sm" style="padding: 0.3rem 0.5rem;" title="View Profile" onclick="openViewEmployeeModal(\\\'' + emp.id + '\\\')">' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' +
       '</button>' +

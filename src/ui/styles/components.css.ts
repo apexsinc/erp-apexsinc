@@ -1747,8 +1747,9 @@ export const COMPONENTS_CSS = `
   }
 
   .modal-backdrop {
-    padding: 0.5rem !important;
-    align-items: center !important;
+    padding: 0 !important;
+    align-items: flex-end !important;
+    justify-content: center !important;
   }
 
   .modal-dialog,
@@ -1757,21 +1758,47 @@ export const COMPONENTS_CSS = `
   .modal-dialog-xl {
     max-width: 100% !important;
     width: 100% !important;
-    max-height: calc(100dvh - 1rem) !important;
-    margin: 0 auto !important;
+    max-height: 92dvh !important;
+    height: auto !important;
+    margin: 0 !important;
+    border-radius: 20px 20px 0 0 !important;
     display: flex !important;
     flex-direction: column !important;
+    animation: slideUpModal 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
   }
 
   .modal-body {
-    max-height: calc(100dvh - 125px) !important;
+    max-height: calc(92dvh - 130px) !important;
+    flex: 1 1 auto !important;
     padding: 1rem !important;
     overflow-y: auto !important;
+    overflow-x: hidden !important;
     -webkit-overflow-scrolling: touch !important;
   }
 
   .modal-header {
-    padding: 0.95rem 1.15rem !important;
+    padding: 1rem 1.15rem 0.85rem !important;
+    border-radius: 20px 20px 0 0 !important;
+    position: relative !important;
+  }
+
+  /* Drag handle indicator */
+  .modal-header::before {
+    content: '' !important;
+    display: block !important;
+    position: absolute !important;
+    top: 8px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 36px !important;
+    height: 4px !important;
+    background: #cbd5e1 !important;
+    border-radius: 9999px !important;
+  }
+
+  @keyframes slideUpModal {
+    from { transform: translateY(100%); opacity: 0.8; }
+    to { transform: translateY(0); opacity: 1; }
   }
 
   /* Viewport Containment: Zero Horizontal Sliding on Mobile */
@@ -2159,6 +2186,73 @@ export const COMPONENTS_CSS = `
 
   .toast {
     max-width: 100% !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* --- Form Row: Stack on mobile --- */
+  .form-row {
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+  }
+
+  /* --- All form grids collapse on mobile --- */
+  .modal-body [style*="display: grid"],
+  .modal-dialog [style*="display: grid"] {
+    grid-template-columns: 1fr !important;
+    gap: 0.65rem !important;
+  }
+
+  /* --- Form inputs: prevent iOS auto-zoom (font-size must be >= 16px) --- */
+  .modal-body .form-input,
+  .modal-body .form-select,
+  .page-body .form-input,
+  .page-body .form-select,
+  input[type="text"], input[type="email"], input[type="number"],
+  input[type="date"], input[type="tel"], input[type="password"],
+  select, textarea {
+    font-size: 16px !important;
+  }
+
+  /* --- Staff/HR filter bar mobile --- */
+  #view-staff [style*="padding: 0 1.25rem"] {
+    flex-direction: column !important;
+    gap: 0.65rem !important;
+    padding: 0 0.85rem 1rem !important;
+  }
+
+  #view-staff input[type="text"],
+  #view-staff select {
+    min-width: 0 !important;
+    width: 100% !important;
+    flex: 1 1 100% !important;
+  }
+
+  #view-staff [style*="display: flex; gap: 0.75rem; flex-wrap: wrap; flex: 1"] {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* --- Panel header: stack actions on mobile --- */
+  .panel-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.75rem !important;
+  }
+
+  .panel-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+    width: 100% !important;
+  }
+
+  .panel-actions button,
+  .panel-actions .btn {
+    flex: 1 1 auto !important;
+    justify-content: center !important;
+    text-align: center !important;
+    min-width: 0 !important;
   }
 }
 
