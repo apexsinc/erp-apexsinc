@@ -249,22 +249,41 @@ function showApp() {
 // Checks customized employee permissions first, then falls back to base role matrix.
 function applyRolePermissions() {
   const permissions = window.__ROLE_PERMISSIONS__ || {};
-  const role = state.user && state.user.role;
+  const role = ((state.user && state.user.role) || '').toUpperCase();
   let allowedTabs = [];
 
   if (role === 'ADMIN') {
-    allowedTabs = [
-      'dashboard', 'directory', 'inventory', 'purchasing', 'inbound',
-      'sales', 'outbound', 'vouchers', 'accounting', 'payroll',
-      'staff', 'admin', 'settings'
-    ];
+    allowedTabs = (permissions && permissions['ADMIN'] && permissions['ADMIN'].length)
+      ? permissions['ADMIN'].slice()
+      : [
+          'dashboard', 'directory', 'inventory', 'purchasing', 'inbound',
+          'quotations', 'sales', 'outbound', 'vouchers', 'accounting', 'payroll',
+          'staff', 'admin', 'settings'
+        ];
+    // ADMIN has full authority: ensure all standard system tabs are always allowed
+    ['dashboard', 'directory', 'inventory', 'purchasing', 'inbound', 'quotations', 'sales', 'outbound', 'vouchers', 'accounting', 'payroll', 'staff', 'admin', 'settings'].forEach((tab) => {
+      if (!allowedTabs.includes(tab)) allowedTabs.push(tab);
+    });
   } else if (state.user && state.user.permissions) {
     // Check user's direct customized effective CRUD matrix
     allowedTabs = Object.keys(state.user.permissions).filter(
       (m) => state.user.permissions[m] && Boolean(state.user.permissions[m].read)
     );
+    // If a new module like quotations is not yet present in stale cached permissions, fallback to role default
+    const roleDefault = (role && permissions[role]) || [];
+    for (const mod of roleDefault) {
+      if (state.user.permissions[mod] === undefined && !allowedTabs.includes(mod)) {
+        allowedTabs.push(mod);
+      }
+    }
   } else if (state.user && Array.isArray(state.user.visibleModules)) {
     allowedTabs = state.user.visibleModules.slice();
+    const roleDefault = (role && permissions[role]) || [];
+    for (const mod of roleDefault) {
+      if (!allowedTabs.includes(mod)) {
+        allowedTabs.push(mod);
+      }
+    }
   } else {
     allowedTabs = ((role && permissions[role]) || []).slice();
   }

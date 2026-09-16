@@ -13,6 +13,7 @@ export const ALL_MODULES = [
   'inventory',
   'purchasing',
   'inbound',
+  'quotations',
   'sales',
   'outbound',
   'vouchers',
@@ -61,6 +62,12 @@ export const MODULE_METADATA: Record<
     category: 'Operations',
     route: '/inbound',
     description: 'Goods Receipt Notes (GRN), shipment receiving & warehouse physical check-in',
+  },
+  quotations: {
+    name: 'Quotations',
+    category: 'Operations',
+    route: '/quotations',
+    description: 'Customer price proposals, formal service quotations & PDF generation',
   },
   sales: {
     name: 'Sales & Invoicing',
@@ -133,6 +140,7 @@ export const DEFAULT_CRUD_MATRIX: Record<string, Record<Module, ModuleCrudPermis
     inventory:   { create: true,  read: true,  update: true,  delete: true  },
     purchasing:  { create: true,  read: true,  update: true,  delete: true  },
     inbound:     { create: true,  read: true,  update: true,  delete: true  },
+    quotations:  { create: true,  read: true,  update: true,  delete: true  },
     sales:       { create: true,  read: true,  update: true,  delete: true  },
     outbound:    { create: true,  read: true,  update: true,  delete: true  },
     vouchers:    { create: true,  read: true,  update: true,  delete: false },
@@ -147,6 +155,7 @@ export const DEFAULT_CRUD_MATRIX: Record<string, Record<Module, ModuleCrudPermis
     inventory:   { create: false, read: true,  update: false, delete: false },
     purchasing:  { create: false, read: false, update: false, delete: false },
     inbound:     { create: true,  read: true,  update: true,  delete: false },
+    quotations:  { create: true,  read: true,  update: true,  delete: false },
     sales:       { create: true,  read: true,  update: true,  delete: false },
     outbound:    { create: true,  read: true,  update: true,  delete: false },
     vouchers:    { create: true,  read: true,  update: false, delete: false },
@@ -470,8 +479,8 @@ export async function saveUserCustomPermissions(
     });
   }
 
-  if (rowsToInsert.length > 0) {
-    await db.insert(schema.userPermissions).values(rowsToInsert);
+  for (const row of rowsToInsert) {
+    await db.insert(schema.userPermissions).values(row);
   }
 }
 
@@ -531,8 +540,8 @@ export async function seedDefaultPermissions(db: Database): Promise<void> {
       }
     }
 
-    if (permsToInsert.length > 0) {
-      await db.insert(schema.rolePermissions).values(permsToInsert);
+    for (const perm of permsToInsert) {
+      await db.insert(schema.rolePermissions).values(perm);
     }
   } catch (err) {
     console.error('Error seeding role_permissions table:', err);

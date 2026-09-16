@@ -6,3 +6,4 @@ export * from './vouchers';
 export * from './payroll';
 export * from './auth';
 export * from './settings';
+export * from './quotations';

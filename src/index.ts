@@ -27,7 +27,7 @@ export async function ensureSalesItemsNotesColumn(db: Database): Promise<void> {
   } catch { }
   salesItemsNotesColumnChecked = true;
 }
-import { renderAppHtml, renderPurchaseOrderPrintHtml } from './ui';
+import { renderAppHtml, renderPurchaseOrderPrintHtml, renderQuotationPrintHtml } from './ui';
 import { authMiddleware, requireAdmin, requireModule } from './middleware/auth';
 import { hashPassword, verifyPasswordLegacyAware } from './lib/password';
 import { verifyTurnstileToken } from './lib/turnstile';
@@ -161,6 +161,8 @@ app.use('/api/purchasing/*', authMiddleware, async (c, next) => {
   return requireModule('purchasing')(c, next);
 });
 app.use('/api/inbound/*', authMiddleware, requireModule('inbound'));
+app.use('/api/quotations/*', authMiddleware, requireModule('quotations'));
+app.use('/api/quotations', authMiddleware, requireModule('quotations'));
 app.use('/api/sales/*', authMiddleware, requireModule('sales'));
 app.use('/api/outbound/*', authMiddleware, requireModule('outbound'));
 app.use('/api/accounting/vouchers/*', authMiddleware, requireVoucherOrAccounting());
@@ -256,12 +258,40 @@ async function servePurchaseOrderPrint(c: any) {
   return c.html(renderPurchaseOrderPrintHtml(po as any));
 }
 
+async function serveQuotationPrint(c: any) {
+  const db = createDbClient(c.env.DB);
+  const quoteIdOrNumber = c.req.param('id');
+
+  const quote = await db.query.quotations.findFirst({
+    where: (qTable, { eq, or }) =>
+      or(
+        eq(qTable.id, quoteIdOrNumber),
+        eq(qTable.quoteNumber, quoteIdOrNumber)
+      ),
+    with: { customer: true, items: { with: { product: true } } },
+  });
+
+  if (!quote) {
+    return c.html(
+      '<div style="padding: 3rem; font-family: sans-serif; color: #dc2626; text-align: center;"><h2>Quotation not found</h2><p>The requested Quotation could not be located in the database.</p></div>',
+      404
+    );
+  }
+
+  c.header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  return c.html(renderQuotationPrintHtml(quote as any));
+}
+
 app.get('/purchasing', serveHtmlApp);
 app.get('/purchasing/orders/:id/print', servePurchaseOrderPrint);
 app.get('/purchasing/po/:id/print', servePurchaseOrderPrint);
 app.get('/purchasing/po/:id', servePurchaseOrderPrint);
 app.get('/purchasing/orders/:id', servePurchaseOrderPrint);
 app.get('/inbound', serveHtmlApp);
+app.get('/quotations', serveHtmlApp);
+app.get('/quotations/:id/print', serveQuotationPrint);
+app.get('/quotations/:id/pdf', serveQuotationPrint);
+app.get('/quotations/:id', serveQuotationPrint);
 app.get('/sales', serveHtmlApp);
 app.get('/outbound', serveHtmlApp);
 app.get('/vouchers', serveHtmlApp);
@@ -2618,7 +2648,18 @@ app.delete('/api/sales/orders/:id', async (c) => {
   }
 
   // 2. Safety check: Payment Receipts (RV) or Paid Invoices
-  const hasPayments = (existing.invoices || []).some(
+  const linkedInvoices = await db.query.invoices.findMany({
+    where: eq(schema.invoices.salesOrderId, targetId),
+    with: { items: true },
+  });
+  const allInvoices = [...(existing.invoices || [])];
+  for (const inv of linkedInvoices) {
+    if (!allInvoices.some((i) => i.id === inv.id)) {
+      allInvoices.push(inv);
+    }
+  }
+
+  const hasPayments = allInvoices.some(
     (inv) => inv.paidAmountCents > 0 || inv.status === 'PAID' || inv.status === 'PARTIALLY_PAID'
   );
   if (hasPayments) {
@@ -2626,6 +2667,19 @@ app.delete('/api/sales/orders/:id', async (c) => {
       success: false,
       error: 'Cannot delete Sales Invoice ' + soNumber + ' because payments have already been collected against it. Please reverse or remove customer payment receipts first.',
     }, 400);
+  }
+
+  const invoiceIds = allInvoices.map((inv) => inv.id);
+  if (invoiceIds.length > 0) {
+    const linkedRvs = await db.query.receiptVouchers.findMany({
+      where: inArray(schema.receiptVouchers.invoiceId, invoiceIds),
+    });
+    if (linkedRvs.length > 0) {
+      return c.json({
+        success: false,
+        error: 'Cannot delete Sales Invoice ' + soNumber + ' because payment receipt vouchers exist for it. Please reverse or remove customer payment receipts first.',
+      }, 400);
+    }
   }
 
   // 3. Delete double-entry journal entries for this invoice if any
@@ -2641,19 +2695,361 @@ app.delete('/api/sales/orders/:id', async (c) => {
   }
 
   // 4. Delete linked invoice items and invoices
-  const invoiceIds = (existing.invoices || []).map((inv) => inv.id);
   for (const invId of invoiceIds) {
     await db.delete(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, invId));
     await db.delete(schema.invoices).where(eq(schema.invoices.id, invId));
   }
+  await db.delete(schema.invoices).where(eq(schema.invoices.salesOrderId, targetId));
 
-  // 5. Delete sales order items
+  // 5. Unlink any quotations converted into this Sales Order
+  // Revert their status to ACCEPTED and clear salesOrderId so the quotation record is preserved and foreign key constraint is satisfied
+  await db.update(schema.quotations)
+    .set({
+      salesOrderId: null,
+      status: 'ACCEPTED',
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(schema.quotations.salesOrderId, targetId));
+
+  // 6. Delete sales order items
   await db.delete(schema.salesOrderItems).where(eq(schema.salesOrderItems.salesOrderId, targetId));
 
-  // 6. Delete sales order
+  // 7. Delete sales order
   await db.delete(schema.salesOrders).where(eq(schema.salesOrders.id, targetId));
 
   return c.json({ success: true, message: 'Sales Invoice ' + soNumber + ' deleted successfully' });
+});
+
+// ============================================================================
+// QUOTATIONS API ENDPOINTS
+// ============================================================================
+
+// GET /api/quotations - List all quotations
+app.get('/api/quotations', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const quotes = await db.query.quotations.findMany({
+    with: {
+      customer: true,
+      items: {
+        with: {
+          product: true,
+        },
+      },
+      salesOrder: true,
+    },
+    orderBy: [desc(schema.quotations.createdAt)],
+  });
+  return c.json({ success: true, data: quotes });
+});
+
+// GET /api/quotations/:id - Get single quotation
+app.get('/api/quotations/:id', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const idOrNumber = c.req.param('id');
+  const quote = await db.query.quotations.findFirst({
+    where: or(
+      eq(schema.quotations.id, idOrNumber),
+      eq(schema.quotations.quoteNumber, idOrNumber)
+    ),
+    with: {
+      customer: true,
+      items: {
+        with: {
+          product: true,
+        },
+      },
+      salesOrder: true,
+    },
+  });
+  if (!quote) return c.json({ success: false, error: 'Quotation not found' }, 404);
+  return c.json({ success: true, data: quote });
+});
+
+// POST /api/quotations - Create Quotation
+app.post(
+  '/api/quotations',
+  zValidator(
+    'json',
+    z.object({
+      quoteNumber: z.string().min(1),
+      customerId: z.string().min(1),
+      currency: z.enum(['PHP', 'USD']).default('PHP'),
+      quoteDate: z.string().optional(),
+      validUntil: z.string().optional(),
+      paymentTerms: z.string().default('100% Advance Payment'),
+      bankInfo: z.string().optional(),
+      authorizedSignatoryName: z.string().default('Jeneviev Manatad'),
+      authorizedSignatoryTitle: z.string().default('General Manager'),
+      signatureImageData: z.string().nullable().optional(),
+      notes: z.string().optional(),
+      items: z.array(
+        z.object({
+          productId: z.string().nullable().optional(),
+          partNumber: z.string().optional(),
+          description: z.string().min(1),
+          quantity: z.number().int().positive().default(1),
+          unitPriceCents: z.number().int().nonnegative().default(0),
+          notes: z.string().optional(),
+        })
+      ).min(1),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const body = c.req.valid('json');
+
+    const existing = await db.query.quotations.findFirst({
+      where: eq(schema.quotations.quoteNumber, body.quoteNumber),
+    });
+    if (existing) {
+      return c.json({ success: false, error: `Quotation Number ${body.quoteNumber} already exists` }, 400);
+    }
+
+    const customer = await db.query.customers.findFirst({
+      where: eq(schema.customers.id, body.customerId),
+    });
+    if (!customer) {
+      return c.json({ success: false, error: 'Customer not found in Business Directory' }, 404);
+    }
+
+    let totalAmountCents = 0;
+    const lineItems = body.items.map((item) => {
+      const subtotal = item.quantity * item.unitPriceCents;
+      totalAmountCents += subtotal;
+      return {
+        id: crypto.randomUUID(),
+        productId: item.productId || null,
+        partNumber: item.partNumber || '',
+        description: item.description,
+        quantity: item.quantity,
+        unitPriceCents: item.unitPriceCents,
+        subtotalCents: subtotal,
+        notes: item.notes || null,
+      };
+    });
+
+    const quotationId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await db.insert(schema.quotations).values({
+      id: quotationId,
+      quoteNumber: body.quoteNumber,
+      customerId: body.customerId,
+      status: 'DRAFT',
+      currency: body.currency,
+      totalAmountCents,
+      quoteDate: body.quoteDate || now.slice(0, 10),
+      validUntil: body.validUntil || null,
+      paymentTerms: body.paymentTerms,
+      bankInfo: body.bankInfo || null,
+      authorizedSignatoryName: body.authorizedSignatoryName,
+      authorizedSignatoryTitle: body.authorizedSignatoryTitle,
+      signatureImageData: body.signatureImageData || null,
+      notes: body.notes || null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    for (const it of lineItems) {
+      await db.insert(schema.quotationItems).values({
+        id: it.id,
+        quotationId,
+        productId: it.productId,
+        partNumber: it.partNumber,
+        description: it.description,
+        quantity: it.quantity,
+        unitPriceCents: it.unitPriceCents,
+        subtotalCents: it.subtotalCents,
+        notes: it.notes,
+      });
+    }
+
+    const created = await db.query.quotations.findFirst({
+      where: eq(schema.quotations.id, quotationId),
+      with: { customer: true, items: true },
+    });
+
+    return c.json({ success: true, data: created });
+  }
+);
+
+// PATCH /api/quotations/:id - Update Quotation
+app.patch(
+  '/api/quotations/:id',
+  zValidator(
+    'json',
+    z.object({
+      quoteNumber: z.string().optional(),
+      status: z.enum(['DRAFT', 'SENT', 'ACCEPTED', 'REJECTED', 'CONVERTED', 'EXPIRED']).optional(),
+      quoteDate: z.string().optional(),
+      validUntil: z.string().optional(),
+      paymentTerms: z.string().optional(),
+      bankInfo: z.string().optional(),
+      authorizedSignatoryName: z.string().optional(),
+      authorizedSignatoryTitle: z.string().optional(),
+      signatureImageData: z.string().nullable().optional(),
+      notes: z.string().optional(),
+    })
+  ),
+  async (c) => {
+    const db = createDbClient(c.env.DB);
+    const quoteId = c.req.param('id');
+    const body = c.req.valid('json');
+
+    const existing = await db.query.quotations.findFirst({
+      where: or(eq(schema.quotations.id, quoteId), eq(schema.quotations.quoteNumber, quoteId)),
+    });
+    if (!existing) return c.json({ success: false, error: 'Quotation not found' }, 404);
+
+    const updateData: any = { updatedAt: new Date().toISOString() };
+    if (body.quoteNumber !== undefined) updateData.quoteNumber = body.quoteNumber;
+    if (body.status !== undefined) updateData.status = body.status;
+    if (body.quoteDate !== undefined) updateData.quoteDate = body.quoteDate;
+    if (body.validUntil !== undefined) updateData.validUntil = body.validUntil;
+    if (body.paymentTerms !== undefined) updateData.paymentTerms = body.paymentTerms;
+    if (body.bankInfo !== undefined) updateData.bankInfo = body.bankInfo;
+    if (body.authorizedSignatoryName !== undefined) updateData.authorizedSignatoryName = body.authorizedSignatoryName;
+    if (body.authorizedSignatoryTitle !== undefined) updateData.authorizedSignatoryTitle = body.authorizedSignatoryTitle;
+    if (body.signatureImageData !== undefined) updateData.signatureImageData = body.signatureImageData;
+    if (body.notes !== undefined) updateData.notes = body.notes;
+
+    await db.update(schema.quotations).set(updateData).where(eq(schema.quotations.id, existing.id));
+
+    const updated = await db.query.quotations.findFirst({
+      where: eq(schema.quotations.id, existing.id),
+      with: { customer: true, items: true },
+    });
+
+    return c.json({ success: true, data: updated });
+  }
+);
+
+// DELETE /api/quotations/:id - Delete Quotation
+app.delete('/api/quotations/:id', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const quoteId = c.req.param('id');
+  const existing = await db.query.quotations.findFirst({
+    where: or(eq(schema.quotations.id, quoteId), eq(schema.quotations.quoteNumber, quoteId)),
+  });
+  if (!existing) return c.json({ success: false, error: 'Quotation not found' }, 404);
+
+  if (existing.status === 'CONVERTED' && existing.salesOrderId) {
+    const linkedSo = await db.query.salesOrders.findFirst({
+      where: eq(schema.salesOrders.id, existing.salesOrderId),
+    });
+    if (linkedSo) {
+      return c.json({
+        success: false,
+        error: `Cannot delete quotation ${existing.quoteNumber} because it is linked to active Sales Invoice ${linkedSo.soNumber}. Please delete the Sales Invoice first.`,
+      }, 400);
+    }
+  }
+
+  await db.delete(schema.quotationItems).where(eq(schema.quotationItems.quotationId, existing.id));
+  await db.delete(schema.quotations).where(eq(schema.quotations.id, existing.id));
+
+  return c.json({ success: true, message: `Quotation ${existing.quoteNumber} deleted successfully` });
+});
+
+// POST /api/quotations/:id/convert - Convert Quotation to Sales Invoice
+app.post('/api/quotations/:id/convert', async (c) => {
+  const db = createDbClient(c.env.DB);
+  const quoteId = c.req.param('id');
+  const quote = await db.query.quotations.findFirst({
+    where: or(eq(schema.quotations.id, quoteId), eq(schema.quotations.quoteNumber, quoteId)),
+    with: { customer: true, items: { with: { product: true } } },
+  });
+  if (!quote) return c.json({ success: false, error: 'Quotation not found' }, 404);
+
+  const soId = crypto.randomUUID();
+  const allSo = await db.query.salesOrders.findMany({
+    orderBy: [desc(schema.salesOrders.createdAt)],
+    limit: 1,
+  });
+  let nextSiNum = 'SI-1001';
+  if (allSo.length > 0) {
+    const latest = allSo[0].soNumber;
+    const match = latest.match(/(\d+)$/);
+    if (match) {
+      nextSiNum = latest.slice(0, match.index) + (parseInt(match[1], 10) + 1).toString().padStart(match[1].length, '0');
+    }
+  }
+
+  const now = new Date().toISOString();
+
+  await db.insert(schema.salesOrders).values({
+    id: soId,
+    soNumber: nextSiNum,
+    customerId: quote.customerId,
+    status: 'CONFIRMED',
+    currency: quote.currency as 'USD' | 'PHP',
+    totalAmountCents: quote.totalAmountCents,
+    notes: (quote.notes ? quote.notes + ' | ' : '') + 'Converted from Quotation ' + quote.quoteNumber,
+    orderDate: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  for (const it of quote.items || []) {
+    let prodId = it.productId;
+    if (!prodId) {
+      const p = await db.query.products.findFirst({
+        where: or(
+          eq(schema.products.sku, it.partNumber || ''),
+          eq(schema.products.name, it.description)
+        ),
+      });
+      if (p) {
+        prodId = p.id;
+      } else {
+        prodId = crypto.randomUUID();
+        await db.insert(schema.products).values({
+          id: prodId,
+          sku: it.partNumber || ('SRV-' + Date.now().toString().slice(-5)),
+          name: it.description,
+          type: 'SERVICE',
+          category: 'Services',
+          costPriceCents: 0,
+          costPriceCurrency: quote.currency as 'USD' | 'PHP',
+          sellingPriceCents: it.unitPriceCents,
+          sellingPriceCurrency: quote.currency as 'USD' | 'PHP',
+          unitOfMeasure: 'service',
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    }
+
+    await db.insert(schema.salesOrderItems).values({
+      id: crypto.randomUUID(),
+      salesOrderId: soId,
+      productId: prodId,
+      quantity: it.quantity,
+      quantityShipped: 0,
+      unitPriceCents: it.unitPriceCents,
+      subtotalCents: it.subtotalCents,
+      notes: it.notes || null,
+    });
+  }
+
+  await db.update(schema.quotations).set({
+    status: 'CONVERTED',
+    salesOrderId: soId,
+    updatedAt: now,
+  }).where(eq(schema.quotations.id, quote.id));
+
+  const salesOrder = await db.query.salesOrders.findFirst({
+    where: eq(schema.salesOrders.id, soId),
+    with: { customer: true, items: { with: { product: true } } },
+  });
+
+  return c.json({
+    success: true,
+    data: {
+      quotation: { ...quote, status: 'CONVERTED', salesOrderId: soId },
+      salesOrder,
+    },
+  });
 });
 
 // POST /api/sales/invoices/:id/receipt - Customer Payment Receipt

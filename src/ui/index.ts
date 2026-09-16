@@ -15,6 +15,7 @@ import {
   renderStaffView,
   renderAdminView,
   renderSettingsView,
+  renderQuotationsView,
 } from './views';
 import { APP_CLIENT_JS } from './app.client';
 import { PWA_CLIENT_JS } from './pwa';
@@ -95,6 +96,7 @@ export function renderAppHtml(
         ${renderInventoryView()}
         ${renderPurchasingView()}
         ${renderInboundView()}
+        ${renderQuotationsView()}
         ${renderSalesView()}
         ${renderOutboundView()}
         ${renderVouchersView()}

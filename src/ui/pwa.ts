@@ -36,7 +36,7 @@ export const MANIFEST_JSON = JSON.stringify(
 );
 
 export const SERVICE_WORKER_JS = `
-const CACHE_NAME = 'apexs-erp-v25';
+const CACHE_NAME = 'apexs-erp-v35';
 
 const STATIC_ASSETS = [
   '/',
@@ -180,6 +180,7 @@ if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || wi
     });
 
     navigator.serviceWorker.register('/sw.js').then((reg) => {
+      reg.update().catch(() => {});
       reg.addEventListener('updatefound', () => {
         const newWorker = reg.installing;
         if (newWorker) {

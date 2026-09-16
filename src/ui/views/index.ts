@@ -13,3 +13,5 @@ export * from './staff.view';
 export * from './admin.view';
 export * from './settings.view';
 export * from './po-print.view';
+export * from './quotations.view';
+export * from './quotation-print.view';

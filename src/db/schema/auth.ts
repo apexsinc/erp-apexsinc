@@ -85,7 +85,7 @@ export const rolePermissions = sqliteTable(
       .$defaultFn(() => crypto.randomUUID()),
     role: text('role').notNull(),
     module: text('module', {
-      enum: ['dashboard', 'directory', 'inventory', 'purchasing', 'inbound', 'sales', 'outbound', 'vouchers', 'accounting', 'payroll', 'staff', 'settings'],
+      enum: ['dashboard', 'directory', 'inventory', 'purchasing', 'inbound', 'quotations', 'sales', 'outbound', 'vouchers', 'accounting', 'payroll', 'staff', 'settings'],
     }).notNull(),
     canView: integer('can_view', { mode: 'boolean' }).notNull().default(false),
     canCreate: integer('can_create', { mode: 'boolean' }).notNull().default(false),
@@ -116,7 +116,7 @@ export const userPermissions = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     module: text('module', {
-      enum: ['dashboard', 'directory', 'inventory', 'purchasing', 'inbound', 'sales', 'outbound', 'vouchers', 'accounting', 'payroll', 'staff', 'settings'],
+      enum: ['dashboard', 'directory', 'inventory', 'purchasing', 'inbound', 'quotations', 'sales', 'outbound', 'vouchers', 'accounting', 'payroll', 'staff', 'settings'],
     }).notNull(),
     canCreate: integer('can_create', { mode: 'boolean' }).notNull().default(false),
     canRead: integer('can_read', { mode: 'boolean' }).notNull().default(false),

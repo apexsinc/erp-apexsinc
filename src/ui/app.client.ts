@@ -4,6 +4,7 @@ import { DIRECTORY_CLIENT_JS } from './views/directory.view';
 import { INVENTORY_CLIENT_JS } from './views/inventory.view';
 import { PURCHASING_CLIENT_JS } from './views/purchasing.view';
 import { INBOUND_CLIENT_JS } from './views/inbound.view';
+import { QUOTATIONS_CLIENT_JS } from './views/quotations.view';
 import { SALES_CLIENT_JS } from './views/sales.view';
 import { OUTBOUND_CLIENT_JS } from './views/outbound.view';
 import { VOUCHERS_CLIENT_JS } from './views/vouchers.view';
@@ -28,6 +29,7 @@ const state = {
   purchaseOrders: [],
   inboundOrders: [],
   customers: [],
+  quotations: [],
   salesOrders: [],
   outboundOrders: [],
   employees: [],
@@ -336,6 +338,7 @@ ${DIRECTORY_CLIENT_JS}
 ${INVENTORY_CLIENT_JS}
 ${PURCHASING_CLIENT_JS}
 ${INBOUND_CLIENT_JS}
+${QUOTATIONS_CLIENT_JS}
 ${SALES_CLIENT_JS}
 ${OUTBOUND_CLIENT_JS}
 ${VOUCHERS_CLIENT_JS}
@@ -354,6 +357,7 @@ const ROUTE_TAB_MAP = {
   '/inventory': 'inventory',
   '/purchasing': 'purchasing',
   '/inbound': 'inbound',
+  '/quotations': 'quotations',
   '/sales': 'sales',
   '/outbound': 'outbound',
   '/vouchers': 'vouchers',
@@ -371,6 +375,7 @@ const TAB_ROUTE_MAP = {
   inventory: '/inventory',
   purchasing: '/purchasing',
   inbound: '/inbound',
+  quotations: '/quotations',
   sales: '/sales',
   outbound: '/outbound',
   vouchers: '/vouchers',
@@ -453,6 +458,7 @@ function switchTab(tabName, updateHistory = true, keepQueryParams = true) {
     inventory: 'Inventory',
     purchasing: 'Purchasing',
     inbound: 'Inbound',
+    quotations: 'Quotations',
     sales: 'Sales',
     outbound: 'Deliveries',
     vouchers: 'Vouchers',
@@ -471,6 +477,7 @@ function switchTab(tabName, updateHistory = true, keepQueryParams = true) {
     inventory: 'Inventory & Stock Movements',
     purchasing: 'Purchasing (P2P Procurement)',
     inbound: 'Inbound Deliveries',
+    quotations: 'Quotations & Proposals',
     sales: 'Sales (O2C Orders & Invoices)',
     outbound: 'Delivery Receipts (DR)',
     vouchers: 'Vouchers',
@@ -505,6 +512,7 @@ function switchTab(tabName, updateHistory = true, keepQueryParams = true) {
   if (tabName === 'inventory') loadInventory();
   if (tabName === 'purchasing') loadPurchasing();
   if (tabName === 'inbound') loadInbound();
+  if (tabName === 'quotations') loadQuotations();
   if (tabName === 'sales') loadSales();
   if (tabName === 'outbound') loadOutbound();
   if (tabName === 'vouchers') loadVouchers();

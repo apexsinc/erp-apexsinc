@@ -158,7 +158,7 @@ export function renderInventoryView(): string {
 
 export const INVENTORY_CLIENT_JS = `
 let inventorySearchQuery = '';
-let inventoryCategoryTab = 'all';
+let inventoryCategoryTab = 'in_stock';
 let inventoryVisibleCount = 50;
 const INVENTORY_CHUNK_SIZE = 50;
 let inventorySortField = 'onHandStock';
@@ -282,10 +282,12 @@ function getInventoryFilteredTotal() {
   let list = (state.products || []).filter((p) => p.type !== 'SERVICE');
   if (inventoryCategoryTab === 'in_stock') {
     list = list.filter((p) => (p.onHandStock || 0) > 0);
+  } else if (inventoryCategoryTab === 'out_of_stock') {
+    list = list.filter((p) => (p.onHandStock || 0) <= 0);
   } else if (inventoryCategoryTab === 'damaged') {
     list = list.filter((p) => (p.damagedStock || 0) > 0);
   } else if (inventoryCategoryTab !== 'all') {
-    list = list.filter((p) => p.category === inventoryCategoryTab);
+    list = list.filter((p) => p.category === inventoryCategoryTab && (p.onHandStock || 0) > 0);
   }
   if (inventorySearchQuery) {
     const q = inventorySearchQuery.toLowerCase();
@@ -343,7 +345,17 @@ function scrollInventoryToTop() {
 
 function exportInventoryCsv() {
   const headers = ['SKU', 'Product Name', 'Category', 'UOM', 'Cost Price', 'Selling Price', 'Available Stock', 'Damaged Stock'];
-  const rows = (state.products || []).filter((p) => p.type !== 'SERVICE').map((p) => [
+  let exportList = (state.products || []).filter((p) => p.type !== 'SERVICE');
+  if (inventoryCategoryTab === 'in_stock') {
+    exportList = exportList.filter((p) => (p.onHandStock || 0) > 0);
+  } else if (inventoryCategoryTab === 'out_of_stock') {
+    exportList = exportList.filter((p) => (p.onHandStock || 0) <= 0);
+  } else if (inventoryCategoryTab === 'damaged') {
+    exportList = exportList.filter((p) => (p.damagedStock || 0) > 0);
+  } else if (inventoryCategoryTab !== 'all') {
+    exportList = exportList.filter((p) => p.category === inventoryCategoryTab && (p.onHandStock || 0) > 0);
+  }
+  const rows = exportList.map((p) => [
     p.sku,
     p.name,
     p.category || 'General',
@@ -353,15 +365,15 @@ function exportInventoryCsv() {
     p.onHandStock,
     p.damagedStock || 0,
   ]);
-  exportToCsv('inventory_catalog_' + new Date().toISOString().slice(0, 10), headers, rows);
+  exportToCsv('inventory_stock_' + inventoryCategoryTab + '_' + new Date().toISOString().slice(0, 10), headers, rows);
 }
 
 function renderInventoryContent(container) {
   if (!container) container = document.getElementById('view-inventory');
   if (!container) return;
 
-  if (inventoryCategoryTab !== 'all' && inventoryCategoryTab !== 'in_stock' && inventoryCategoryTab !== 'damaged' && !(state.productCategories || []).some((c) => c.name === inventoryCategoryTab)) {
-    inventoryCategoryTab = 'all';
+  if (inventoryCategoryTab !== 'all' && inventoryCategoryTab !== 'in_stock' && inventoryCategoryTab !== 'out_of_stock' && inventoryCategoryTab !== 'damaged' && !(state.productCategories || []).some((c) => c.name === inventoryCategoryTab)) {
+    inventoryCategoryTab = 'in_stock';
   }
 
   container.innerHTML = \`
@@ -377,7 +389,7 @@ function renderInventoryContent(container) {
       </div>
       <div class="inventory-panel-inner" style="padding: 0 1.35rem 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
         <p style="font-size: 0.85rem; color: #64748b; margin: 0; flex: 1 1 280px;">
-          Add new products from the Business Directory. This view tracks stock levels and movement history.
+          Showing available physical stock. Master product details and specifications are managed in the Business Directory.
         </p>
         <div class="inventory-search-box" style="position: relative; max-width: 280px; width: 100%;">
           <input
@@ -419,14 +431,17 @@ function renderInventoryCategoryTabs(savedScroll = null, activeKey = null) {
   const wrap = document.getElementById('inventory-category-tabs');
   if (!wrap) return;
 
-  const countFor = (catName) => (state.products || []).filter((p) => p.type !== 'SERVICE' && p.category === catName).length;
+  const countFor = (catName) => (state.products || []).filter((p) => p.type !== 'SERVICE' && p.category === catName && (p.onHandStock || 0) > 0).length;
   const inStockCount = (state.products || []).filter((p) => p.type !== 'SERVICE' && (p.onHandStock || 0) > 0).length;
+  const outOfStockCount = (state.products || []).filter((p) => p.type !== 'SERVICE' && (p.onHandStock || 0) <= 0).length;
   const damagedCount = (state.products || []).filter((p) => p.type !== 'SERVICE' && (p.damagedStock || 0) > 0).length;
+  const totalCatalogCount = (state.products || []).filter((p) => p.type !== 'SERVICE').length;
 
   const pills = [
-    { key: 'all', label: 'All Products', count: (state.products || []).filter((p) => p.type !== 'SERVICE').length },
-    { key: 'in_stock', label: 'In Stock', count: inStockCount },
+    { key: 'in_stock', label: 'In Stock (Available)', count: inStockCount },
+    { key: 'out_of_stock', label: 'Out of Stock (0)', count: outOfStockCount },
     { key: 'damaged', label: 'Damaged / Quarantine', count: damagedCount },
+    { key: 'all', label: 'All Catalog', count: totalCatalogCount },
     ...(state.productCategories || []).map((c) => ({ key: c.name, label: c.name, count: countFor(c.name) })),
   ];
 
@@ -476,17 +491,19 @@ function renderInventoryTable(keepScroll = false) {
     if (el) prevScroll = el.scrollTop;
   }
 
-  if (inventoryCategoryTab !== 'all' && inventoryCategoryTab !== 'in_stock' && inventoryCategoryTab !== 'damaged' && !(state.productCategories || []).some((c) => c.name === inventoryCategoryTab)) {
-    inventoryCategoryTab = 'all';
+  if (inventoryCategoryTab !== 'all' && inventoryCategoryTab !== 'in_stock' && inventoryCategoryTab !== 'out_of_stock' && inventoryCategoryTab !== 'damaged' && !(state.productCategories || []).some((c) => c.name === inventoryCategoryTab)) {
+    inventoryCategoryTab = 'in_stock';
   }
 
   let filteredProducts = (state.products || []).filter((p) => p.type !== 'SERVICE');
   if (inventoryCategoryTab === 'in_stock') {
     filteredProducts = filteredProducts.filter((p) => (p.onHandStock || 0) > 0);
+  } else if (inventoryCategoryTab === 'out_of_stock') {
+    filteredProducts = filteredProducts.filter((p) => (p.onHandStock || 0) <= 0);
   } else if (inventoryCategoryTab === 'damaged') {
     filteredProducts = filteredProducts.filter((p) => (p.damagedStock || 0) > 0);
   } else if (inventoryCategoryTab !== 'all') {
-    filteredProducts = filteredProducts.filter((p) => p.category === inventoryCategoryTab);
+    filteredProducts = filteredProducts.filter((p) => p.category === inventoryCategoryTab && (p.onHandStock || 0) > 0);
   }
   if (inventorySearchQuery) {
     const q = inventorySearchQuery.toLowerCase();
@@ -559,6 +576,16 @@ function renderInventoryTable(keepScroll = false) {
     <th style="width: 75px; min-width: 70px; text-align: center; white-space: nowrap;">Audit</th>
   </tr></thead>\`;
 
+  const emptyMsg = inventorySearchQuery
+    ? 'No products matching search criteria.'
+    : inventoryCategoryTab === 'out_of_stock'
+    ? 'No out-of-stock items. All catalog products have positive inventory.'
+    : inventoryCategoryTab === 'damaged'
+    ? 'No damaged or quarantined items.'
+    : inventoryCategoryTab === 'in_stock'
+    ? 'No products currently in stock. Receive purchase orders in Inbound Deliveries or click "Add Stock" to add inventory.'
+    : 'No products found.';
+
   const hasMore = visibleRowsCount < allRowsCount;
   const bottomLoader = hasMore
     ? \`<tr><td colspan="8" style="text-align: center; color: #64748b; font-size: 0.8rem; padding: 0.85rem; background: #f8fafc; font-weight: 500;">
@@ -575,7 +602,7 @@ function renderInventoryTable(keepScroll = false) {
         <table class="data-table">
           \${tableHeaderHtml}
           <tbody>
-            \${rowsHtml || '<tr><td colspan="8" style="text-align: center; color: #64748b; padding: 2rem;">No products matching search criteria.</td></tr>'}
+            \${rowsHtml || '<tr><td colspan="8" style="text-align: center; color: #64748b; padding: 2.5rem 1rem;">' + emptyMsg + '</td></tr>'}
             \${bottomLoader}
           </tbody>
         </table>
